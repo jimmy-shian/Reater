@@ -2,6 +2,7 @@ package com.reater.app
 
 import android.app.Application
 import com.reater.app.domain.OnDeviceClassifier
+import com.reater.app.widget.WidgetUpdateWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,5 +20,7 @@ class ReaterApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             classifier.seedInitialCategoriesIfEmpty()
         }
+        // Schedule Glance Widget 4-hour background update
+        WidgetUpdateWorker.schedulePeriodicUpdate(this)
     }
 }

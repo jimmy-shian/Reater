@@ -6,6 +6,7 @@ import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.CommentDao
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.MediaDao
+import com.reater.app.data.local.dao.ProDao
 import com.reater.app.data.local.dao.TagDao
 import com.reater.app.data.local.entity.AiRunEntity
 import com.reater.app.data.local.entity.CategoryEntity
@@ -16,6 +17,8 @@ import com.reater.app.data.local.entity.ItemFtsEntity
 import com.reater.app.data.local.entity.ItemTagCrossRef
 import com.reater.app.data.local.entity.KeywordEntity
 import com.reater.app.data.local.entity.MediaEntity
+import com.reater.app.data.local.entity.SavedCollectionEntity
+import com.reater.app.data.local.entity.SavedQueryEntity
 import com.reater.app.data.local.entity.TagEntity
 import com.reater.app.data.local.entity.UserEditEntity
 
@@ -31,9 +34,11 @@ import com.reater.app.data.local.entity.UserEditEntity
         ItemTagCrossRef::class,
         AiRunEntity::class,
         FetchAttemptEntity::class,
-        ItemFtsEntity::class
+        ItemFtsEntity::class,
+        SavedCollectionEntity::class,
+        SavedQueryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -42,4 +47,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun commentDao(): CommentDao
     abstract fun mediaDao(): MediaDao
     abstract fun tagDao(): TagDao
+    abstract fun proDao(): ProDao
 }

@@ -7,6 +7,7 @@ import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.CommentDao
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.MediaDao
+import com.reater.app.data.local.dao.ProDao
 import com.reater.app.data.local.dao.TagDao
 import dagger.Module
 import dagger.Provides
@@ -45,4 +46,7 @@ object DatabaseModule {
 
     @Provides
     fun provideTagDao(db: AppDatabase): TagDao = db.tagDao()
+
+    @Provides
+    fun provideProDao(db: AppDatabase): ProDao = db.proDao()
 }

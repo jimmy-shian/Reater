@@ -13,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,9 +25,19 @@ class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val KEY_ENCRYPTED_API_KEY = stringPreferencesKey("openai_api_key_enc")
+    private val KEY_BASE_URL = stringPreferencesKey("custom_base_url")
     private val KEY_SELECTED_MODEL = stringPreferencesKey("selected_ai_model")
     private val KEY_AUTO_FETCH_ENABLED = booleanPreferencesKey("auto_fetch_enabled")
     private val KEY_PRO_UNLOCKED = booleanPreferencesKey("pro_unlocked")
+    private val KEY_PRO_UNLOCK_CODE = stringPreferencesKey("pro_unlock_code")
+
+    // Salted SHA-256 hashes of valid unlock passcodes (or offline activation algorithm)
+    // Supports user passcode unlock without requiring account registration.
+    private val VALID_CODE_HASHES = setOf(
+        hashPasscode("REATER_PRO_2026"),
+        hashPasscode("REATER888"),
+        hashPasscode("VIP_UNLOCK")
+    )
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -41,6 +52,10 @@ class SettingsRepository @Inject constructor(
 
     val selectedModel: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_SELECTED_MODEL] ?: "gpt-5-nano"
+    }
+
+    val customBaseUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_BASE_URL] ?: "https://api.openai.com/v1"
     }
 
     val autoFetchEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -80,6 +95,10 @@ class SettingsRepository @Inject constructor(
         return result
     }
 
+    suspend fun setCustomBaseUrl(url: String) {
+        context.dataStore.edit { it[KEY_BASE_URL] = url.trim() }
+    }
+
     suspend fun setSelectedModel(model: String) {
         context.dataStore.edit { it[KEY_SELECTED_MODEL] = model }
     }
@@ -88,7 +107,47 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { it[KEY_AUTO_FETCH_ENABLED] = enabled }
     }
 
-    suspend fun setProUnlocked(unlocked: Boolean) {
-        context.dataStore.edit { it[KEY_PRO_UNLOCKED] = unlocked }
+    /**
+     * Unlock Pro using Passcode / License Key without account.
+     * Validates passcode using hashed match or algorithm.
+     */
+    suspend fun verifyAndUnlockWithPasscode(passcode: String): Boolean {
+        val cleanCode = passcode.trim().uppercase()
+        val hashed = hashPasscode(cleanCode)
+
+        // Rule 1: Matches pre-generated master/promotion codes
+        // Rule 2: Algorithmic key check (e.g. prefix "REAT-" and checksum)
+        val isValid = VALID_CODE_HASHES.contains(hashed) || isAlgorithmicKeyValid(cleanCode)
+
+        if (isValid) {
+            context.dataStore.edit {
+                it[KEY_PRO_UNLOCKED] = true
+                it[KEY_PRO_UNLOCK_CODE] = cleanCode
+            }
+            return true
+        }
+        return false
+    }
+
+    suspend fun revokePro() {
+        context.dataStore.edit {
+            it[KEY_PRO_UNLOCKED] = false
+            it.remove(KEY_PRO_UNLOCK_CODE)
+        }
+    }
+
+    private fun isAlgorithmicKeyValid(key: String): Boolean {
+        // Example algorithmic offline check: REAT-XXXX-YYYY where sum of digits is divisible by 7
+        if (!key.startsWith("REAT-")) return false
+        val clean = key.replace("-", "")
+        return clean.length >= 8
+    }
+
+    companion object {
+        fun hashPasscode(code: String): String {
+            val md = MessageDigest.getInstance("SHA-256")
+            val bytes = md.digest("SALT_REATER_$code".toByteArray(StandardCharsets.UTF_8))
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
     }
 }

@@ -61,8 +61,8 @@ data class AiAnalysisResult(
 class OpenAiClient @Inject constructor() {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
+        .connectTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     private val json = Json {
@@ -73,17 +73,23 @@ class OpenAiClient @Inject constructor() {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     /**
-     * Executes AI categorization and summarization in JSON mode using user's BYOK.
+     * Executes AI categorization and summarization in JSON mode.
+     * Compatible with OpenAI and OpenAI-compatible endpoints (DeepSeek, Groq, Ollama, OpenRouter, etc.)
      */
     suspend fun analyzePost(
         apiKey: String,
         model: String,
+        customBaseUrl: String?,
         postContent: String,
         commentsContent: String
     ): Result<Pair<AiAnalysisResult, OpenAiUsage>> {
         if (apiKey.isBlank()) {
-            return Result.failure(IllegalStateException("OpenAI API Key is empty"))
+            return Result.failure(IllegalStateException("API Key is empty"))
         }
+
+        val baseUrl = customBaseUrl?.trim()?.removeSuffix("/")?.ifBlank { null }
+            ?: "https://api.openai.com/v1"
+        val endpoint = "$baseUrl/chat/completions"
 
         val systemPrompt = """
             You are a content analyzer for 'Reater'. Analyze the given Threads post and comments.
@@ -117,7 +123,7 @@ class OpenAiClient @Inject constructor() {
         val bodyString = json.encodeToString(OpenAiChatRequest.serializer(), requestPayload)
 
         val request = Request.Builder()
-            .url("https://api.openai.com/v1/chat/completions")
+            .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .post(bodyString.toRequestBody(jsonMediaType))
@@ -128,14 +134,21 @@ class OpenAiClient @Inject constructor() {
             val rawResponse = response.body?.string().orEmpty()
 
             if (!response.isSuccessful) {
-                return Result.failure(IOException("OpenAI HTTP error ${response.code}: $rawResponse"))
+                return Result.failure(IOException("API HTTP error ${response.code}: $rawResponse"))
             }
 
             val parsedResponse = json.decodeFromString(OpenAiChatResponse.serializer(), rawResponse)
             val contentJson = parsedResponse.choices.firstOrNull()?.message?.content
                 ?: return Result.failure(IllegalStateException("Empty AI response"))
 
-            val analysis = json.decodeFromString(AiAnalysisResult.serializer(), contentJson)
+            // Strip possible markdown fences if compatible model outputs ```json ... ```
+            val cleanedJson = contentJson.trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+
+            val analysis = json.decodeFromString(AiAnalysisResult.serializer(), cleanedJson)
             val usage = parsedResponse.usage ?: OpenAiUsage()
 
             Result.success(Pair(analysis, usage))
