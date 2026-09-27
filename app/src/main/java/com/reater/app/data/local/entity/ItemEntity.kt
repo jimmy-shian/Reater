@@ -1,0 +1,39 @@
+package com.reater.app.data.local.entity
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+/**
+ * Item: Source snapshot layer (never directly overwritten by user edits)
+ */
+@Entity(
+    tableName = "items",
+    indices = [
+        Index(value = ["canonicalUrl"], unique = true),
+        Index(value = ["shortcode"])
+    ]
+)
+data class ItemEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val canonicalUrl: String,
+    val shortcode: String,
+    val authorHandle: String,
+    val authorDisplayName: String,
+    val authorProfileUrl: String,
+    val authorVerified: Boolean = false,
+    val postedAt: Long = 0L, // UTC epoch millis
+    val postedAtRaw: String = "",
+    val bodyText: String = "",
+    val commentsText: String = "",
+    val mediaJson: String = "[]",
+    val likeCount: Int = 0,
+    val replyCount: Int = 0,
+    val repostCount: Int = 0,
+    val sourceFetchedAt: Long = System.currentTimeMillis(),
+    val sourceVersion: Int = 1,
+    val lastFetchStatus: String = "NOT_FETCHED", // COMPLETE, PARTIAL, FAILED, NOT_FETCHED
+    val lastFetchAt: Long = System.currentTimeMillis(),
+    val rawJsonMin: String = ""
+)

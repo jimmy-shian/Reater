@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">Reater</string>
+    <string name="share_save_title">保存到 Reater</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="paste_from_clipboard">从剪贴板粘贴</string>
+    <string name="body_placeholder">帖子正文...</string>
+    <string name="comments_placeholder">重要评论 / 讨论笔记...</string>
+    <string name="note_placeholder">我的个人笔记...</string>
+    <string name="summary_placeholder">要点摘要...</string>
+    <string name="fetching_status">正在解析 Threads 内容...</string>
+    <string name="fetch_failed_tip">无法自动获取内容，请在下方手动粘贴</string>
+    <string name="comments_partial_tip">已获取部分公开评论 (可手动补充)</string>
+    <string name="search_hint">搜索正文、评论、笔记或标签...</string>
+    <string name="tab_all">全部</string>
+    <string name="tab_unread">未读</string>
+    <string name="tab_favorite">收藏</string>
+    <string name="category_uncategorized">未分类</string>
+    <string name="settings">设置</string>
+    <string name="export_data">导出数据</string>
+    <string name="import_data">导入数据</string>
+    <string name="openai_api_key">OpenAI API Key (BYOK)</string>
+    <string name="model_selection">AI 模型选择</string>
+</resources>
