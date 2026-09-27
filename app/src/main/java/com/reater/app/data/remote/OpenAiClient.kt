@@ -1,0 +1,152 @@
+package com.reater.app.data.remote
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Serializable
+data class OpenAiChatRequest(
+    val model: String,
+    val messages: List<OpenAiMessage>,
+    val response_format: ResponseFormat? = null,
+    val temperature: Double = 0.3
+)
+
+@Serializable
+data class ResponseFormat(
+    val type: String
+)
+
+@Serializable
+data class OpenAiMessage(
+    val role: String,
+    val content: String
+)
+
+@Serializable
+data class OpenAiChatResponse(
+    val choices: List<OpenAiChoice> = emptyList(),
+    val usage: OpenAiUsage? = null
+)
+
+@Serializable
+data class OpenAiChoice(
+    val message: OpenAiMessage
+)
+
+@Serializable
+data class OpenAiUsage(
+    val prompt_tokens: Int = 0,
+    val completion_tokens: Int = 0,
+    val total_tokens: Int = 0
+)
+
+@Serializable
+data class AiAnalysisResult(
+    val category: String,
+    val tags: List<String> = emptyList(),
+    val summary: String,
+    val confidence: Double = 1.0
+)
+
+@Singleton
+class OpenAiClient @Inject constructor() {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .build()
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * Executes AI categorization and summarization in JSON mode using user's BYOK.
+     */
+    suspend fun analyzePost(
+        apiKey: String,
+        model: String,
+        postContent: String,
+        commentsContent: String
+    ): Result<Pair<AiAnalysisResult, OpenAiUsage>> {
+        if (apiKey.isBlank()) {
+            return Result.failure(IllegalStateException("OpenAI API Key is empty"))
+        }
+
+        val systemPrompt = """
+            You are a content analyzer for 'Reater'. Analyze the given Threads post and comments.
+            Output ONLY valid JSON matching this schema:
+            {
+              "category": "string (e.g. 科技與開發, 生活與日常, 財經與投資, 動漫與影視, 職場與職涯, 讀書與學習, 美食與旅遊, 時事與觀點)",
+              "tags": ["tag1", "tag2", "tag3"], // at most 3 tags
+              "summary": "string (under 120 words capturing the core message and consensus)",
+              "confidence": 0.95
+            }
+        """.trimIndent()
+
+        val userPrompt = """
+            [POST BODY]:
+            $postContent
+
+            [NOTABLE COMMENTS]:
+            $commentsContent
+        """.trimIndent()
+
+        val requestPayload = OpenAiChatRequest(
+            model = model.ifBlank { "gpt-5-nano" },
+            messages = listOf(
+                OpenAiMessage(role = "system", content = systemPrompt),
+                OpenAiMessage(role = "user", content = userPrompt)
+            ),
+            response_format = ResponseFormat(type = "json_object"),
+            temperature = 0.3
+        )
+
+        val bodyString = json.encodeToString(OpenAiChatRequest.serializer(), requestPayload)
+
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .post(bodyString.toRequestBody(jsonMediaType))
+            .build()
+
+        return try {
+            val response = client.newCall(request).execute()
+            val rawResponse = response.body?.string().orEmpty()
+
+            if (!response.isSuccessful) {
+                return Result.failure(IOException("OpenAI HTTP error ${response.code}: $rawResponse"))
+            }
+
+            val parsedResponse = json.decodeFromString(OpenAiChatResponse.serializer(), rawResponse)
+            val contentJson = parsedResponse.choices.firstOrNull()?.message?.content
+                ?: return Result.failure(IllegalStateException("Empty AI response"))
+
+            val analysis = json.decodeFromString(AiAnalysisResult.serializer(), contentJson)
+            val usage = parsedResponse.usage ?: OpenAiUsage()
+
+            Result.success(Pair(analysis, usage))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun computeInputHash(text: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(text.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+}
