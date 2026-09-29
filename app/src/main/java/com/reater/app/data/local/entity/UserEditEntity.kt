@@ -1,9 +1,9 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.ForeignKey
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
 
 /**
  * UserEdit: User edits separated from source data
@@ -31,6 +31,10 @@ data class UserEditEntity(
     val categoryId: Long? = null,
     val isRead: Boolean = false,
     val isFavorite: Boolean = false,
+    /** 詳情開啟次數（分析頁：打開/回顧統計用） */
+    val openCount: Int = 0,
+    /** 最近一次開啟時間（UTC millis，分析頁今日打開用） */
+    val lastOpenedAt: Long = 0L,
     val editedAt: Long = System.currentTimeMillis(),
     val editSource: String = "MANUAL_EDIT", // GRAPHQL, SHARE_TEXT, CLIPBOARD, MANUAL_EDIT, AI, SYSTEM
     val dirtyFlag: Boolean = false

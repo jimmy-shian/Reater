@@ -1,8 +1,8 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
 
 /**
  * Item: Source snapshot layer (never directly overwritten by user edits)
@@ -35,5 +35,7 @@ data class ItemEntity(
     val sourceVersion: Int = 1,
     val lastFetchStatus: String = "NOT_FETCHED", // COMPLETE, PARTIAL, FAILED, NOT_FETCHED
     val lastFetchAt: Long = System.currentTimeMillis(),
-    val rawJsonMin: String = ""
+    val rawJsonMin: String = "",
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null
 )

@@ -1,9 +1,15 @@
 package com.reater.app.di
 
 import android.content.Context
-import androidx.room.Room
+import androidx.room3.Room
 import com.reater.app.data.local.AppDatabase
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_1_2
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_2_3
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_3_4
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_4_5
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.reater.app.data.local.dao.CategoryDao
+import com.reater.app.data.local.dao.AiRunDao
 import com.reater.app.data.local.dao.CommentDao
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.MediaDao
@@ -27,8 +33,8 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "reater_database.db"
-        )
-            .fallbackToDestructiveMigration()
+        ).setDriver(BundledSQLiteDriver())
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 
@@ -49,4 +55,7 @@ object DatabaseModule {
 
     @Provides
     fun provideProDao(db: AppDatabase): ProDao = db.proDao()
+
+    @Provides
+    fun provideAiRunDao(db: AppDatabase): AiRunDao = db.aiRunDao()
 }

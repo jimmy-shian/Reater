@@ -1,20 +1,17 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.Fts4
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.Fts5
+import androidx.room3.FtsOptions
+import androidx.room3.PrimaryKey
 
 /**
- * ItemFts: Full text search table
- * Using Fts4 compatible with default SQLite in minSdk 26+ Android
+ * Manual FTS5 trigram index supports substring search for CJK text.
  */
 @Entity(tableName = "items_fts")
-@Fts4(contentEntity = ItemEntity::class)
+@Fts5(tokenizer = FtsOptions.TOKENIZER_TRIGRAM)
 data class ItemFtsEntity(
     @PrimaryKey
     val rowid: Long,
-    val bodyText: String,
-    val commentsText: String,
-    val authorHandle: String,
-    val authorDisplayName: String
+    val searchText: String
 )

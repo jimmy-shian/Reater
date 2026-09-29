@@ -1,16 +1,24 @@
 package com.reater.app.data.repository
 
+import androidx.room3.withWriteTransaction
+import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.dao.CategoryDao
+import com.reater.app.data.local.dao.AiRunDao
 import com.reater.app.data.local.dao.CommentDao
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.MediaDao
 import com.reater.app.data.local.dao.TagDao
 import com.reater.app.data.local.entity.CommentEntity
+import com.reater.app.data.local.entity.AiRunEntity
 import com.reater.app.data.local.entity.ItemDetail
 import com.reater.app.data.local.entity.ItemEntity
 import com.reater.app.data.local.entity.MediaEntity
+import com.reater.app.data.local.entity.ItemTagCrossRef
+import com.reater.app.data.local.entity.TagEntity
 import com.reater.app.data.local.entity.UserEditEntity
 import com.reater.app.data.remote.FetchedPostResult
+import com.reater.app.data.remote.AiAnalysisResult
+import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
@@ -20,11 +28,13 @@ import javax.inject.Singleton
 
 @Singleton
 class ThreadPostRepository @Inject constructor(
+    private val database: AppDatabase,
     private val itemDao: ItemDao,
     private val commentDao: CommentDao,
     private val mediaDao: MediaDao,
     private val tagDao: TagDao,
     private val categoryDao: CategoryDao,
+    private val aiRunDao: AiRunDao,
     private val graphQLClient: ThreadsGraphQLClient,
     private val classifier: OnDeviceClassifier,
     private val settingsRepository: SettingsRepository
@@ -33,7 +43,12 @@ class ThreadPostRepository @Inject constructor(
     fun observeAllPosts(): Flow<List<ItemDetail>> = itemDao.observeAllItemDetails()
     fun observeUnreadPosts(): Flow<List<ItemDetail>> = itemDao.observeUnreadItemDetails()
     fun observeFavoritePosts(): Flow<List<ItemDetail>> = itemDao.observeFavoriteItemDetails()
-    fun searchPosts(query: String): Flow<List<ItemDetail>> = itemDao.searchItemDetails(query)
+    fun searchPosts(query: String): Flow<List<ItemDetail>> {
+        val clean = query.trim()
+        if (clean.codePointCount(0, clean.length) < 3) return itemDao.searchItemDetails(clean)
+        val quoted = "\"${clean.replace("\"", "\"\"")}\""
+        return itemDao.searchItemDetailsFts(quoted)
+    }
     fun observePostDetail(id: Long): Flow<ItemDetail?> = itemDao.observeItemDetailById(id)
 
     suspend fun savePost(
@@ -46,15 +61,23 @@ class ThreadPostRepository @Inject constructor(
         manualSummary: String,
         categoryId: Long?,
         fetchedResult: FetchedPostResult? = null
-    ): Long {
+    ): Long = database.withWriteTransaction {
         // Upsert ItemEntity
         val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
         val itemId = if (existing != null) {
             val updated = existing.copy(
                 shortcode = shortcode,
                 authorHandle = authorHandle.ifBlank { existing.authorHandle },
-                bodyText = bodyText.ifBlank { existing.bodyText },
+                authorDisplayName = fetchedResult?.authorDisplayName ?: existing.authorDisplayName,
+                authorProfileUrl = fetchedResult?.authorProfileUrl ?: existing.authorProfileUrl,
+                authorVerified = fetchedResult?.authorVerified ?: existing.authorVerified,
+                postedAt = fetchedResult?.postedAt?.takeIf { it > 0 } ?: existing.postedAt,
+                bodyText = fetchedResult?.bodyText?.takeIf { it.isNotBlank() } ?: bodyText.ifBlank { existing.bodyText },
                 commentsText = commentsText.ifBlank { existing.commentsText },
+                likeCount = fetchedResult?.likeCount ?: existing.likeCount,
+                replyCount = fetchedResult?.replyCount ?: existing.replyCount,
+                repostCount = fetchedResult?.repostCount ?: existing.repostCount,
+                rawJsonMin = fetchedResult?.rawJsonMin ?: existing.rawJsonMin,
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
                 lastFetchAt = System.currentTimeMillis()
@@ -93,13 +116,14 @@ class ThreadPostRepository @Inject constructor(
         // Upsert UserEditEntity
         val existingEdit = itemDao.getUserEditByItemId(itemId)
         val userEdit = existingEdit?.copy(
+            userBodyOverride = if (fetchedResult != null && bodyText != fetchedResult.bodyText) bodyText else existingEdit.userBodyOverride,
             manualNote = manualNote.ifBlank { existingEdit.manualNote },
             manualSummary = manualSummary.ifBlank { existingEdit.manualSummary },
             categoryId = resolvedCategoryId ?: existingEdit.categoryId,
             editedAt = System.currentTimeMillis()
         ) ?: UserEditEntity(
             itemId = itemId,
-            userBodyOverride = null,
+            userBodyOverride = fetchedResult?.let { if (bodyText != it.bodyText) bodyText else null },
             manualNote = manualNote,
             manualSummary = manualSummary,
             categoryId = resolvedCategoryId,
@@ -108,49 +132,238 @@ class ThreadPostRepository @Inject constructor(
         )
         itemDao.insertUserEdit(userEdit)
 
-        // Insert fetched structured comments
-        if (fetchedResult != null && fetchedResult.comments.isNotEmpty()) {
-            val commentEntities = fetchedResult.comments.mapIndexed { index, c ->
+        // Insert fetched structured comments；若抓取無留言但使用者手貼了留言文字，
+        // 把手貼文字結構化入庫（支援「作者: 內容」或「@作者 內容」開頭，否則作者記為手動筆記），
+        // 否則「貼上留言」存了卻不顯示、計數也不對。
+        val manualComments = if ((fetchedResult == null || fetchedResult.comments.isEmpty()) &&
+            commentsText.isNotBlank()
+        ) {
+            parseManualComments(commentsText)
+        } else {
+            emptyList()
+        }
+        if (fetchedResult != null && (fetchedResult.comments.isNotEmpty() || manualComments.isNotEmpty() || fetchedResult.status == "COMPLETE")) {
+            commentDao.deleteCommentsByItemId(itemId)
+            val fetchedEntities = fetchedResult.comments.mapIndexed { index, c ->
                 CommentEntity(
                     itemId = itemId,
                     externalId = c.externalId.ifBlank { "c_$index" },
                     author = c.author,
                     text = c.text,
                     likeCount = c.likeCount,
+                    parentExternalId = c.parentExternalId,
                     depth = c.depth,
                     sortKey = "0:${System.currentTimeMillis()}:$index"
                 )
             }
-            commentDao.insertComments(commentEntities)
+            val manualEntities = manualComments.mapIndexed { index, (author, text) ->
+                CommentEntity(
+                    itemId = itemId,
+                    externalId = "manual_$index",
+                    author = author,
+                    text = text,
+                    likeCount = 0,
+                    parentExternalId = null,
+                    depth = 0,
+                    sortKey = "1:${System.currentTimeMillis()}:$index"
+                )
+            }
+            commentDao.insertComments(fetchedEntities + manualEntities)
         }
 
         // Insert media attachments
-        if (fetchedResult != null && fetchedResult.media.isNotEmpty()) {
+        if (fetchedResult != null) {
+            mediaDao.deleteMediaByItemId(itemId)
             val mediaEntities = fetchedResult.media.mapIndexed { index, m ->
                 MediaEntity(
                     itemId = itemId,
                     kind = m.kind,
                     remoteUrl = m.remoteUrl,
+                    localPath = m.localPath,
                     width = m.width,
                     height = m.height,
                     position = index
                 )
             }
-            mediaDao.insertMediaList(mediaEntities)
+            if (mediaEntities.isNotEmpty()) mediaDao.insertMediaList(mediaEntities)
         }
 
-        return itemId
+        refreshSearchIndex(itemId)
+
+        itemId
     }
 
-    suspend fun toggleReadStatus(itemId: Long, isRead: Boolean) {
-        itemDao.updateReadStatus(itemId, isRead)
+    /**
+     * 解析手貼留言文字為 (author, text) 列表。
+     * 切分規則：先按「---」分隔線分則，再按行；單行支援「作者: 內容」/「@作者 內容」
+     * 開頭，無前綴則作者記為「手動筆記」。上限 50 則，與抓取側一致。
+     */
+    private fun parseManualComments(commentsText: String): List<Pair<String, String>> {
+        val chunks = commentsText.split(Regex("\\n\\s*---\\s*\\n"))
+            .flatMap { it.lines() }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        val out = mutableListOf<Pair<String, String>>()
+        for (raw in chunks) {
+            if (out.size >= 50) break
+            // 「作者: 內容」（半形/全形冒號）
+            val colon = Regex("^(@?[\\w.\\u4e00-\\u9fa5_-]{1,30})\\s*[:：]\\s*(.+)$", RegexOption.DOT_MATCHES_ALL)
+                .find(raw)
+            if (colon != null) {
+                out.add(colon.groupValues[1].trimStart('@') to colon.groupValues[2].trim())
+                continue
+            }
+            // 「@作者 內容」
+            val at = Regex("^@([\\w.\\u4e00-\\u9fa5_-]{1,30})\\s+(.+)$", RegexOption.DOT_MATCHES_ALL).find(raw)
+            if (at != null) {
+                out.add(at.groupValues[1] to at.groupValues[2].trim())
+                continue
+            }
+            out.add("手動筆記" to raw)
+        }
+        return out.filter { it.second.isNotBlank() }
     }
 
-    suspend fun toggleFavoriteStatus(itemId: Long, isFavorite: Boolean) {
-        itemDao.updateFavoriteStatus(itemId, isFavorite)
+    suspend fun toggleReadStatus(itemId: Long, isRead: Boolean) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId)
+        if (current != null) {
+            itemDao.updateReadStatus(itemId, isRead)
+        } else {
+            itemDao.insertUserEdit(UserEditEntity(itemId = itemId, isRead = isRead))
+        }
+    }
+
+    suspend fun toggleFavoriteStatus(itemId: Long, isFavorite: Boolean) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId)
+        if (current != null) {
+            itemDao.updateFavoriteStatus(itemId, isFavorite)
+        } else {
+            itemDao.insertUserEdit(UserEditEntity(itemId = itemId, isFavorite = isFavorite))
+        }
+    }
+
+    /** 詳情頁改分類：保留既有 UserEdit，僅更新 categoryId */
+    suspend fun updateCategory(itemId: Long, categoryId: Long?) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId)
+        if (current != null) {
+            itemDao.updateCategory(itemId, categoryId)
+        } else {
+            itemDao.insertUserEdit(UserEditEntity(itemId = itemId, categoryId = categoryId))
+        }
+        refreshSearchIndex(itemId)
+    }
+
+    /** 詳情開啟：開啟次數 +1（分析頁統計用；無列時先建列） */
+    suspend fun recordOpen(itemId: Long) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId)
+        if (current != null) {
+            itemDao.recordOpen(itemId)
+        } else {
+            itemDao.insertUserEdit(
+                UserEditEntity(itemId = itemId, openCount = 1, lastOpenedAt = System.currentTimeMillis())
+            )
+        }
+    }
+
+    data class AnalyticsSnapshot(
+        val savedToday: Int,
+        val openedToday: Int,
+        val totalReviews: Int,
+        /** 日期 → 當日儲存數（已按 since 裁切：免費當週、Pro 近30日） */
+        val dailySaved: List<Pair<String, Int>>
+    )
+
+    suspend fun getAnalytics(since: Long, todayStart: Long): AnalyticsSnapshot {
+        return AnalyticsSnapshot(
+            savedToday = itemDao.countSavedSince(todayStart),
+            openedToday = itemDao.countOpenedSince(todayStart),
+            totalReviews = itemDao.countTotalReviews(),
+            dailySaved = itemDao.dailySavedSince(since).map { it.day to it.cnt }
+        )
+    }
+
+    suspend fun countUnreadSince(since: Long): Int = itemDao.countUnreadSince(since)
+
+    fun observeTrashPosts(): Flow<List<ItemDetail>> = itemDao.observeTrashItemDetails()
+
+    suspend fun moveToTrash(itemId: Long) {
+        itemDao.moveToTrash(itemId)
+    }
+
+    suspend fun restoreFromTrash(itemId: Long) {
+        itemDao.restoreFromTrash(itemId)
+    }
+
+    suspend fun emptyTrash() {
+        itemDao.emptyTrash()
+    }
+
+    suspend fun purgeExpiredTrash() {
+        val thirtyDaysAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        itemDao.purgeExpiredTrash(thirtyDaysAgo)
     }
 
     suspend fun deletePost(itemId: Long) {
         itemDao.deleteItemById(itemId)
+        itemDao.deleteSearchIndex(itemId)
+    }
+
+    suspend fun persistAiAnalysis(
+        itemId: Long,
+        analysis: AiAnalysisResult,
+        usage: OpenAiUsage,
+        model: String,
+        inputHash: String,
+        promptVersion: String
+    ) = database.withWriteTransaction {
+        val categoryId = categoryDao.getCategoryByName(analysis.category)?.id
+        val current = itemDao.getUserEditByItemId(itemId) ?: UserEditEntity(itemId = itemId)
+        itemDao.insertUserEdit(
+            current.copy(
+                manualSummary = analysis.summary,
+                categoryId = categoryId ?: current.categoryId,
+                editedAt = System.currentTimeMillis(),
+                editSource = "AI"
+            )
+        )
+        tagDao.clearTagsForItem(itemId)
+        analysis.tags.map(String::trim).filter(String::isNotEmpty).distinctBy { it.lowercase() }.forEach { name ->
+            val tagId = tagDao.getTagByName(name)?.id ?: tagDao.insertTag(TagEntity(name = name)).let { inserted ->
+                if (inserted >= 0) inserted else tagDao.getTagByName(name)?.id
+            }
+            if (tagId != null && tagId > 0) tagDao.insertItemTagCrossRef(ItemTagCrossRef(itemId, tagId))
+        }
+        val encoded = kotlinx.serialization.json.Json.encodeToString(AiAnalysisResult.serializer(), analysis)
+        aiRunDao.insert(
+            AiRunEntity(
+                itemId = itemId,
+                purpose = "CLASSIFY_AND_SUMMARIZE",
+                model = model,
+                promptVersion = promptVersion,
+                inputHash = inputHash,
+                outputJson = encoded,
+                usageIn = usage.prompt_tokens,
+                usageOut = usage.completion_tokens
+            )
+        )
+        refreshSearchIndex(itemId)
+    }
+
+    suspend fun refreshSearchIndex(itemId: Long) {
+        val detail = itemDao.getItemDetailById(itemId) ?: return
+        val tags = detail.tags.joinToString(" ") { it.name }
+        val comments = detail.comments.joinToString(" ") { it.text }
+        val searchable = listOf(
+            detail.item.bodyText,
+            detail.item.commentsText,
+            detail.userEdit?.userBodyOverride.orEmpty(),
+            detail.manualNote,
+            detail.manualSummary,
+            detail.item.authorHandle,
+            detail.item.authorDisplayName,
+            tags,
+            comments
+        ).filter(String::isNotBlank).joinToString(" ")
+        itemDao.updateSearchIndex(itemId, searchable)
     }
 }

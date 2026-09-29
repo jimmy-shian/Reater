@@ -9,6 +9,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -129,17 +131,17 @@ class OpenAiClient @Inject constructor() {
             .post(bodyString.toRequestBody(jsonMediaType))
             .build()
 
-        return try {
+        return withContext(Dispatchers.IO) { try {
             val response = client.newCall(request).execute()
             val rawResponse = response.body?.string().orEmpty()
 
             if (!response.isSuccessful) {
-                return Result.failure(IOException("API HTTP error ${response.code}: $rawResponse"))
+                return@withContext Result.failure(IOException("API HTTP error ${response.code}: $rawResponse"))
             }
 
             val parsedResponse = json.decodeFromString(OpenAiChatResponse.serializer(), rawResponse)
             val contentJson = parsedResponse.choices.firstOrNull()?.message?.content
-                ?: return Result.failure(IllegalStateException("Empty AI response"))
+                ?: return@withContext Result.failure(IllegalStateException("Empty AI response"))
 
             // Strip possible markdown fences if compatible model outputs ```json ... ```
             val cleanedJson = contentJson.trim()
@@ -154,7 +156,7 @@ class OpenAiClient @Inject constructor() {
             Result.success(Pair(analysis, usage))
         } catch (e: Exception) {
             Result.failure(e)
-        }
+        } }
     }
 
     fun computeInputHash(text: String): String {

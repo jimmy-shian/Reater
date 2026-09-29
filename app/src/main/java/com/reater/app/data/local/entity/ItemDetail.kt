@@ -1,8 +1,8 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Embedded
-import androidx.room.Junction
-import androidx.room.Relation
+import androidx.room3.Embedded
+import androidx.room3.Junction
+import androidx.room3.Relation
 
 /**
  * ItemDetail: Comprehensive view model merging Item, UserEdit, Category, Media, Comments, Tags
@@ -12,30 +12,30 @@ data class ItemDetail(
     val item: ItemEntity,
 
     @Relation(
-        parentColumn = "id",
-        entityColumn = "itemId"
+        parentColumns = ["id"],
+        entityColumns = ["itemId"]
     )
     val userEdit: UserEditEntity?,
 
     @Relation(
-        parentColumn = "id",
-        entityColumn = "itemId"
+        parentColumns = ["id"],
+        entityColumns = ["itemId"]
     )
     val comments: List<CommentEntity> = emptyList(),
 
     @Relation(
-        parentColumn = "id",
-        entityColumn = "itemId"
+        parentColumns = ["id"],
+        entityColumns = ["itemId"]
     )
     val media: List<MediaEntity> = emptyList(),
 
     @Relation(
-        parentColumn = "id",
-        entityColumn = "id",
+        parentColumns = ["id"],
+        entityColumns = ["id"],
         associateBy = Junction(
             value = ItemTagCrossRef::class,
-            parentColumn = "itemId",
-            entityColumn = "tagId"
+            parentColumns = ["itemId"],
+            entityColumns = ["tagId"]
         )
     )
     val tags: List<TagEntity> = emptyList()

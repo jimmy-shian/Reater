@@ -17,7 +17,8 @@ data class CollectionRule(
     val isFavorite: Boolean? = null,
     val minLikes: Int? = null,
     val tag: String? = null,
-    val author: String? = null
+    val author: String? = null,
+    val hasMedia: Boolean? = null
 )
 
 @Singleton
@@ -32,7 +33,7 @@ class SmartCollectionEngine @Inject constructor(
         val rule = try {
             json.decodeFromString(CollectionRule.serializer(), rulesJson)
         } catch (e: Exception) {
-            return all
+            return emptyList()
         }
 
         return all.filter { item ->
@@ -53,6 +54,9 @@ class SmartCollectionEngine @Inject constructor(
                 pass = false
             }
             if (rule.tag != null && item.tags.none { it.name.equals(rule.tag, ignoreCase = true) }) {
+                pass = false
+            }
+            if (rule.hasMedia != null && item.media.isNotEmpty() != rule.hasMedia) {
                 pass = false
             }
             pass

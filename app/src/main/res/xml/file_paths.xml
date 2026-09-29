@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 離線媒體目錄：filesDir/threads_media，供外部播放器開啟本機影片 -->
+    <files-path name="threads_media" path="threads_media/" />
+</paths>

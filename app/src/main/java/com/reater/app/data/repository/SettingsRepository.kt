@@ -3,6 +3,8 @@ package com.reater.app.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.crypto.tink.Aead
@@ -11,9 +13,9 @@ import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,16 +30,16 @@ class SettingsRepository @Inject constructor(
     private val KEY_BASE_URL = stringPreferencesKey("custom_base_url")
     private val KEY_SELECTED_MODEL = stringPreferencesKey("selected_ai_model")
     private val KEY_AUTO_FETCH_ENABLED = booleanPreferencesKey("auto_fetch_enabled")
+    private val KEY_AI_CONSENT = booleanPreferencesKey("ai_transmission_consent")
     private val KEY_PRO_UNLOCKED = booleanPreferencesKey("pro_unlocked")
-    private val KEY_PRO_UNLOCK_CODE = stringPreferencesKey("pro_unlock_code")
-
-    // Salted SHA-256 hashes of valid unlock passcodes (or offline activation algorithm)
-    // Supports user passcode unlock without requiring account registration.
-    private val VALID_CODE_HASHES = setOf(
-        hashPasscode("REATER_PRO_2026"),
-        hashPasscode("REATER888"),
-        hashPasscode("VIP_UNLOCK")
-    )
+    // 外觀
+    private val KEY_THEME_MODE = stringPreferencesKey("theme_mode") // system / light / dark
+    private val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
+    // 通知：儲存後未讀提醒 / 每日回顧
+    private val KEY_UNREAD_NUDGE_ENABLED = booleanPreferencesKey("unread_nudge_enabled")
+    private val KEY_UNREAD_NUDGE_DELAY_MIN = intPreferencesKey("unread_nudge_delay_min")
+    private val KEY_REVIEW_DIGEST_ENABLED = booleanPreferencesKey("review_digest_enabled")
+    private val KEY_REVIEW_DIGEST_HOUR = intPreferencesKey("review_digest_hour")
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -62,8 +64,36 @@ class SettingsRepository @Inject constructor(
         prefs[KEY_AUTO_FETCH_ENABLED] ?: true
     }
 
+    val aiTransmissionConsent: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AI_CONSENT] ?: false
+    }
+
     val isProUnlocked: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_PRO_UNLOCKED] ?: false
+    }
+
+    val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_THEME_MODE] ?: "system"
+    }
+
+    val fontScale: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_FONT_SCALE] ?: 1f
+    }
+
+    val unreadNudgeEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_UNREAD_NUDGE_ENABLED] ?: true
+    }
+
+    val unreadNudgeDelayMin: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_UNREAD_NUDGE_DELAY_MIN] ?: 10
+    }
+
+    val reviewDigestEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REVIEW_DIGEST_ENABLED] ?: true
+    }
+
+    val reviewDigestHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REVIEW_DIGEST_HOUR] ?: 21
     }
 
     suspend fun setOpenAiApiKey(apiKey: String) {
@@ -79,20 +109,13 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun getOpenAiApiKey(): String? {
-        var result: String? = null
-        context.dataStore.edit { prefs ->
-            val enc = prefs[KEY_ENCRYPTED_API_KEY]
-            if (!enc.isNullOrBlank()) {
-                try {
-                    val rawBytes = Base64.getDecoder().decode(enc)
-                    val decrypted = aead.decrypt(rawBytes, null)
-                    result = String(decrypted, StandardCharsets.UTF_8)
-                } catch (e: Exception) {
-                    result = null
-                }
-            }
-        }
-        return result
+        val encrypted = context.dataStore.data.first()[KEY_ENCRYPTED_API_KEY]
+            ?.takeIf(String::isNotBlank) ?: return null
+        return runCatching {
+            val rawBytes = Base64.getDecoder().decode(encrypted)
+            val decrypted = aead.decrypt(rawBytes, null)
+            String(decrypted, StandardCharsets.UTF_8)
+        }.getOrNull()
     }
 
     suspend fun setCustomBaseUrl(url: String) {
@@ -107,47 +130,53 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { it[KEY_AUTO_FETCH_ENABLED] = enabled }
     }
 
-    /**
-     * Unlock Pro using Passcode / License Key without account.
-     * Validates passcode using hashed match or algorithm.
-     */
-    suspend fun verifyAndUnlockWithPasscode(passcode: String): Boolean {
-        val cleanCode = passcode.trim().uppercase()
-        val hashed = hashPasscode(cleanCode)
+    suspend fun setAiTransmissionConsent(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AI_CONSENT] = enabled }
+    }
 
-        // Rule 1: Matches pre-generated master/promotion codes
-        // Rule 2: Algorithmic key check (e.g. prefix "REAT-" and checksum)
-        val isValid = VALID_CODE_HASHES.contains(hashed) || isAlgorithmicKeyValid(cleanCode)
+    suspend fun setProEntitlementFromPlay(owned: Boolean) {
+        context.dataStore.edit { it[KEY_PRO_UNLOCKED] = owned }
+    }
 
-        if (isValid) {
-            context.dataStore.edit {
-                it[KEY_PRO_UNLOCKED] = true
-                it[KEY_PRO_UNLOCK_CODE] = cleanCode
-            }
+    suspend fun setThemeMode(mode: String) {
+        val safe = when (mode) {
+            "light", "dark" -> mode
+            else -> "system"
+        }
+        context.dataStore.edit { it[KEY_THEME_MODE] = safe }
+    }
+
+    suspend fun setFontScale(scale: Float) {
+        context.dataStore.edit { it[KEY_FONT_SCALE] = scale.coerceIn(0.85f, 1.3f) }
+    }
+
+    suspend fun setUnreadNudgeEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_UNREAD_NUDGE_ENABLED] = enabled }
+    }
+
+    suspend fun setUnreadNudgeDelayMin(min: Int) {
+        context.dataStore.edit { it[KEY_UNREAD_NUDGE_DELAY_MIN] = min.coerceIn(1, 120) }
+    }
+
+    suspend fun setReviewDigestEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_REVIEW_DIGEST_ENABLED] = enabled }
+    }
+
+    suspend fun setReviewDigestHour(hour: Int) {
+        context.dataStore.edit { it[KEY_REVIEW_DIGEST_HOUR] = hour.coerceIn(0, 23) }
+    }
+
+    fun verifyPasscode(code: String, email: String = ""): Boolean {
+        // 新制:委派給 LicenseVerifier (HMAC 離線驗證)。
+        // 舊的萬用明文密碼與 salt 雜湊已全部移除,此處不再出現任何密碼字串。
+        return LicenseVerifier.verify(email, code)
+    }
+
+    suspend fun unlockProWithPasscode(code: String, email: String = ""): Boolean {
+        if (verifyPasscode(code, email)) {
+            setProEntitlementFromPlay(true)
             return true
         }
         return false
-    }
-
-    suspend fun revokePro() {
-        context.dataStore.edit {
-            it[KEY_PRO_UNLOCKED] = false
-            it.remove(KEY_PRO_UNLOCK_CODE)
-        }
-    }
-
-    private fun isAlgorithmicKeyValid(key: String): Boolean {
-        // Example algorithmic offline check: REAT-XXXX-YYYY where sum of digits is divisible by 7
-        if (!key.startsWith("REAT-")) return false
-        val clean = key.replace("-", "")
-        return clean.length >= 8
-    }
-
-    companion object {
-        fun hashPasscode(code: String): String {
-            val md = MessageDigest.getInstance("SHA-256")
-            val bytes = md.digest("SALT_REATER_$code".toByteArray(StandardCharsets.UTF_8))
-            return bytes.joinToString("") { "%02x".format(it) }
-        }
     }
 }

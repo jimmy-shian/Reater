@@ -1,10 +1,11 @@
 package com.reater.app.data.local.dao
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room3.Dao
+import androidx.room3.Insert
+import androidx.room3.OnConflictStrategy
+import androidx.room3.Query
 import com.reater.app.data.local.entity.CommentEntity
+import com.reater.app.data.local.entity.AiRunEntity
 import com.reater.app.data.local.entity.ItemTagCrossRef
 import com.reater.app.data.local.entity.MediaEntity
 import com.reater.app.data.local.entity.TagEntity
@@ -39,6 +40,9 @@ interface TagDao {
     @Query("SELECT * FROM tags ORDER BY name ASC")
     fun observeAllTags(): Flow<List<TagEntity>>
 
+    @Query("SELECT * FROM tags WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getTagByName(name: String): TagEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: TagEntity): Long
 
@@ -47,4 +51,13 @@ interface TagDao {
 
     @Query("DELETE FROM item_tags WHERE itemId = :itemId")
     suspend fun clearTagsForItem(itemId: Long)
+}
+
+@Dao
+interface AiRunDao {
+    @Insert
+    suspend fun insert(run: AiRunEntity): Long
+
+    @Query("SELECT * FROM ai_runs WHERE itemId = :itemId ORDER BY createdAt DESC")
+    fun observeByItem(itemId: Long): Flow<List<AiRunEntity>>
 }

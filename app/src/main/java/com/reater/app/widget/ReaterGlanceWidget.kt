@@ -22,8 +22,11 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import androidx.room.Room
+import androidx.room3.Room
 import com.reater.app.data.local.AppDatabase
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_1_2
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_2_3
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -36,12 +39,16 @@ class ReaterGlanceWidget : GlanceAppWidget() {
             context,
             AppDatabase::class.java,
             "reater_database.db"
-        ).fallbackToDestructiveMigration().build()
+        ).setDriver(BundledSQLiteDriver())
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .build()
 
         val unreadList = try {
             db.itemDao().observeUnreadItemDetails().first()
         } catch (e: Exception) {
             emptyList()
+        } finally {
+            db.close()
         }
 
         val displayItem = unreadList.firstOrNull()
@@ -51,7 +58,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                 Box(
                     modifier = GlanceModifier
                         .fillMaxSize()
-                        .background(ColorProvider(Color(0xFF1E1E1E), Color(0xFFFFFFFF)))
+                        .background(ColorProvider(Color(0xFF1E1E1E)))
                         .padding(14.dp)
                 ) {
                     if (displayItem == null) {
@@ -65,7 +72,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                 style = TextStyle(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(Color(0xFF888888), Color(0xFF666666))
+                                    color = ColorProvider(Color(0xFF888888))
                                 )
                             )
                             Spacer(modifier = GlanceModifier.height(4.dp))
@@ -73,7 +80,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                 text = "目前無待讀貼文，快去 Threads 分享吧！",
                                 style = TextStyle(
                                     fontSize = 12.sp,
-                                    color = ColorProvider(Color(0xFFAAAAAA), Color(0xFF888888))
+                                    color = ColorProvider(Color(0xFFAAAAAA))
                                 )
                             )
                         }
@@ -90,7 +97,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                     style = TextStyle(
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = ColorProvider(Color(0xFF4DA3FF), Color(0xFF0066CC))
+                                        color = ColorProvider(Color(0xFF4DA3FF))
                                     )
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
@@ -98,7 +105,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                     text = "待讀",
                                     style = TextStyle(
                                         fontSize = 11.sp,
-                                        color = ColorProvider(Color(0xFFAAAAAA), Color(0xFF777777))
+                                        color = ColorProvider(Color(0xFFAAAAAA))
                                     )
                                 )
                             }
@@ -110,7 +117,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                 maxLines = 3,
                                 style = TextStyle(
                                     fontSize = 13.sp,
-                                    color = ColorProvider(Color(0xFFDDDDDD), Color(0xFF222222))
+                                    color = ColorProvider(Color(0xFFDDDDDD))
                                 )
                             )
 
@@ -121,7 +128,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                     maxLines = 1,
                                     style = TextStyle(
                                         fontSize = 11.sp,
-                                        color = ColorProvider(Color(0xFFFFB300), Color(0xFFD97706))
+                                        color = ColorProvider(Color(0xFFFFB300))
                                     )
                                 )
                             }

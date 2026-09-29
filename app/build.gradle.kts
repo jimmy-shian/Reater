@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,29 +7,29 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.room3)
+}
+
+room3 {
+    schemaDirectory("$projectDir/schemas")
 }
 
 android {
     namespace = "com.reater.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.reater.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += mapOf(
-                    "room.schemaLocation" to "$projectDir/schemas",
-                    "room.incremental" to "true"
-                )
-            }
-        }
+        // Google Play 一次性商品 ID（需與 Play Console 建立的商品 ID 一致）
+        // 改 ID 只改這裡，不用進程式碼找
+        buildConfigField("String", "PRO_PRODUCT_ID", "\"pro_unlock\"")
     }
 
     buildTypes {
@@ -43,11 +45,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = "21"
-    }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
     }
 }
 
@@ -68,9 +74,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     // Room
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.room3.runtime)
+    implementation(libs.androidx.sqlite.bundled)
+    ksp(libs.androidx.room3.compiler)
 
     // Hilt
     implementation(libs.hilt.android)
@@ -96,4 +102,5 @@ dependencies {
     // DataStore & Tink
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
+    implementation(libs.androidx.billing.ktx)
 }

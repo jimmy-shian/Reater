@@ -1,8 +1,8 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
 
 @Entity(
     tableName = "tags",
@@ -21,17 +21,17 @@ data class TagEntity(
     tableName = "item_tags",
     primaryKeys = ["itemId", "tagId"],
     foreignKeys = [
-        androidx.room.ForeignKey(
+        androidx.room3.ForeignKey(
             entity = ItemEntity::class,
             parentColumns = ["id"],
             childColumns = ["itemId"],
-            onDelete = androidx.room.ForeignKey.CASCADE
+            onDelete = androidx.room3.ForeignKey.CASCADE
         ),
-        androidx.room.ForeignKey(
+        androidx.room3.ForeignKey(
             entity = TagEntity::class,
             parentColumns = ["id"],
             childColumns = ["tagId"],
-            onDelete = androidx.room.ForeignKey.CASCADE
+            onDelete = androidx.room3.ForeignKey.CASCADE
         )
     ],
     indices = [

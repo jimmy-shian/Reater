@@ -1,7 +1,7 @@
 package com.reater.app.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.PrimaryKey
 
 /**
  * Category: Category entity
@@ -14,5 +14,6 @@ data class CategoryEntity(
     val colorArgb: Int,
     val sort: Int = 0,
     val isDefault: Boolean = false,
+    val avatarIcon: String = "life",
     val updatedAt: Long = System.currentTimeMillis()
 )

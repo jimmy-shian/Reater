@@ -4,7 +4,11 @@
 /.idea/
 .DS_Store
 /build
+**/build/
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+tools/.license_secret
+tools/licenses_issued.csv
+tools/licenses_issued_*.bak
