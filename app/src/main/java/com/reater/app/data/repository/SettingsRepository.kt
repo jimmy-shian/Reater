@@ -40,6 +40,9 @@ class SettingsRepository @Inject constructor(
     private val KEY_UNREAD_NUDGE_DELAY_MIN = intPreferencesKey("unread_nudge_delay_min")
     private val KEY_REVIEW_DIGEST_ENABLED = booleanPreferencesKey("review_digest_enabled")
     private val KEY_REVIEW_DIGEST_HOUR = intPreferencesKey("review_digest_hour")
+    private val KEY_LAST_CATEGORY_ID = androidx.datastore.preferences.core.longPreferencesKey("last_selected_category_id")
+    private val KEY_CUSTOM_AVATAR_ID = stringPreferencesKey("custom_avatar_id")
+    private val KEY_CUSTOM_AVATAR_URI = stringPreferencesKey("custom_avatar_uri")
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -94,6 +97,45 @@ class SettingsRepository @Inject constructor(
 
     val reviewDigestHour: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[KEY_REVIEW_DIGEST_HOUR] ?: 21
+    }
+
+    val lastSelectedCategoryId: Flow<Long?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_CATEGORY_ID]
+    }
+
+    suspend fun setLastSelectedCategoryId(categoryId: Long?) {
+        context.dataStore.edit { prefs ->
+            if (categoryId != null) {
+                prefs[KEY_LAST_CATEGORY_ID] = categoryId
+            } else {
+                prefs.remove(KEY_LAST_CATEGORY_ID)
+            }
+        }
+    }
+
+    val customAvatarId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CUSTOM_AVATAR_ID] ?: "life"
+    }
+
+    val customAvatarUri: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CUSTOM_AVATAR_URI]
+    }
+
+    suspend fun setCustomAvatarId(id: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_CUSTOM_AVATAR_ID] = id
+            prefs.remove(KEY_CUSTOM_AVATAR_URI)
+        }
+    }
+
+    suspend fun setCustomAvatarUri(uri: String?) {
+        context.dataStore.edit { prefs ->
+            if (uri != null) {
+                prefs[KEY_CUSTOM_AVATAR_URI] = uri
+            } else {
+                prefs.remove(KEY_CUSTOM_AVATAR_URI)
+            }
+        }
     }
 
     suspend fun setOpenAiApiKey(apiKey: String) {

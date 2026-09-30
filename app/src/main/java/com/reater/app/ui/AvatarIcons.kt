@@ -6,37 +6,53 @@ import com.reater.app.R
 data class AvatarIconItem(
     val id: String,
     val name: String,
-    @DrawableRes val resId: Int
+    val desc: String,
+    @DrawableRes val resId: Int,
+    val isPro: Boolean = false
 )
 
 object AvatarIcons {
     /**
-     * open-design 精確版：8 個核心分類圖示，對齊內建種子分類。
-     * 2dp 圓角描邊 + 12% 淡底，去除可愛動物系，確保小尺寸清晰可辨。
+     * 免費基礎 5 款
      */
-    val ALL: List<AvatarIconItem> = listOf(
-        AvatarIconItem("tech", "科技開發", R.drawable.ic_avatar_tech),
-        AvatarIconItem("life", "生活日常", R.drawable.ic_avatar_life),
-        AvatarIconItem("finance", "財經投資", R.drawable.ic_avatar_finance),
-        AvatarIconItem("media", "影視動漫", R.drawable.ic_avatar_media),
-        AvatarIconItem("career", "職場職涯", R.drawable.ic_avatar_career),
-        AvatarIconItem("study", "讀書學習", R.drawable.ic_avatar_study),
-        AvatarIconItem("travel", "美食旅遊", R.drawable.ic_avatar_travel),
-        AvatarIconItem("news", "時事觀點", R.drawable.ic_avatar_news)
+    val FREE: List<AvatarIconItem> = listOf(
+        AvatarIconItem("life", "生活日常", "生活隨筆、日常雜記與生活日常", R.drawable.ic_avatar_life, isPro = false),
+        AvatarIconItem("tech", "科技開發", "技術架構、程式開發與前沿資訊", R.drawable.ic_avatar_tech, isPro = false),
+        AvatarIconItem("study", "讀書學習", "好書推薦、深度閱讀與知識筆記", R.drawable.ic_avatar_study, isPro = false),
+        AvatarIconItem("finance", "財經投資", "市場動態、理財觀念與經濟商業", R.drawable.ic_avatar_finance, isPro = false),
+        AvatarIconItem("travel", "休閒旅行", "美食探索、旅行足跡與在地生活", R.drawable.ic_avatar_travel, isPro = false)
     )
 
-    /** 舊版 id 相容對映（已存資料 avatarIcon=camel 等仍可正確顯示） */
+    /**
+     * Pro 尊爵專屬福利 10 款
+     */
+    val PRO: List<AvatarIconItem> = listOf(
+        AvatarIconItem("crown", "至尊皇冠", "王者決策、頂級智慧與精選策展", R.drawable.ic_avatar_crown, isPro = true),
+        AvatarIconItem("diamond", "璀璨鑽石", "永恆珍藏、純粹高價值知識結晶", R.drawable.ic_avatar_diamond, isPro = true),
+        AvatarIconItem("rocket", "極速推進", "高效成長、生產力爆發與開拓實踐", R.drawable.ic_avatar_rocket, isPro = true),
+        AvatarIconItem("sparkles", "智慧星芒", "AI 賦能、創意靈感與思維碰撞", R.drawable.ic_avatar_sparkles, isPro = true),
+        AvatarIconItem("shield", "隱私金庫", "安全護航、個人金庫與核心機密", R.drawable.ic_avatar_shield, isPro = true),
+        AvatarIconItem("compass", "探索羅盤", "視野引航、長遠眼界與策略指南", R.drawable.ic_avatar_compass, isPro = true),
+        AvatarIconItem("fire", "熱門火種", "爆紅話題、社群熱議與流行脈動", R.drawable.ic_avatar_fire, isPro = true),
+        AvatarIconItem("palette", "創意思潮", "設計美學、文化藝術與創意展演", R.drawable.ic_avatar_palette, isPro = true),
+        AvatarIconItem("globe", "世界格局", "全球洞察、宏觀視野與國際脈動", R.drawable.ic_avatar_globe, isPro = true),
+        AvatarIconItem("trophy", "卓越榮耀", "成就里程碑、菁英典藏與榮譽徽記", R.drawable.ic_avatar_trophy, isPro = true)
+    )
+
+    val ALL: List<AvatarIconItem> = FREE + PRO
+
+    /** 舊版 id 相容對映（已存資料仍可正確顯示） */
     private val LEGACY_MAP: Map<String, Int> = mapOf(
         "camel" to R.drawable.ic_avatar_life,
-        "fire" to R.drawable.ic_avatar_news,
-        "rocket" to R.drawable.ic_avatar_tech,
+        "media" to R.drawable.ic_avatar_palette,
+        "career" to R.drawable.ic_avatar_trophy,
+        "news" to R.drawable.ic_avatar_globe,
         "code" to R.drawable.ic_avatar_tech,
-        "palette" to R.drawable.ic_avatar_media,
         "book" to R.drawable.ic_avatar_study,
         "coffee" to R.drawable.ic_avatar_travel,
-        "music" to R.drawable.ic_avatar_media,
-        "camera" to R.drawable.ic_avatar_media,
-        "star" to R.drawable.ic_avatar_career,
+        "music" to R.drawable.ic_avatar_palette,
+        "camera" to R.drawable.ic_avatar_palette,
+        "star" to R.drawable.ic_avatar_sparkles,
         "heart" to R.drawable.ic_avatar_life
     )
 
@@ -47,16 +63,20 @@ object AvatarIcons {
         return R.drawable.ic_avatar_life
     }
 
-    /** 自訂分類圖示 id 一覽（tech / life / finance / media / career / study / travel / news） */
+    fun getIconItem(id: String?): AvatarIconItem {
+        return ALL.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: FREE[0]
+    }
+
+    /** 預設種子分類圖示 */
     fun iconForSeedCategory(name: String): String = when (name) {
         "科技與開發" -> "tech"
         "生活與日常" -> "life"
         "財經與投資" -> "finance"
-        "動漫與影視" -> "media"
-        "職場與職涯" -> "career"
+        "動漫與影視" -> "palette"
+        "職場與職涯" -> "trophy"
         "讀書與學習" -> "study"
         "美食與旅遊" -> "travel"
-        "時事與觀點" -> "news"
+        "時事與觀點" -> "globe"
         else -> "life"
     }
 }

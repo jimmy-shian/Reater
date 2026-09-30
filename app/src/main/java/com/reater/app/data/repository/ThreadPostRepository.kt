@@ -60,8 +60,30 @@ class ThreadPostRepository @Inject constructor(
         manualNote: String,
         manualSummary: String,
         categoryId: Long?,
-        fetchedResult: FetchedPostResult? = null
+        fetchedResult: FetchedPostResult? = null,
+        isFavorite: Boolean = false
     ): Long = database.withWriteTransaction {
+        // 子串分享（母文存在時）：免 DB 遷移，把母文前綴進 body、母文媒體排前面合併存檔。
+        // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧；媒體 = 母圖 + 子（子無圖則只有母圖）。
+        val combinedBody: String = if (
+            fetchedResult != null &&
+            fetchedResult.parentShortcode.isNotBlank() &&
+            fetchedResult.parentBodyText.isNotBlank()
+        ) {
+            val childBody = fetchedResult.bodyText.ifBlank { bodyText }
+            // ViewModel 預覽已合併過則不再重複前綴
+            if (childBody.startsWith("【母文 @")) childBody
+            else "【母文 @${fetchedResult.parentAuthorHandle}】${fetchedResult.parentBodyText}\n\n--- 分享 @${fetchedResult.authorHandle} ---\n$childBody"
+        } else {
+            fetchedResult?.bodyText?.takeIf { it.isNotBlank() } ?: bodyText
+        }
+        val combinedMedia = if (
+            fetchedResult != null && fetchedResult.parentMedia.isNotEmpty()
+        ) {
+            (fetchedResult.parentMedia + fetchedResult.media).distinctBy { it.remoteUrl }
+        } else {
+            fetchedResult?.media.orEmpty()
+        }
         // Upsert ItemEntity
         val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
         val itemId = if (existing != null) {
@@ -72,7 +94,7 @@ class ThreadPostRepository @Inject constructor(
                 authorProfileUrl = fetchedResult?.authorProfileUrl ?: existing.authorProfileUrl,
                 authorVerified = fetchedResult?.authorVerified ?: existing.authorVerified,
                 postedAt = fetchedResult?.postedAt?.takeIf { it > 0 } ?: existing.postedAt,
-                bodyText = fetchedResult?.bodyText?.takeIf { it.isNotBlank() } ?: bodyText.ifBlank { existing.bodyText },
+                bodyText = combinedBody.ifBlank { existing.bodyText },
                 commentsText = commentsText.ifBlank { existing.commentsText },
                 likeCount = fetchedResult?.likeCount ?: existing.likeCount,
                 replyCount = fetchedResult?.replyCount ?: existing.replyCount,
@@ -93,7 +115,7 @@ class ThreadPostRepository @Inject constructor(
                 authorProfileUrl = fetchedResult?.authorProfileUrl.orEmpty(),
                 authorVerified = fetchedResult?.authorVerified ?: false,
                 postedAt = fetchedResult?.postedAt ?: System.currentTimeMillis(),
-                bodyText = bodyText,
+                bodyText = combinedBody.ifBlank { bodyText },
                 commentsText = commentsText,
                 likeCount = fetchedResult?.likeCount ?: 0,
                 replyCount = fetchedResult?.replyCount ?: 0,
@@ -116,19 +138,20 @@ class ThreadPostRepository @Inject constructor(
         // Upsert UserEditEntity
         val existingEdit = itemDao.getUserEditByItemId(itemId)
         val userEdit = existingEdit?.copy(
-            userBodyOverride = if (fetchedResult != null && bodyText != fetchedResult.bodyText) bodyText else existingEdit.userBodyOverride,
+            userBodyOverride = if (fetchedResult != null && bodyText != combinedBody) bodyText else existingEdit.userBodyOverride,
             manualNote = manualNote.ifBlank { existingEdit.manualNote },
             manualSummary = manualSummary.ifBlank { existingEdit.manualSummary },
             categoryId = resolvedCategoryId ?: existingEdit.categoryId,
+            isFavorite = if (isFavorite) true else existingEdit.isFavorite,
             editedAt = System.currentTimeMillis()
         ) ?: UserEditEntity(
             itemId = itemId,
-            userBodyOverride = fetchedResult?.let { if (bodyText != it.bodyText) bodyText else null },
+            userBodyOverride = fetchedResult?.let { if (bodyText != combinedBody) bodyText else null },
             manualNote = manualNote,
             manualSummary = manualSummary,
             categoryId = resolvedCategoryId,
             isRead = false,
-            isFavorite = false
+            isFavorite = isFavorite
         )
         itemDao.insertUserEdit(userEdit)
 
@@ -153,7 +176,8 @@ class ThreadPostRepository @Inject constructor(
                     likeCount = c.likeCount,
                     parentExternalId = c.parentExternalId,
                     depth = c.depth,
-                    sortKey = "0:${System.currentTimeMillis()}:$index"
+                    sortKey = "0:${System.currentTimeMillis()}:$index",
+                    mediaJson = com.reater.app.data.remote.FetchedMediaJson.encode(c.media)
                 )
             }
             val manualEntities = manualComments.mapIndexed { index, (author, text) ->
@@ -171,10 +195,10 @@ class ThreadPostRepository @Inject constructor(
             commentDao.insertComments(fetchedEntities + manualEntities)
         }
 
-        // Insert media attachments
+        // Insert media attachments（母文媒體排前面，免遷移合併存檔）
         if (fetchedResult != null) {
             mediaDao.deleteMediaByItemId(itemId)
-            val mediaEntities = fetchedResult.media.mapIndexed { index, m ->
+            val mediaEntities = combinedMedia.mapIndexed { index, m ->
                 MediaEntity(
                     itemId = itemId,
                     kind = m.kind,
@@ -270,15 +294,22 @@ class ThreadPostRepository @Inject constructor(
         val openedToday: Int,
         val totalReviews: Int,
         /** 日期 → 當日儲存數（已按 since 裁切：免費當週、Pro 近30日） */
-        val dailySaved: List<Pair<String, Int>>
+        val dailySaved: List<Pair<String, Int>>,
+        /** 小時 (0..23) → 當小時儲存數 */
+        val hourlySaved: List<Pair<Int, Int>> = emptyList()
     )
 
     suspend fun getAnalytics(since: Long, todayStart: Long): AnalyticsSnapshot {
+        val hourly = itemDao.hourlySavedSince(since).mapNotNull {
+            val h = it.hour.toIntOrNull() ?: return@mapNotNull null
+            h to it.cnt
+        }
         return AnalyticsSnapshot(
             savedToday = itemDao.countSavedSince(todayStart),
             openedToday = itemDao.countOpenedSince(todayStart),
             totalReviews = itemDao.countTotalReviews(),
-            dailySaved = itemDao.dailySavedSince(since).map { it.day to it.cnt }
+            dailySaved = itemDao.dailySavedSince(since).map { it.day to it.cnt },
+            hourlySaved = hourly
         )
     }
 

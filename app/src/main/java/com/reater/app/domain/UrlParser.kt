@@ -69,6 +69,16 @@ object UrlParser {
         }
 
     /**
+     * 去除分享追蹤參數（?xmt= 跨 App 歸因 token、?slof=、?utm_* 等）。
+     * 乾淨形 https://www.threads.com/@handle/post/CODE 照常開啟，不影響內容。
+     * 顯示／複製／外部開啟一律走此 helper；舊資料若已存入髒網址，讀取側也會被清掉。
+     */
+    fun stripTrackingParams(rawUrl: String): String {
+        if (rawUrl.isBlank()) return rawUrl
+        return rawUrl.split("?")[0].trim().trimEnd('/').trim()
+    }
+
+    /**
      * Extracts first Threads URL from raw text (such as Intent.EXTRA_TEXT).
      * 容忍中文標點結尾（。，、！？；：「」『』【】）與 App 自動截斷的 "..."。
      */

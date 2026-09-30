@@ -38,7 +38,9 @@ object ThreadsWebResolver {
 
     data class DomComment(
         val author: String,
-        val text: String
+        val text: String,
+        /** 該則留言渲染出的圖/影（排除頭像；kind 為 IMAGE/VIDEO） */
+        val media: List<com.reater.app.data.remote.FetchedMedia> = emptyList()
     )
 
     const val DEFAULT_TIMEOUT_MS = 25_000L
@@ -47,14 +49,22 @@ object ThreadsWebResolver {
     private const val DESKTOP_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-    /** JS：抽出所有含 thread_items 的 SJS 塊（只取前 40 塊，避免回傳過大） */
+    /**
+     * Googlebot UA：2026-09 實測一般 UA 只回 JS 殼，Googlebot UA 的初始 HTML
+     * 就帶完整預渲染 payload（data.media 主貼 + direct_replies 留言）——
+     * WebView 一載入即可抽出，不必等 SPA 水合。
+     */
+    private const val BOT_UA =
+        "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
+    /** JS：抽出含貼文 payload 的 SJS 塊（舊 thread_items / 新 direct_replies、data.media；只取前 60 塊） */
     private const val EXTRACT_JS =
         "(function(){try{" +
             "var out=[];" +
             "var ss=document.querySelectorAll('script[type=\"application/json\"][data-sjs]');" +
             "for(var i=0;i<ss.length&&out.length<60;i++){" +
             "var t=ss[i].textContent||'';" +
-            "if(t.indexOf('thread_items')>=0)out.push(t);" +
+            "if(t.indexOf('thread_items')>=0||t.indexOf('direct_replies')>=0||t.indexOf('\"data\":{\"media\"')>=0)out.push(t);" +
             "}" +
             "return JSON.stringify(out);" +
             "}catch(e){return '[]';}})()"
@@ -110,7 +120,21 @@ object ThreadsWebResolver {
             "if(!author)continue;" +
             "var key=author+'||'+body;" +
             "if(seen[key])continue;seen[key]=1;" +
-            "out.push({author:author,text:body});" +
+            "var med=[];var seenSrc={};" +
+            "var mels=a.querySelectorAll('img,video,source');" +
+            "for(var mx=0;mx<mels.length;mx++){" +
+            "var el=mels[mx];" +
+            "var src=el.getAttribute('src')||'';" +
+            "if(!src||src.indexOf('http')!=0)continue;" +
+            "if(seenSrc[src])continue;" +
+            "if(src.indexOf('profile_pic')>=0||src.indexOf('s206x206')>=0||src.indexOf('s150x150')>=0||src.indexOf('emoji')>=0)continue;" +
+            "var pa=el.closest?a.closest('a'):null;" +
+            "if(pa){var ph=pa.getAttribute('href')||'';if(ph.indexOf('/@')>=0)continue;}" +
+            "seenSrc[src]=1;" +
+            "var kind=(el.tagName==='VIDEO'||el.tagName==='SOURCE'||src.indexOf('.mp4')>=0)?'VIDEO':'IMAGE';" +
+            "med.push({kind:kind,url:src});" +
+            "}" +
+            "out.push({author:author,text:body,media:med});" +
             "}" +
             "return JSON.stringify(out);" +
             "}catch(e){return '[]';}})()"
@@ -174,7 +198,7 @@ object ThreadsWebResolver {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.mediaPlaybackRequiresUserGesture = true
-                    settings.userAgentString = DESKTOP_UA
+                    settings.userAgentString = BOT_UA
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
@@ -340,7 +364,19 @@ object ThreadsWebResolver {
                 val a = o.optString("author").trim().trimStart('@')
                 val tx = o.optString("text").trim()
                 if (a.isBlank() || tx.isBlank() || a.contains(" ") || a.length > 30) null
-                else DomComment(author = a, text = tx.take(2000))
+                else {
+                    val mediaArr = o.optJSONArray("media")
+                    val media = if (mediaArr == null) emptyList() else (0 until mediaArr.length()).mapNotNull { mi ->
+                        val mo = mediaArr.optJSONObject(mi) ?: return@mapNotNull null
+                        val url = mo.optString("url").trim()
+                        if (!url.startsWith("http")) null
+                        else com.reater.app.data.remote.FetchedMedia(
+                            kind = mo.optString("kind").ifBlank { "IMAGE" },
+                            remoteUrl = url
+                        )
+                    }
+                    DomComment(author = a, text = tx.take(2000), media = media.take(6))
+                }
             }
         } catch (_: Exception) {
             emptyList()

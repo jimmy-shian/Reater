@@ -3,16 +3,16 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- open-design: life / home, precise outline -->
+    <!-- Free 1: Life - Home & Daily -->
     <path
-        android:fillColor="#4CAF50"
-        android:fillAlpha="0.12"
-        android:pathData="M12,3.2 L21,10.5 H19.5 V19.5 H14.5 V14.5 H9.5 V19.5 H4.5 V10.5 H3 Z" />
+        android:fillColor="#10B981"
+        android:fillAlpha="0.16"
+        android:pathData="M12,3 L21,10.2 V20 C21,20.55 20.55,21 20,21 H4 C3.45,21 3,20.55 3,20 V10.2 Z" />
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#4CAF50"
-        android:strokeWidth="2"
+        android:strokeColor="#10B981"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M4,11 L12,4 L20,11 M6,9.5 V19 H18 V9.5 M10,19 V14 H14 V19" />
+        android:pathData="M3,10.5 L12,3.5 L21,10.5 M5,9.5 V19.5 C5,20.05 5.45,20.5 6,20.5 H18 C18.55,20.5 19,20.05 19,19.5 V9.5 M9.5,20.5 V14 C9.5,13.45 9.95,13 10.5,13 H13.5 C14.05,13 14.5,13.45 14.5,14 V20.5" />
 </vector>

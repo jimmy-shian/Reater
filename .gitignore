@@ -12,3 +12,10 @@ local.properties
 tools/.license_secret
 tools/licenses_issued.csv
 tools/licenses_issued_*.bak
+
+# Build artifacts & logs
+*.apk
+*.log
+.codebase-memory/
+__pycache__/
+*.pyc

@@ -3,16 +3,16 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- open-design: finance / trend chart, 2dp round stroke -->
+    <!-- Free 4: Finance - Chart & Trends -->
     <path
-        android:fillColor="#FF9800"
-        android:fillAlpha="0.12"
-        android:pathData="M4,4 H5 V19 H20 V20 H4 Z" />
+        android:fillColor="#0D9488"
+        android:fillAlpha="0.15"
+        android:pathData="M3,20 H21 V21.5 H3 Z M5,14 H7 V20 H5 Z M10,10 H12 V20 H10 Z M15,6 H17 V20 H15 Z" />
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#B26A00"
-        android:strokeWidth="2"
+        android:strokeColor="#0D9488"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M4,4 V20 H20 M7,15 L11,11 L14,13 L19,7 M15,7 H19 V11" />
+        android:pathData="M3,20.5 H21 M4,14.5 L9.5,9 L14,13.5 L20.5,6.5 M16.5,6.5 H20.5 V10.5 M6,17 V20.5 M11,13 V20.5 M16,9 V20.5" />
 </vector>

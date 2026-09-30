@@ -6,6 +6,7 @@ import com.reater.app.data.remote.threads.ThreadsPageFetcher
 import com.reater.app.data.remote.threads.ThreadsSjsParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -18,9 +19,12 @@ data class FetchedComment(
     val text: String,
     val likeCount: Int,
     val parentExternalId: String? = null,
-    val depth: Int = 0
+    val depth: Int = 0,
+    /** 留言自帶的圖/影（新 shape direct_replies 每則留言可有 image/video/carousel） */
+    val media: List<FetchedMedia> = emptyList()
 )
 
+@Serializable
 data class FetchedMedia(
     val kind: String,
     val remoteUrl: String,
@@ -28,6 +32,25 @@ data class FetchedMedia(
     val width: Int = 0,
     val height: Int = 0
 )
+
+/** FetchedMedia 列表的 JSON 編解碼（留言 mediaJson 欄位用） */
+object FetchedMediaJson {
+    private val codec = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+    private val listSerializer = kotlinx.serialization.builtins.ListSerializer(FetchedMedia.serializer())
+
+    fun encode(media: List<FetchedMedia>): String {
+        if (media.isEmpty()) return ""
+        return runCatching { codec.encodeToString(listSerializer, media) }.getOrDefault("")
+    }
+
+    fun decode(raw: String?): List<FetchedMedia> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching { codec.decodeFromString(listSerializer, raw) }.getOrElse { emptyList() }
+    }
+}
 
 data class FetchedPostResult(
     val shortcode: String,
@@ -44,7 +67,14 @@ data class FetchedPostResult(
     val media: List<FetchedMedia>,
     val rawJsonMin: String,
     val resolvedUrl: String = "",
-    val status: String // COMPLETE, PARTIAL, FAILED
+    val status: String, // COMPLETE, PARTIAL, FAILED
+    /** /share/ 留言鏈母文（主本身為留言時；頂層串文為 null） */
+    val parentShortcode: String = "",
+    val parentAuthorHandle: String = "",
+    val parentBodyText: String = "",
+    val parentLikeCount: Int = 0,
+    val parentPostedAt: Long = 0L,
+    val parentMedia: List<FetchedMedia> = emptyList()
 )
 
 /**
@@ -114,16 +144,22 @@ class ThreadsGraphQLClient @Inject constructor(
                 }
             }
 
-            // 5. 離線媒體下載
+            // 5. 離線媒體下載（主貼 + 母文 + 留言媒體，留言檔名用 500+ 偏移避開主貼索引，母文用 900+）
             val downloadedMediaList = mediaList.mapIndexed { index, m ->
                 val localFilePath = mediaDownloader.downloadMedia(m.remoteUrl, extractedShortcode, index)
                 m.copy(localPath = localFilePath)
             }
+            val parent = parsed.parent
+            val downloadedParentMedia = parent?.media.orEmpty().mapIndexed { index, m ->
+                val local = mediaDownloader.downloadMedia(m.remoteUrl, parent?.shortcode ?: extractedShortcode, 900 + index)
+                m.copy(localPath = local)
+            }
+            val commentsWithMedia = downloadCommentMedia(commentsList, extractedShortcode)
 
             val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
             val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
 
-            if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty()) {
+            if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty()) {
                 Result.success(
                     FetchedPostResult(
                         shortcode = extractedShortcode,
@@ -134,13 +170,19 @@ class ThreadsGraphQLClient @Inject constructor(
                         postedAt = if (postedAtMs > 0) postedAtMs else System.currentTimeMillis(),
                         bodyText = bodyText,
                         likeCount = likeCount,
-                        replyCount = commentsList.size,
+                        replyCount = commentsWithMedia.size,
                         repostCount = 0,
-                        comments = commentsList,
+                        comments = commentsWithMedia,
                         media = downloadedMediaList,
                         rawJsonMin = """{"code":"$extractedShortcode"}""",
                         resolvedUrl = resolvedUrl,
-                        status = "COMPLETE"
+                        status = "COMPLETE",
+                        parentShortcode = parent?.shortcode.orEmpty(),
+                        parentAuthorHandle = parent?.authorHandle.orEmpty(),
+                        parentBodyText = parent?.bodyText.orEmpty(),
+                        parentLikeCount = parent?.likeCount ?: 0,
+                        parentPostedAt = parent?.postedAtMs ?: 0L,
+                        parentMedia = downloadedParentMedia
                     )
                 )
             } else {
@@ -164,6 +206,50 @@ class ThreadsGraphQLClient @Inject constructor(
                     )
                 )
             }
+        }
+    }
+
+    /** 兩份留言清單合併：key = author + 空白正規化後的文字；後到但帶 media 者勝出 */
+    private fun mergeCommentsLists(
+        base: List<FetchedComment>,
+        extra: List<FetchedComment>
+    ): List<FetchedComment> {
+        val map = LinkedHashMap<String, FetchedComment>()
+        fun norm(t: String) = t.replace(Regex("\\s+"), " ").trim()
+        for (c in (base + extra)) {
+            val key = c.author.trim().lowercase() + "\u0000" + norm(c.text).lowercase()
+            if (key.isBlank() || key.endsWith("\u0000")) continue
+            val prev = map[key]
+            if (prev == null || (prev.media.isEmpty() && c.media.isNotEmpty())) {
+                map[key] = c
+            }
+        }
+        return map.values.toList()
+    }
+
+    /**
+     * 留言媒體離線下載（留言中的圖片/影片）。
+     * 檔名索引用 500+ 偏移，避免與主貼 media 的 0..N 索引衝突；
+     * 整篇上限 budget 檔，防止大量留言拖垮抓取。
+     */
+    private suspend fun downloadCommentMedia(
+        comments: List<FetchedComment>,
+        shortcode: String,
+        startIndex: Int = 500,
+        budget: Int = 12
+    ): List<FetchedComment> {
+        var remaining = budget
+        var ci = 0
+        return comments.map { c ->
+            if (c.media.isEmpty() || remaining <= 0) return@map c
+            val take = c.media.take(remaining)
+            val updated = take.mapIndexed { j, m ->
+                val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, startIndex + ci * 8 + j)
+                m.copy(localPath = local)
+            }
+            remaining -= updated.size
+            ci++
+            c.copy(media = updated)
         }
     }
 
@@ -197,13 +283,24 @@ class ThreadsGraphQLClient @Inject constructor(
                 if (d.text.isBlank() || d.author.isBlank()) null
                 else FetchedComment(externalId = "dom_c_$i", author = d.author, text = d.text, likeCount = 0)
             }
-            if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty())) {
-                val mergedComments = if (sjs.comments.isNotEmpty()) sjs.comments
-                else domFetched.filter { it.text != sjs.bodyText }.take(50)
+            if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
+                val domClean = domFetched.filter { it.text != sjs.bodyText }.take(50)
+                // SSR 留言 + DOM 留言合併：同一則（author+文字）優先取帶 media 的版本，
+                // DOM 補 SSR 沒帶圖的留言，SSR 補 DOM 沒渲染出來的
+                val mergedComments = if (sjs.comments.isNotEmpty()) {
+                    mergeCommentsLists(sjs.comments, domClean)
+                } else {
+                    domClean
+                }
             val downloadedMedia = sjs.media.mapIndexed { index, m ->
                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
                 m.copy(localPath = local)
             }
+            val downloadedParentMediaWeb = sjs.parent?.media.orEmpty().mapIndexed { index, m ->
+                val local = mediaDownloader.downloadMedia(m.remoteUrl, sjs.parent?.shortcode ?: shortcode, 900 + index)
+                m.copy(localPath = local)
+            }
+            val commentsWithMedia = downloadCommentMedia(mergedComments, shortcode)
             val handle = sjs.authorHandle.ifBlank { ids.handle.ifBlank { "threads_user" } }
 
             return@withContext Result.success(
@@ -216,13 +313,19 @@ class ThreadsGraphQLClient @Inject constructor(
                     postedAt = if (sjs.postedAtMs > 0) sjs.postedAtMs else System.currentTimeMillis(),
                     bodyText = sjs.bodyText,
                     likeCount = sjs.likeCount,
-                    replyCount = mergedComments.size,
+                    replyCount = commentsWithMedia.size,
                     repostCount = 0,
-                    comments = mergedComments,
+                    comments = commentsWithMedia,
                     media = downloadedMedia,
                     rawJsonMin = "{\"code\":\"$shortcode\"}",
                     resolvedUrl = resolvedUrl,
-                    status = "COMPLETE"
+                    status = "COMPLETE",
+                    parentShortcode = sjs.parent?.shortcode.orEmpty(),
+                    parentAuthorHandle = sjs.parent?.authorHandle.orEmpty(),
+                    parentBodyText = sjs.parent?.bodyText.orEmpty(),
+                    parentLikeCount = sjs.parent?.likeCount ?: 0,
+                    parentPostedAt = sjs.parent?.postedAtMs ?: 0L,
+                    parentMedia = downloadedParentMediaWeb
                 )
             )
             }
@@ -232,11 +335,11 @@ class ThreadsGraphQLClient @Inject constructor(
             } catch (_: Exception) {
                 null
             }
-            if (refetch != null && (refetch.bodyText.isNotBlank() || refetch.media.isNotEmpty())) {
+            if (refetch != null && (refetch.bodyText.isNotBlank() || refetch.media.isNotEmpty() || refetch.comments.isNotEmpty())) {
                 return@withContext Result.success(refetch)
             }
-            // 渲染 HTML 內若含 thread_items，再試一次 SJS
-            if (renderedHtml.contains("thread_items")) {
+            // 渲染 HTML 內若含貼文 payload（thread_items 舊 shape / direct_replies 新 shape），再試一次 SJS
+            if (renderedHtml.contains("thread_items") || renderedHtml.contains("direct_replies")) {
                 val fromHtml = try {
                     ThreadsHtmlParser.parse(renderedHtml, shortcode)
                 } catch (_: Exception) {
@@ -245,6 +348,10 @@ class ThreadsGraphQLClient @Inject constructor(
                 if (fromHtml != null && (fromHtml.bodyText.isNotBlank() || fromHtml.media.isNotEmpty())) {
                     val downloadedMedia2 = fromHtml.media.mapIndexed { index, m ->
                         val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
+                        m.copy(localPath = local)
+                    }
+                    val downloadedParentMedia2 = fromHtml.parent?.media.orEmpty().mapIndexed { index, m ->
+                        val local = mediaDownloader.downloadMedia(m.remoteUrl, fromHtml.parent?.shortcode ?: shortcode, 900 + index)
                         m.copy(localPath = local)
                     }
                     val handle2 = fromHtml.authorHandleFromTitle.ifBlank {
@@ -266,7 +373,13 @@ class ThreadsGraphQLClient @Inject constructor(
                             media = downloadedMedia2,
                             rawJsonMin = "{\"code\":\"$shortcode\"}",
                             resolvedUrl = resolvedUrl,
-                            status = "COMPLETE"
+                            status = "COMPLETE",
+                            parentShortcode = fromHtml.parent?.shortcode.orEmpty(),
+                            parentAuthorHandle = fromHtml.parent?.authorHandle.orEmpty(),
+                            parentBodyText = fromHtml.parent?.bodyText.orEmpty(),
+                            parentLikeCount = fromHtml.parent?.likeCount ?: 0,
+                            parentPostedAt = fromHtml.parent?.postedAtMs ?: 0L,
+                            parentMedia = downloadedParentMedia2
                         )
                     )
                 }
@@ -294,7 +407,7 @@ class ThreadsGraphQLClient @Inject constructor(
                             likeCount = sjs?.likeCount ?: 0,
                             replyCount = filtered.size,
                             repostCount = 0,
-                            comments = filtered,
+                            comments = downloadCommentMedia(filtered, shortcode),
                             media = sjs?.media?.mapIndexed { index, m ->
                                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
                                 m.copy(localPath = local)

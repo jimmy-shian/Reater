@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +86,13 @@ fun MediaViewerDialog(
     val context = LocalContext.current
     var index by remember(startIndex) { mutableIntStateOf(startIndex.coerceIn(0, media.size - 1)) }
     val current = media[index]
+
+    DisposableEffect(Unit) {
+        com.reater.app.ui.player.VideoPlaybackManager.pauseAll()
+        onDispose {
+            com.reater.app.ui.player.VideoPlaybackManager.pauseAll()
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,

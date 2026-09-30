@@ -30,7 +30,9 @@ object ThreadsHtmlParser {
         val media: List<FetchedMedia>,
         val comments: List<FetchedComment>,
         /** 是否命中 SJS 精確解析（短碼匹配成功） */
-        val fromSjs: Boolean
+        val fromSjs: Boolean,
+        /** /share/ 留言鏈母文（SJS 回溯；頂層串文為 null） */
+        val parent: ThreadsSjsParser.ParentPost? = null
     )
 
     fun parse(html: String, shortcode: String): ParsedPage {
@@ -48,7 +50,7 @@ object ThreadsHtmlParser {
         } catch (_: Exception) {
             null
         }
-        if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty())) {
+        if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
             return ParsedPage(
                 bodyText = sjs.bodyText.trim(),
                 authorDisplayName = sjs.authorDisplayName.trim(),
@@ -59,7 +61,8 @@ object ThreadsHtmlParser {
                 likeCount = sjs.likeCount,
                 media = sjs.media,
                 comments = sjs.comments,
-                fromSjs = true
+                fromSjs = true,
+                parent = sjs.parent
             )
         }
         // SJS 有命中但主貼文無內文無媒體（如純轉發）：仍沿用其留言/作者

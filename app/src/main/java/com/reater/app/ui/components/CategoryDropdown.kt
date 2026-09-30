@@ -9,15 +9,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,9 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.ImeAction
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.ui.AvatarIcons
 
@@ -54,6 +56,7 @@ fun CategoryDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var filterText by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
 
     val selected = categories.firstOrNull { it.id == selectedCategoryId }
     val query = filterText.trim()
@@ -102,11 +105,13 @@ fun CategoryDropdown(
                             )
                         }
                     }
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                    ReaterDropdownArrow(expanded = expanded)
                 }
             },
             singleLine = true,
             shape = RoundedCornerShape(8.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor(
@@ -225,13 +230,15 @@ fun CategoryDropdown(
                 )
             }
             if (categories.isNotEmpty()) {
+                val defaultCount = categories.count { it.isDefault }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        "共 ${categories.size} 個分類（內建 ${categories.count { it.isDefault }}）",
+                        text = if (defaultCount > 0) "共 ${categories.size} 個分類（內建 $defaultCount）"
+                        else "共 ${categories.size} 個分類",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline
                     )

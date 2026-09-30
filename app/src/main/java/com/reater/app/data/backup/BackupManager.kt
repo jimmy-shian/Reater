@@ -19,11 +19,30 @@ import java.nio.charset.StandardCharsets
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.reater.app.data.repository.SettingsRepository
+
+@Serializable
+data class ExportedSettings(
+    val themeMode: String = "system",
+    val fontScale: Float = 1f,
+    val unreadNudgeEnabled: Boolean = true,
+    val unreadNudgeDelayMin: Int = 10,
+    val reviewDigestEnabled: Boolean = true,
+    val reviewDigestHour: Int = 21,
+    val selectedModel: String = "gpt-5-nano",
+    val customBaseUrl: String = "https://api.openai.com/v1",
+    val aiTransmissionConsent: Boolean = false,
+    val customAvatarId: String = "life",
+    val customAvatarUri: String? = null
+)
+
 @Serializable
 data class ReaterExportV1(
     val version: String = "v1",
+    val fileFormat: String = "reater",
     val exportedAt: Long = System.currentTimeMillis(),
     val appVersion: String = "1.0.0",
+    val settings: ExportedSettings? = null,
     val items: List<ExportedItem>,
     val categories: List<ExportedCategory> = emptyList()
 )
@@ -86,7 +105,8 @@ data class ExportedKeyword(
 
 @Singleton
 class BackupManager @Inject constructor(
-    private val database: AppDatabase
+    private val database: AppDatabase,
+    private val settingsRepository: SettingsRepository
 ) {
 
     private val itemDao get() = database.itemDao()
@@ -148,7 +168,20 @@ class BackupManager @Inject constructor(
                 }
             )
         }
-        val exportData = ReaterExportV1(items = exportList, categories = exportedCategories)
+        val currentSettings = ExportedSettings(
+            themeMode = settingsRepository.themeMode.first(),
+            fontScale = settingsRepository.fontScale.first(),
+            unreadNudgeEnabled = settingsRepository.unreadNudgeEnabled.first(),
+            unreadNudgeDelayMin = settingsRepository.unreadNudgeDelayMin.first(),
+            reviewDigestEnabled = settingsRepository.reviewDigestEnabled.first(),
+            reviewDigestHour = settingsRepository.reviewDigestHour.first(),
+            selectedModel = settingsRepository.selectedModel.first(),
+            customBaseUrl = settingsRepository.customBaseUrl.first(),
+            aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
+            customAvatarId = settingsRepository.customAvatarId.first(),
+            customAvatarUri = settingsRepository.customAvatarUri.first()
+        )
+        val exportData = ReaterExportV1(items = exportList, categories = exportedCategories, settings = currentSettings)
         val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
         outputStream.write(jsonString.toByteArray(StandardCharsets.UTF_8))
         outputStream.flush()
@@ -200,15 +233,31 @@ class BackupManager @Inject constructor(
                     val read = stream.read(buffer)
                     if (read < 0) break
                     total += read
-                    require(total <= MAX_IMPORT_BYTES) { "Backup exceeds the 50 MiB import limit" }
+                    require(total <= MAX_IMPORT_BYTES) { "僅支援 .reater 專屬格式（檔案超過 50MB 上限）" }
                     out.write(buffer, 0, read)
                 }
                 out.toByteArray()
             }
             val content = String(bytes, StandardCharsets.UTF_8)
             val imported = json.decodeFromString(ReaterExportV1.serializer(), content)
-            require(imported.version == "v1") { "Unsupported backup version: ${imported.version}" }
-            require(imported.items.size <= MAX_IMPORT_ITEMS) { "Backup contains too many items" }
+            require(imported.fileFormat == "reater") { "僅支援 .reater 專屬格式" }
+            require(imported.version == "v1") { "不支援的備份版本：${imported.version}" }
+            require(imported.items.size <= MAX_IMPORT_ITEMS) { "僅支援 .reater 專屬格式（項目過多）" }
+            imported.settings?.let { s ->
+                settingsRepository.setThemeMode(s.themeMode)
+                settingsRepository.setFontScale(s.fontScale)
+                settingsRepository.setUnreadNudgeEnabled(s.unreadNudgeEnabled)
+                settingsRepository.setUnreadNudgeDelayMin(s.unreadNudgeDelayMin)
+                settingsRepository.setReviewDigestEnabled(s.reviewDigestEnabled)
+                settingsRepository.setReviewDigestHour(s.reviewDigestHour)
+                settingsRepository.setSelectedModel(s.selectedModel)
+                settingsRepository.setCustomBaseUrl(s.customBaseUrl)
+                settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
+                settingsRepository.setCustomAvatarId(s.customAvatarId)
+                if (s.customAvatarUri != null) {
+                    settingsRepository.setCustomAvatarUri(s.customAvatarUri)
+                }
+            }
             var count = 0
             database.withWriteTransaction {
                 val itemDao = database.itemDao()
@@ -233,7 +282,7 @@ class BackupManager @Inject constructor(
                     importedCategoryIds[category.name] = categoryId
                 }
                 for (item in imported.items) {
-                    require(item.canonicalUrl.isNotBlank()) { "Backup contains an item without a URL" }
+                    require(item.canonicalUrl.isNotBlank()) { "僅支援 .reater 專屬格式（資料缺 URL）" }
                     val existing = itemDao.getItemByCanonicalUrl(item.canonicalUrl)
                     val entity = ItemEntity(
                         id = existing?.id ?: 0,

@@ -8,10 +8,16 @@ import org.json.JSONObject
 /**
  * Threads SJS 內嵌 JSON 解析器（主力解析器）。
  *
- * 方法來源：cobalt PR #1558（threads extractor）+ discordbot threads.py 交叉驗證。
- * Threads 把貼文（含母串、回覆）以 data-sjs JSON 塊嵌在 HTML 裡：
+ * 方法來源：cobalt PR #1558（threads extractor）+ discordbot threads.py 交叉驗證，
+ * 並含 2026-09 Googlebot UA SSR 實測的新 shape。
+ *
+ * 舊 shape（thread_items，仍保留相容）：
  *   <script type="application/json" ... data-sjs ...>{"require":... "thread_items":[{"post":{...}}]}}
- * 以短碼精確匹配 post.code，而非猜第一個 caption。
+ *
+ * 新 shape（2026-09 起，Googlebot UA 才拿得到）：
+ *   主貼："data":{"media":{...post 物件含 code/caption...}}
+ *   留言：data.media.text_post_app_info.direct_replies.edges[].node.posts.edges[].node
+ *   每則留言是完整 post 物件（caption/like_count/taken_at/自己的 image/video/carousel）。
  *
  * post 物件關鍵欄位（Instagram 系 shape）：
  *  code / caption{text} / user{username, profile_pic_url, is_verified} /
@@ -23,6 +29,15 @@ import org.json.JSONObject
  */
 object ThreadsSjsParser {
 
+    data class ParentPost(
+        val shortcode: String,
+        val authorHandle: String,
+        val bodyText: String,
+        val likeCount: Int,
+        val postedAtMs: Long,
+        val media: List<FetchedMedia>
+    )
+
     data class SjsResult(
         val bodyText: String,
         val authorHandle: String,
@@ -32,15 +47,23 @@ object ThreadsSjsParser {
         val postedAtMs: Long,
         val likeCount: Int,
         val media: List<FetchedMedia>,
-        /** 非主貼文的其他 thread_items（含回覆與母串），上限 50 */
-        val comments: List<FetchedComment>
+        /** 留言（含每則留言自帶的圖/影媒體），上限 50 */
+        val comments: List<FetchedComment>,
+        /** /share/ 留言鏈的母文（主本身 is_reply==true 時回溯；頂層串文為 null） */
+        val parent: ParentPost? = null
     )
 
     const val MAX_COMMENTS = 50
-    private const val MAX_DEPTH = 25
+    private const val MAX_DEPTH = 40
 
     private val sjsRegex =
         Regex("""<script type="application/json"[^>]*\bdata-sjs\b[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+
+    /** 是否為含貼文 payload 的 SJS 塊（新舊 shape 通吃） */
+    private fun isPayloadBlock(block: String): Boolean =
+        block.contains("thread_items") ||
+            block.contains("\"direct_replies\"") ||
+            block.contains("\"data\":{\"media\"")
 
     fun parse(html: String, shortcode: String): SjsResult? {
         if (html.isBlank() || shortcode.isBlank()) return null
@@ -49,15 +72,10 @@ object ThreadsSjsParser {
         if (shortcode.startsWith("share_")) return null
         val allBlocks = sjsRegex.findAll(html)
             .map { it.groupValues[1] }
-            .filter { it.contains("thread_items") }
-            .take(60)
+            .filter { isPayloadBlock(it) }
+            .take(80)
             .toList()
-        // 實測（2026-05，dev.to/Apify 交叉驗證）：正文 payload 位於同時含
-        // thread_items + BarcelonaPostPage 的 data-sjs 塊；其餘為側欄/相關貼文/廣告。
-        // 必須優先解析該塊，否則留言會混入別篇貼文。
-        val ranked = (allBlocks.filter { it.contains("BarcelonaPostPage") } +
-            allBlocks.filter { !it.contains("BarcelonaPostPage") }).take(40)
-        return parseBlocks(ranked, shortcode)
+        return parseBlocks(allBlocks, shortcode)
     }
 
     /**
@@ -66,31 +84,32 @@ object ThreadsSjsParser {
      */
     fun parseBlocks(blocks: List<String>, shortcode: String): SjsResult? {
         if (blocks.isEmpty() || shortcode.isBlank() || shortcode.startsWith("share_")) return null
-        // BarcelonaPostPage 優先（同 parse(html) 邏輯，供 WebView 路徑使用）
-        val ranked = (blocks.filter { it.contains("BarcelonaPostPage") } +
-            blocks.filter { !it.contains("BarcelonaPostPage") })
-        val posts = mutableListOf<JSONObject>()
-        // 記錄每個 post 來自哪個 block 是否為正文塊，供留言過濾用
-        val mainBlockIdx = mutableMapOf<String, Int>()
-        for ((bi, block) in ranked.withIndex()) {
-            if (!block.contains("thread_items")) continue
+        val relevant = blocks.filter { isPayloadBlock(it) }
+        // 含本篇短碼的塊最先（避免別篇 payload 干擾）；其餘依 BarcelonaPostPage / 其他排序
+        val hasCode = "\"code\":\"$shortcode\""
+        val ranked = (relevant.filter { it.contains(hasCode) } +
+            relevant.filter { !it.contains(hasCode) && it.contains("BarcelonaPostPage") } +
+            relevant.filter { !it.contains(hasCode) && !it.contains("BarcelonaPostPage") })
+
+        val legacyPosts = mutableListOf<JSONObject>()
+        val replyPosts = mutableListOf<JSONObject>()
+        val mainCandidates = mutableListOf<JSONObject>()
+        val allPosts = mutableListOf<JSONObject>()
+        val seenReplyPk = HashSet<String>()
+        for (block in ranked) {
             try {
-                val before = posts.size
-                collectPosts(JSONObject(block), posts, 0)
-                for (i in before until posts.size) {
-                    val code = posts[i].optString("code")
-                    if (code.isNotBlank() && !mainBlockIdx.containsKey(code + "@" + i)) {
-                        mainBlockIdx[code + "@" + i] = bi
-                    }
-                }
+                val root = JSONObject(block)
+                collectNewShape(root, shortcode, mainCandidates, replyPosts, seenReplyPk, 0)
+                collectPosts(root, legacyPosts, 0)
+                collectAllPosts(root, allPosts, 0)
             } catch (_: Exception) {
                 continue
             }
-            if (posts.size > 200) break
+            if (replyPosts.size > 200 && mainCandidates.isNotEmpty()) break
         }
-        if (posts.isEmpty()) return null
 
-        val main = posts.firstOrNull { it.optString("code") == shortcode }
+        val main = mainCandidates.maxByOrNull { mainScore(it) }
+            ?: legacyPosts.firstOrNull { it.optString("code") == shortcode }
             ?: return null
 
         val user = main.optJSONObject("user")
@@ -103,14 +122,71 @@ object ThreadsSjsParser {
         val body = postText(main)
         val media = postMedia(main)
 
-        val comments = mutableListOf<FetchedComment>()
-        val seen = HashSet<String>()
-        var idx = 0
-        // 主貼文的 pk / 作者 / 時間，供回覆歸屬判斷（避免母串/相關貼文混入）
+        // 主貼文的 pk / 作者 / 時間，供回覆歸屬判斷（避免母串/相關貼文/其他串混入）
         val mainPk = main.optString("pk").ifBlank { main.optString("id").substringBefore("_") }
         val mainAuthor = authorHandle
         val mainTakenAt = main.optLong("taken_at", 0L)
-        for (p in posts) {
+        val mainAuthorPk = user?.optString("pk").orEmpty()
+            .ifBlank { user?.optString("id").orEmpty() }
+        val mainTpa = main.optJSONObject("text_post_app_info")
+        val mainIsReply = mainTpa?.optBoolean("is_reply", false) == true
+
+        // direct_replies 歸屬過濾：頂層串文（is_reply==false）沿用嚴格 root 檢查；
+        // 子串分享（主本身 is_reply==true，如 D-JnnrknO/DzVwcgDJw 實測）root 指向最終祖先而非主，
+        // 若仍要求 root==主會把 5+3 則子留言全滅 → 此時信任伺服器已限定的 direct_replies 全收，
+        // 頂層串才額外用 reply_to==主當巢狀相容放行。
+        val attributedReplies = replyPosts.filter { p ->
+            if (mainAuthorPk.isBlank() && mainAuthor.isBlank()) return@filter true
+            val tpa = p.optJSONObject("text_post_app_info")
+            val root = tpa?.optJSONObject("root_post_author")
+                ?: return@filter true
+            // 子串：伺服器已限定範圍，直接放行（後續 resolveReplyAuthor/去重仍會擋空作者）
+            if (mainIsReply) return@filter true
+            val rootPk = root.optString("pk").ifBlank { root.optString("id") }
+            val rootUser = root.optString("username")
+            val pkOk = rootPk.isNotBlank() && rootPk == mainAuthorPk
+            val userOk = rootUser.isNotBlank() && rootUser.equals(mainAuthor, ignoreCase = true)
+            if (pkOk || userOk) return@filter true
+            // 巢狀相容：reply_to 直接指主也算屬於本串（root 可能指祖先）
+            val replyTo = tpa.optJSONObject("reply_to_author")
+            if (replyTo != null) {
+                val rtUser = replyTo.optString("username")
+                if (rtUser.isNotBlank() && rtUser.equals(mainAuthor, ignoreCase = true)) return@filter true
+                val rtId = replyTo.optString("pk").ifBlank { replyTo.optString("id") }
+                if (rtId.isNotBlank() && (rtId == mainAuthorPk || rtId == mainPk)) return@filter true
+            }
+            false
+        }
+
+        val comments = mutableListOf<FetchedComment>()
+        val seen = HashSet<String>()
+        var idx = 0
+
+        // 新 shape：direct_replies 留言（結構上已保證屬於本串，直接收，含留言媒體）
+        for (p in attributedReplies) {
+            if (comments.size >= MAX_COMMENTS) break
+            val text = postText(p)
+            val pMedia = postMedia(p)
+            if (text.isBlank() && pMedia.isEmpty()) continue
+            if (text == body && pMedia.isEmpty()) continue
+            val author = resolveReplyAuthor(p)
+            if (author.isBlank()) continue
+            val key = author + "||" + text + "||" + (pMedia.firstOrNull()?.remoteUrl ?: "")
+            if (!seen.add(key)) continue
+            comments.add(
+                FetchedComment(
+                    externalId = "sjs_r_$idx",
+                    author = author,
+                    text = text,
+                    likeCount = p.optInt("like_count", 0),
+                    media = pMedia
+                )
+            )
+            idx++
+        }
+
+        // 舊 shape thread_items 回覆（新 shape 已由 direct_replies 收齊，此處僅補舊頁）
+        for (p in legacyPosts) {
             if (comments.size >= MAX_COMMENTS) break
             if (p === main) continue
             val pCode = p.optString("code")
@@ -123,10 +199,11 @@ object ThreadsSjsParser {
             if (!isTrueReply(p)) continue
             // 回覆歸屬：reply_to / root 指向主串作者或主串 pk 才收；皆無時放行（舊 shape 相容）
             // 但若明確指向他人且與主串無關則排除，避免相關貼文污染。
-            if (!belongsToThread(p, mainAuthor, mainPk, mainTakenAt)) continue
+            if (!belongsToThread(p, mainAuthor, mainPk, mainTakenAt, mainAuthorPk)) continue
             // 作者必須可解析，否則跳過（不用 threads_reply 佔位，避免「抓不到真正留言人名稱」）
             val author = resolveReplyAuthor(p)
             if (author.isBlank()) continue
+            val pMedia = postMedia(p)
             val key = author + "||" + text.length + "||" + text
             if (!seen.add(key)) continue
             comments.add(
@@ -134,7 +211,8 @@ object ThreadsSjsParser {
                     externalId = "sjs_c_$idx",
                     author = author,
                     text = text,
-                    likeCount = p.optInt("like_count", 0)
+                    likeCount = p.optInt("like_count", 0),
+                    media = pMedia
                 )
             )
             idx++
@@ -142,7 +220,7 @@ object ThreadsSjsParser {
 
         // 寬鬆 fallback：嚴格過濾零結果時（免登入缺 tpa 常見），僅排除主串/同文/無作者再收一次
         if (comments.isEmpty()) {
-            for (p in posts) {
+            for (p in legacyPosts) {
                 if (comments.size >= MAX_COMMENTS) break
                 if (p === main) continue
                 val pCode = p.optString("code")
@@ -158,12 +236,19 @@ object ThreadsSjsParser {
                         externalId = "sjs_c_fb_$idx",
                         author = author,
                         text = text,
-                        likeCount = p.optInt("like_count", 0)
+                        likeCount = p.optInt("like_count", 0),
+                        media = postMedia(p)
                     )
                 )
                 idx++
             }
         }
+
+        // /share/ 留言鏈母文回溯：主本身 is_reply==true 時（D-JnnrknO/DzVwcgDJw 實測），
+        // 同頁 JSON 內含母文（is_reply==false、作者==主的 reply_to/root、時間早於主）。
+        // 例：DdwK5xuk6Uk 的母為 Ddvrtejj15a（下一位勇者+圖片）；
+        // Dd1Ry_jlKfT 的母為 Dd0sfd4CCLT（他故意输给...+影片）。
+        val parent = findParentPost(main, allPosts, shortcode)
 
         return SjsResult(
             bodyText = body,
@@ -174,11 +259,167 @@ object ThreadsSjsParser {
             postedAtMs = if (takenAtSec > 0) takenAtSec * 1000 else 0L,
             likeCount = likeCount,
             media = media,
-            comments = comments
+            comments = comments,
+            parent = parent
         )
     }
 
+    /**
+     * 母文回溯：在同頁所有 post 中找最像母文者。
+     * 條件：code!=主、作者==主的 reply_to/root、is_reply==false（頂層）、taken_at 早於主、
+     * 有內文或媒體；取時間最接近主者（直接父層）。
+     */
+    private fun findParentPost(
+        main: JSONObject,
+        allPosts: List<JSONObject>,
+        shortcode: String
+    ): ParentPost? {
+        val mainTpa = main.optJSONObject("text_post_app_info") ?: return null
+        if (mainTpa.optBoolean("is_reply", false) != true) return null
+        val replyToUser = mainTpa.optJSONObject("reply_to_author")?.optString("username").orEmpty()
+        val rootUser = mainTpa.optJSONObject("root_post_author")?.optString("username").orEmpty()
+        val rootPk = mainTpa.optJSONObject("root_post_author")?.optString("pk")
+            .orEmpty().ifBlank { mainTpa.optJSONObject("root_post_author")?.optString("id").orEmpty() }
+        if (replyToUser.isBlank() && rootUser.isBlank() && rootPk.isBlank()) return null
+        val mainTaken = main.optLong("taken_at", 0L)
+        var best: JSONObject? = null
+        var bestTaken = 0L
+        val seenCode = HashSet<String>()
+        for (p in allPosts) {
+            val code = p.optString("code")
+            if (code.isBlank() || code == shortcode || !seenCode.add(code)) continue
+            if (p === main) continue
+            val pu = p.optJSONObject("user")
+            val pauthor = pu?.optString("username").orEmpty()
+            val ppk = pu?.optString("pk").orEmpty().ifBlank { pu?.optString("id").orEmpty() }
+            val authorMatch = (replyToUser.isNotBlank() && pauthor.equals(replyToUser, ignoreCase = true)) ||
+                (rootUser.isNotBlank() && pauthor.equals(rootUser, ignoreCase = true)) ||
+                (rootPk.isNotBlank() && ppk.isNotBlank() && ppk == rootPk)
+            if (!authorMatch) continue
+            val ptpa = p.optJSONObject("text_post_app_info")
+            // 母文應為頂層（is_reply==false 或無 tpa）；子串回覆排除
+            if (ptpa != null && ptpa.optBoolean("is_reply", false)) continue
+            val ptaken = p.optLong("taken_at", 0L)
+            // 時間須早於主（容差 5 秒），取最接近主者
+            if (mainTaken > 0 && ptaken > 0 && ptaken + 5 >= mainTaken) continue
+            val ptext = postText(p)
+            val pmedia = try { postMedia(p) } catch (_: Exception) { emptyList() }
+            if (ptext.isBlank() && pmedia.isEmpty()) continue
+            if (best == null || ptaken > bestTaken) {
+                best = p
+                bestTaken = ptaken
+            }
+        }
+        val b = best ?: return null
+        val buser = b.optJSONObject("user")
+        val bcode = b.optString("code")
+        val btext = postText(b)
+        val bmedia = try { postMedia(b) } catch (_: Exception) { emptyList() }
+        return ParentPost(
+            shortcode = bcode,
+            authorHandle = buser?.optString("username").orEmpty(),
+            bodyText = btext,
+            likeCount = b.optInt("like_count", 0),
+            postedAtMs = b.optLong("taken_at", 0L).let { if (it > 0) it * 1000 else 0L },
+            media = bmedia
+        )
+    }
+
+    /** 收集同頁所有含 code 的 post 物件（供母文回溯；上限 500 避免側欄污染拖慢）。 */
+    private fun collectAllPosts(node: Any?, out: MutableList<JSONObject>, depth: Int) {
+        if (node == null || depth > MAX_DEPTH || out.size > 500) return
+        when (node) {
+            is JSONObject -> {
+                val code = node.optString("code")
+                if (code.isNotBlank() && (node.optJSONObject("caption") != null || node.optJSONObject("user") != null)) {
+                    if (out.none { it === node }) out.add(node)
+                }
+                val keys = node.keys()
+                while (keys.hasNext()) {
+                    collectAllPosts(node.opt(keys.next()), out, depth + 1)
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    collectAllPosts(node.opt(i), out, depth + 1)
+                }
+            }
+        }
+    }
+
     // ---------- 遞迴收集 ----------
+
+    /**
+     * 新 shape 收集：
+     *  - 主貼候選：任何含 code==shortcode 的 post 物件（data.media 下的主貼）
+     *  - 留言：direct_replies.edges[].node.posts.edges[].node（完整 post 物件）
+     */
+    private fun collectNewShape(
+        node: Any?,
+        shortcode: String,
+        mains: MutableList<JSONObject>,
+        replies: MutableList<JSONObject>,
+        seenReplyPk: HashSet<String>,
+        depth: Int
+    ) {
+        if (node == null || depth > MAX_DEPTH) return
+        when (node) {
+            is JSONObject -> {
+                val dr = node.optJSONObject("direct_replies")
+                if (dr != null) collectReplyEdges(dr, replies, seenReplyPk, depth)
+                if (node.optString("code") == shortcode && mains.none { it === node }) {
+                    mains.add(node)
+                }
+                // 已是留言節點：其子層多為 caption/media 細節，不必再深挖別的 direct_replies
+                val keys = node.keys()
+                while (keys.hasNext()) {
+                    collectNewShape(node.opt(keys.next()), shortcode, mains, replies, seenReplyPk, depth + 1)
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    collectNewShape(node.opt(i), shortcode, mains, replies, seenReplyPk, depth + 1)
+                }
+            }
+        }
+    }
+
+    /** direct_replies.edges[].node.posts.edges[].node → 每則留言的完整 post 物件 */
+    private fun collectReplyEdges(
+        directReplies: JSONObject,
+        replies: MutableList<JSONObject>,
+        seenPk: HashSet<String>,
+        depth: Int
+    ) {
+        if (depth > MAX_DEPTH) return
+        val edges = directReplies.optJSONArray("edges") ?: return
+        for (i in 0 until edges.length()) {
+            val node = edges.optJSONObject(i)?.optJSONObject("node") ?: continue
+            val posts = node.optJSONObject("posts")?.optJSONArray("edges") ?: continue
+            for (j in 0 until posts.length()) {
+                val post = posts.optJSONObject(j)?.optJSONObject("node") ?: continue
+                // 依 pk/id 去重（同留言可能在多塊出現）
+                val key = post.optString("pk").ifBlank { post.optString("id") }
+                if (key.isNotBlank() && !seenPk.add(key)) continue
+                if (post.optString("code").isBlank() && post.optJSONObject("caption") == null &&
+                    post.optJSONObject("user") == null
+                ) continue
+                replies.add(post)
+            }
+        }
+    }
+
+    /** 主貼候選完整度評分（同一 post 可能出現多個 stub 塊，取資訊最完整者） */
+    private fun mainScore(p: JSONObject): Int {
+        var s = 0
+        if (p.optJSONObject("user") != null) s += 8
+        if (p.optJSONObject("caption") != null) s += 4
+        if (p.has("taken_at")) s += 2
+        if (p.has("image_versions2") || p.has("video_versions") || p.has("carousel_media")) s += 2
+        if (p.optJSONObject("text_post_app_info")?.has("direct_reply_count") == true) s += 2
+        s += postText(p).length / 100
+        return s
+    }
 
     private fun collectPosts(node: Any?, out: MutableList<JSONObject>, depth: Int) {
         if (node == null || depth > MAX_DEPTH || out.size > 300) return
@@ -233,7 +474,13 @@ object ThreadsSjsParser {
     }
 
     /** 回覆是否歸屬本串（避免相關貼文/側欄污染） */
-    private fun belongsToThread(post: JSONObject, mainAuthor: String, mainPk: String, mainTakenAt: Long = 0L): Boolean {
+    private fun belongsToThread(
+        post: JSONObject,
+        mainAuthor: String,
+        mainPk: String,
+        mainTakenAt: Long = 0L,
+        mainAuthorPk: String = ""
+    ): Boolean {
         // 時間過濾：明顯早於主串的頂層貼文視為母串排除（容差 5 秒）
         if (mainTakenAt > 0) {
             val pt = post.optLong("taken_at", 0L)
@@ -252,8 +499,10 @@ object ThreadsSjsParser {
         if (replyTo.isNotBlank() && mainAuthor.isNotBlank() &&
             replyTo.equals(mainAuthor, ignoreCase = true)
         ) return true
-        // 巢狀回覆：root 指向主串 pk
+        // 巢狀回覆：root 指向主串 post pk
         if (rootPk.isNotBlank() && mainPk.isNotBlank() && rootPk == mainPk) return true
+        // 新 shape：root_post_author 存的是主串「作者」的 user pk → 比對主作者 pk
+        if (rootPk.isNotBlank() && mainAuthorPk.isNotBlank() && rootPk == mainAuthorPk) return true
         // reply_to id 與主串 pk 一致（數字 id 比對）
         if (replyToId.isNotBlank() && mainPk.isNotBlank() && replyToId == mainPk) return true
         // 若三者皆空（舊 shape 無歸屬資訊）：放行，避免誤殺

@@ -31,17 +31,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +72,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +81,7 @@ import coil.compose.AsyncImage
 import com.reater.app.R
 import com.reater.app.data.remote.threads.ThreadsWebResolver
 import com.reater.app.ui.AvatarIcons
+import com.reater.app.ui.components.DismissFocusOnScroll
 import com.reater.app.ui.components.dismissFocusOnTap
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
@@ -97,26 +106,21 @@ class ShareSaveActivity : ComponentActivity() {
             val fontScale by viewModel.fontScale.collectAsState()
             com.reater.app.ui.theme.ReaterTheme(themeMode = themeMode, fontScale = fontScale) {
                 val webState by viewModel.uiState.collectAsState()
-                // /share/ 連結：OkHttp 跟不到 JS 跳轉，改用隱藏 WebView 跑完 JS 再解。
-                // 條件：是 /share/、SSR 直抓已結束、還沒試過 WebView。
+                // 隱藏 WebView 一律同時跑：背景模擬「打開這則貼文」，
+                // /share/ 要靠它跟 JS 跳轉；一般連結用 Googlebot 指紋直接拿
+                // 預渲染 payload（留言/留言媒體只有這條路拿得到），與 HTTP 抓取
+                // 平行、結果於 ViewModel merge，兩路任一成功即視為成功。
                 LaunchedEffect(
                     webState.fetchUrl,
                     webState.webResolveAttempted,
-                    webState.webResolving,
-                    webState.isFetching,
-                    webState.fetchedResult
+                    webState.webResolving
                 ) {
-                    val needShareResolve = !webState.webResolveAttempted && !webState.webResolving &&
-                        !webState.isFetching && webState.fetchUrl.contains("/share/")
-                    // 免登入留言補強：canonical 已抓完但零留言，且有內文/媒體時，用真瀏覽器指紋再補一次
-                    val fetched = webState.fetchedResult
-                    val needCommentEnrich = !webState.webResolveAttempted && !webState.webResolving &&
-                        !webState.isFetching && !webState.fetchUrl.contains("/share/") &&
-                        fetched != null && fetched.comments.isEmpty() &&
-                        (fetched.bodyText.isNotBlank() || fetched.media.isNotEmpty())
-                    if (needShareResolve || needCommentEnrich) {
+                    val url = webState.fetchUrl
+                    val isThreads = url.startsWith("http") &&
+                        (url.contains("threads.com") || url.contains("threads.net"))
+                    if (isThreads && !webState.webResolveAttempted && !webState.webResolving) {
                         viewModel.markWebResolveStarted()
-                        ThreadsWebResolver.resolve(this@ShareSaveActivity, webState.fetchUrl) { page ->
+                        ThreadsWebResolver.resolve(this@ShareSaveActivity, url) { page ->
                             if (page != null) {
                                 viewModel.onWebResolved(
                                     page.finalUrl,
@@ -186,6 +190,10 @@ fun ShareSaveScreen(
     val isPro by viewModel.isProUnlocked.collectAsState()
     val context = LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+
+    // 主內容捲動狀態提升：內容區垂直滑動即收鍵盤（多行框內拖曳不受影響）
+    val shareContentScrollState = rememberScrollState()
+    DismissFocusOnScroll(shareContentScrollState, focusManager)
 
     LaunchedEffect(state.isSaved) {
         if (state.isSaved) {
@@ -285,7 +293,9 @@ fun ShareSaveScreen(
                         placeholder = { Text("分類名稱 (如：技術、生活、閱讀)") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
@@ -302,6 +312,7 @@ fun ShareSaveScreen(
                     ) {
                         AvatarIcons.ALL.forEach { item ->
                             val isSelected = selectedAvatar == item.id
+                            val isLocked = item.isPro && !isPro
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
@@ -312,10 +323,18 @@ fun ShareSaveScreen(
                                     )
                                     .border(
                                         width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                        else if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.5f)
+                                        else Color.Transparent,
                                         shape = CircleShape
                                     )
-                                    .clickable { selectedAvatar = item.id },
+                                    .clickable {
+                                        if (isLocked) {
+                                            Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            selectedAvatar = item.id
+                                        }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -324,6 +343,21 @@ fun ShareSaveScreen(
                                     modifier = Modifier.size(24.dp),
                                     tint = Color.Unspecified
                                 )
+                                if (isLocked) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.35f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Pro 專屬",
+                                            tint = Color(0xFFFFB300),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -358,10 +392,10 @@ fun ShareSaveScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .padding(horizontal = 16.dp, vertical = 24.dp)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 20.dp)
             .dismissFocusOnTap(focusManager),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopCenter
     ) {
         Surface(
             modifier = Modifier
@@ -372,7 +406,7 @@ fun ShareSaveScreen(
             tonalElevation = 6.dp
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 固定頂欄：標題 + 外部開啟 + X，不隨捲動離開
+                // 固定頂欄：標題 + 珍藏 + X，不隨捲動離開
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -382,7 +416,7 @@ fun ShareSaveScreen(
                 ) {
                     Text(
                         text = stringResource(R.string.share_save_title),
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -390,22 +424,15 @@ fun ShareSaveScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.targetUrl.isNotBlank()) {
-                            IconButton(
-                                onClick = {
-                                    runCatching {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.targetUrl))
-                                        context.startActivity(intent)
-                                    }
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.OpenInNew,
-                                    contentDescription = "外部開啟",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (state.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (state.isFavorite) "已珍藏" else "加入珍藏",
+                                tint = if (state.isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.outline
+                            )
                         }
                         IconButton(
                             onClick = onDismiss,
@@ -426,7 +453,8 @@ fun ShareSaveScreen(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(shareContentScrollState)
+                        .dismissFocusOnTap(focusManager)
                         .imePadding()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
@@ -438,7 +466,7 @@ fun ShareSaveScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = false,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
                     )
                 }
 
@@ -448,7 +476,7 @@ fun ShareSaveScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp)
+                            .padding(bottom = 10.dp)
                     ) {
                         if (state.authorHandle.isNotBlank()) {
                             Text(
@@ -485,13 +513,33 @@ fun ShareSaveScreen(
                     }
                 }
 
+                // 固定置頂：選擇分類（位置恆定，抓取載入/媒體插入時絕不跳動！）
+                Text(
+                    text = "選擇分類",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                com.reater.app.ui.components.CategoryDropdown(
+                    categories = categories,
+                    selectedCategoryId = state.selectedCategoryId,
+                    onSelect = { viewModel.onCategorySelected(it) },
+                    onRequestCreate = { prefill ->
+                        createPrefill = prefill
+                        viewModel.setShowCreateCategoryDialog(true)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
                 // Status info banner
                 if (state.isFetching || state.webResolving) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                             .padding(10.dp)
                     ) {
                         CircularProgressIndicator(
@@ -503,7 +551,7 @@ fun ShareSaveScreen(
                         Text(
                             text = if (state.webResolving) "正在以內建瀏覽器解析分享連結（含留言與媒體）..."
                             else "正在自動分析 Threads 內容與下載離線媒體...",
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
@@ -513,7 +561,7 @@ fun ShareSaveScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                             .padding(10.dp)
                     ) {
                         Icon(
@@ -525,12 +573,141 @@ fun ShareSaveScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(R.string.fetch_failed_tip),
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                 }
+
+                // Body text field（標題讓位給按鈕，且載入時具備載入進度視覺效果）
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "貼文內文",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        if (state.isFetching || state.webResolving) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "載入中…",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clip = clipMgr?.primaryClip?.getItemAt(0)?.text?.toString()
+                            if (!clip.isNullOrBlank()) {
+                                viewModel.onBodyTextChanged(clip)
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("貼上內文", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                if (state.isFetching || state.webResolving) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(1.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+                OutlinedTextField(
+                    value = state.bodyText,
+                    onValueChange = { viewModel.onBodyTextChanged(it) },
+                    placeholder = {
+                        Text(
+                            if (state.isFetching || state.webResolving) "正在自動擷取 Threads 內容中…"
+                            else stringResource(R.string.body_placeholder)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp, max = 220.dp),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Comments text field
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "精華留言",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        if (state.isFetching || state.webResolving) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "載入中…",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clip = clipMgr?.primaryClip?.getItemAt(0)?.text?.toString()
+                            if (!clip.isNullOrBlank()) {
+                                viewModel.onCommentsTextChanged(
+                                    if (state.commentsText.isNotBlank()) state.commentsText + "\n" + clip else clip
+                                )
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("貼上留言", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = state.commentsText,
+                    onValueChange = { viewModel.onCommentsTextChanged(it) },
+                    placeholder = {
+                        Text(
+                            if (state.isFetching || state.webResolving) "正在自動擷取精華留言中…"
+                            else stringResource(R.string.comments_placeholder)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 72.dp, max = 160.dp),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Preview downloaded media（多圖橫滑 + 影片/張數徽章，點擊全螢幕檢視）
                 val previewMedia = state.fetchedResult?.media.orEmpty()
@@ -545,6 +722,12 @@ fun ShareSaveScreen(
                     )
                 }
                 if (previewMedia.isNotEmpty()) {
+                    Text(
+                        text = "已下載媒體 (${previewMedia.size})",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -559,7 +742,7 @@ fun ShareSaveScreen(
                             }
                             Box(
                                 modifier = Modifier
-                                    .size(width = 160.dp, height = 120.dp)
+                                    .size(width = 140.dp, height = 100.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .clickable { viewerIndex = index }
@@ -584,18 +767,10 @@ fun ShareSaveScreen(
                             }
                         }
                     }
-                    if (previewMedia.size > 1) {
-                        Text(
-                            text = "共 ${previewMedia.size} 個媒體",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
-                // 媒體提示：原連結是 /media（確定有圖/影）但自動下載掛零時，
-                // 明確告訴使用者去 Threads 看，避免以為存檔壞掉
+
+                // 媒體提示：原連結是 /media（確定有圖/影）但自動下載掛零時提示
                 if (previewMedia.isEmpty() && !state.isFetching &&
                     (state.hadMediaSuffix || state.fetchUrl.contains("/media"))
                 ) {
@@ -623,119 +798,14 @@ fun ShareSaveScreen(
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
-
-                // Category Selection：下拉選單 + 輸入篩選（自訂再多也不爆版）
-                Text(
-                    text = "選擇分類",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                com.reater.app.ui.components.CategoryDropdown(
-                    categories = categories,
-                    selectedCategoryId = state.selectedCategoryId,
-                    onSelect = { viewModel.onCategorySelected(it) },
-                    onRequestCreate = { prefill ->
-                        createPrefill = prefill
-                        viewModel.setShowCreateCategoryDialog(true)
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Body text field（標題讓位給按鈕，避免窄螢幕互擠）
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "貼文內文",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clip = clipMgr?.primaryClip?.getItemAt(0)?.text?.toString()
-                            if (!clip.isNullOrBlank()) {
-                                viewModel.onBodyTextChanged(clip)
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("貼上內文", fontSize = 12.sp, maxLines = 1, softWrap = false)
-                    }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = state.bodyText,
-                    onValueChange = { viewModel.onBodyTextChanged(it) },
-                    placeholder = { Text(stringResource(R.string.body_placeholder)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 100.dp, max = 220.dp),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Comments text field
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "精華留言",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clip = clipMgr?.primaryClip?.getItemAt(0)?.text?.toString()
-                            if (!clip.isNullOrBlank()) {
-                                viewModel.onCommentsTextChanged(
-                                    if (state.commentsText.isNotBlank()) state.commentsText + "\n" + clip else clip
-                                )
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("貼上留言", fontSize = 12.sp, maxLines = 1, softWrap = false)
-                    }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = state.commentsText,
-                    onValueChange = { viewModel.onCommentsTextChanged(it) },
-                    placeholder = { Text(stringResource(R.string.comments_placeholder)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 80.dp, max = 180.dp),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
 
                 // Notes text field
                 Text(
                     text = "個人筆記",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 OutlinedTextField(
@@ -755,13 +825,17 @@ fun ShareSaveScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    OutlinedButton(onClick = onDismiss) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text(stringResource(R.string.cancel))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
                         onClick = { viewModel.savePost() },
-                        enabled = !state.isSaving
+                        enabled = !state.isSaving,
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(stringResource(R.string.save))
                     }

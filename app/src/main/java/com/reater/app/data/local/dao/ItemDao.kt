@@ -183,6 +183,16 @@ interface ItemDao {
     """)
     suspend fun dailySavedSince(since: Long): List<DayCount>
 
+    @Query("""
+        SELECT strftime('%H', sourceFetchedAt / 1000, 'unixepoch', 'localtime') AS hour,
+               COUNT(*) AS cnt
+        FROM items
+        WHERE isDeleted = 0 AND sourceFetchedAt >= :since
+        GROUP BY hour
+        ORDER BY hour ASC
+    """)
+    suspend fun hourlySavedSince(since: Long): List<HourCount>
+
     /** 期間內未讀數（通知文案用） */
     @Query("""
         SELECT COUNT(*) FROM items
@@ -195,5 +205,10 @@ interface ItemDao {
 
 data class DayCount(
     val day: String,
+    val cnt: Int
+)
+
+data class HourCount(
+    val hour: String,
     val cnt: Int
 )

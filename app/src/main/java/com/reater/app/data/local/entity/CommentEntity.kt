@@ -1,5 +1,6 @@
 package com.reater.app.data.local.entity
 
+import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.ForeignKey
 import androidx.room3.Index
@@ -34,5 +35,8 @@ data class CommentEntity(
     val parentExternalId: String? = null,
     val depth: Int = 0,
     val sortKey: String = "", // e.g. "0:timestamp:001"
-    val fetchedAt: Long = System.currentTimeMillis()
+    val fetchedAt: Long = System.currentTimeMillis(),
+    /** 留言自帶圖/影的 JSON（FetchedMedia 陣列；空字串代表無） */
+    @ColumnInfo(defaultValue = "")
+    val mediaJson: String = ""
 )

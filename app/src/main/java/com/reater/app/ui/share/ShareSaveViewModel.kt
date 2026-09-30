@@ -36,6 +36,7 @@ data class ShareSaveUiState(
     val commentsText: String = "",
     val manualNote: String = "",
     val selectedCategoryId: Long? = null,
+    val isFavorite: Boolean = false,
     /** 分享文字扣除 URL 後的草稿（抓取失敗時的內文兜底；抓到正文時會被取代） */
     val bodyDraft: String = "",
     /** 原始連結是否帶 /media 尾綴（代表該貼文含圖片/影片，供 UI 顯示提示） */
@@ -65,6 +66,13 @@ class ShareSaveViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ShareSaveUiState())
     val uiState: StateFlow<ShareSaveUiState> = _uiState.asStateFlow()
 
+    // 兩條抓取路徑各自保存結果，最後 merge（HTTP 失敗但 WebView 成功也算成功）
+    private var httpResult: FetchedPostResult? = null
+    private var webResult: FetchedPostResult? = null
+    private var httpDone = false
+    private var webDone = false
+    private var lastAppliedComments = ""
+
     val categories: StateFlow<List<CategoryEntity>> = categoryDao.observeAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -77,6 +85,15 @@ class ShareSaveViewModel @Inject constructor(
 
     val fontScale: StateFlow<Float> = settingsRepository.fontScale
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1f)
+
+    init {
+        viewModelScope.launch {
+            val lastId = settingsRepository.lastSelectedCategoryId.first()
+            if (lastId != null && _uiState.value.selectedCategoryId == null) {
+                _uiState.update { it.copy(selectedCategoryId = lastId) }
+            }
+        }
+    }
 
     fun processIncomingText(sharedText: String) {
         _uiState.update { it.copy(rawText = sharedText) }
@@ -102,6 +119,12 @@ class ShareSaveViewModel @Inject constructor(
         // 若抓取拿到更權威的正文再取代（見 fetchRemoteData）。
         val draft = UrlParser.extractBodyDraft(sharedText, extractedUrl)
 
+        httpResult = null
+        webResult = null
+        httpDone = false
+        webDone = false
+        lastAppliedComments = ""
+
         _uiState.update {
             it.copy(
                 targetUrl = targetUrl,
@@ -114,6 +137,8 @@ class ShareSaveViewModel @Inject constructor(
                 hadMediaSuffix = parsed?.hadMediaSuffix == true,
                 isFetching = true,
                 isFetchFailed = false,
+                webResolving = false,
+                webResolveAttempted = false,
                 fetchedResult = null
             )
         }
@@ -125,37 +150,92 @@ class ShareSaveViewModel @Inject constructor(
         viewModelScope.launch {
             val result = graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode)
             result.onSuccess { fetched ->
-                _uiState.update { current ->
-                    val commentsJoined = fetched.comments.joinToString("\n---\n") { "${it.author}: ${it.text}" }
-                    val fetchFailed = fetched.status == "PARTIAL" &&
-                        fetched.bodyText.isBlank() && fetched.media.isEmpty()
-                    // 正文採用順序：抓到的正文 > 分享文字草稿 > 使用者已手改的內容。
-                    // 若使用者還沒動過內文（空白或仍是草稿），抓到的正文優先取代草稿。
-                    val useHandsOffBody = current.bodyText.isBlank() ||
-                        current.bodyText == current.bodyDraft
-                    val resolvedBody = when {
-                        fetched.bodyText.isNotBlank() && useHandsOffBody -> fetched.bodyText
-                        else -> current.bodyText
-                    }
-                    current.copy(
-                        isFetching = false,
-                        isFetchFailed = fetchFailed,
-                        targetUrl = if (fetched.resolvedUrl.isNotBlank()) fetched.resolvedUrl else current.targetUrl,
-                        shortcode = if (fetched.shortcode.isNotBlank() && !fetched.shortcode.startsWith("share_")) fetched.shortcode else current.shortcode,
-                        authorHandle = if (fetched.authorHandle.isNotBlank() && fetched.authorHandle != "threads_user") fetched.authorHandle else current.authorHandle,
-                        bodyText = resolvedBody,
-                        commentsText = if (current.commentsText.isBlank() && commentsJoined.isNotBlank()) commentsJoined else current.commentsText,
-                        fetchedResult = fetched
-                    )
-                }
-            }.onFailure {
-                _uiState.update { current ->
-                    current.copy(
-                        isFetching = false,
-                        isFetchFailed = true
-                    )
-                }
+                httpResult = fetched
             }
+            httpDone = true
+            applyMerged()
+        }
+    }
+
+    /**
+     * 合併 HTTP 與 WebView 兩路結果並更新 UI。
+     * 規則：正文取較長者、媒體依 remoteUrl 去重合併、留言依 author+text 去重
+     * （後到者帶 media 則補上）、任一路 COMPLETE 即 COMPLETE、兩路皆敗才算失敗。
+     */
+    private fun applyMerged() {
+        val merged = mergeFetched(httpResult, webResult)
+        _uiState.update { current ->
+            val webPending = current.webResolveAttempted && !webDone
+            val anyPending = !httpDone || webPending
+            if (merged == null) {
+                current.copy(
+                    isFetching = anyPending,
+                    webResolving = webPending,
+                    isFetchFailed = !anyPending
+                )
+            } else {
+                val useHandsOffBody = current.bodyText.isBlank() ||
+                    current.bodyText == current.bodyDraft
+                // 子串分享（母文存在時）：內文預覽同時保留母文 + 分享留言，否則母文會遺失
+                // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧
+                val displayBody = if (merged.parentShortcode.isNotBlank() && merged.parentBodyText.isNotBlank()) {
+                    "【母文 @${merged.parentAuthorHandle}】${merged.parentBodyText}\n\n--- 分享 @${merged.authorHandle} ---\n${merged.bodyText}"
+                } else {
+                    merged.bodyText
+                }
+                val resolvedBody = when {
+                    displayBody.isNotBlank() && useHandsOffBody -> displayBody
+                    else -> current.bodyText
+                }
+                val commentsJoined = merged.comments.joinToString("\n---\n") { "${it.author}: ${it.text}" }
+                val resolvedComments = when {
+                    commentsJoined.isBlank() -> current.commentsText
+                    current.commentsText.isBlank() || current.commentsText == lastAppliedComments -> {
+                        lastAppliedComments = commentsJoined
+                        commentsJoined
+                    }
+                    else -> current.commentsText
+                }
+                current.copy(
+                    isFetching = anyPending,
+                    webResolving = webPending,
+                    isFetchFailed = merged.bodyText.isBlank() &&
+                        merged.media.isEmpty() &&
+                        merged.parentMedia.isEmpty() &&
+                        merged.comments.isEmpty() &&
+                        merged.parentBodyText.isBlank(),
+                    // resolvedUrl 是 redirect 最終 URL，常帶 ?xmt= / ?slof= 追蹤參數：
+                    // 存檔前先正規化為 canonical，否則會蓋掉乾淨版並污染後續分享文字
+                    targetUrl = merged.resolvedUrl.ifBlank { "" }.let { raw ->
+                        if (raw.isBlank()) current.targetUrl
+                        else UrlParser.parseAndCanonicalize(raw)?.canonicalUrl
+                            ?: UrlParser.stripTrackingParams(raw).ifBlank { current.targetUrl }
+                    },
+                    shortcode = pickShortcode(current.shortcode, merged.shortcode),
+                    authorHandle = pickHandle(current.authorHandle, merged.authorHandle),
+                    bodyText = resolvedBody,
+                    commentsText = resolvedComments,
+                    fetchedResult = merged
+                )
+            }
+        }
+    }
+
+    private fun pickShortcode(current: String, incoming: String): String {
+        if (incoming.isBlank()) return current
+        val good = !incoming.startsWith("share_") && !incoming.startsWith("sc_")
+        val currentGood = !current.startsWith("share_") && !current.startsWith("sc_")
+        return if (good || !currentGood) incoming else current
+    }
+
+    private fun pickHandle(current: String, incoming: String): String {
+        val inOk = incoming.isNotBlank() && incoming != "threads_user"
+        val curOk = current.isNotBlank() && current != "threads_user"
+        return when {
+            inOk && !curOk -> incoming
+            curOk && !inOk -> current
+            inOk -> incoming // 兩者皆有效：以抓到的為準
+            else -> current
         }
     }
 
@@ -177,37 +257,83 @@ class ShareSaveViewModel @Inject constructor(
         viewModelScope.launch {
             val result = graphQLClient.resolveFromRenderedBlocks(sjsBlocks, finalUrl, renderedText, renderedHtml, domComments)
             result.onSuccess { fetched ->
-                _uiState.update { current ->
-                    val commentsJoined = fetched.comments.joinToString("\n---\n") { "${it.author}: ${it.text}" }
-                    val useHandsOffBody = current.bodyText.isBlank() ||
-                        current.bodyText == current.bodyDraft
-                    current.copy(
-                        webResolving = false,
-                        isFetching = false,
-                        isFetchFailed = false,
-                        targetUrl = if (fetched.resolvedUrl.isNotBlank()) fetched.resolvedUrl else current.targetUrl,
-                        shortcode = if (fetched.shortcode.isNotBlank()) fetched.shortcode else current.shortcode,
-                        authorHandle = if (fetched.authorHandle.isNotBlank() && fetched.authorHandle != "threads_user") fetched.authorHandle else current.authorHandle,
-                        bodyText = if (fetched.bodyText.isNotBlank() && useHandsOffBody) fetched.bodyText else current.bodyText,
-                        commentsText = if (current.commentsText.isBlank() && commentsJoined.isNotBlank()) commentsJoined else current.commentsText,
-                        fetchedResult = fetched
-                    )
-                }
-            }.onFailure {
-                onWebResolveFailed()
+                webResult = fetched
             }
+            webDone = true
+            applyMerged()
         }
     }
 
     fun onWebResolveFailed() {
-        _uiState.update { current ->
-            current.copy(
-                webResolving = false,
-                // 草稿/媒體都沒有才算失敗；有草稿就讓使用者直接存
-                isFetchFailed = current.bodyText.isBlank() &&
-                    current.fetchedResult?.media.isNullOrEmpty()
-            )
+        webDone = true
+        applyMerged()
+    }
+
+    /**
+     * 合併 HTTP 與 WebView 兩路的抓取結果：
+     * - 正文取較長（分享草稿之外更完整的來源）
+     * - 媒體依 remoteUrl 去重聯集
+     * - 留言依 author+text 去重（保留帶 media 的那則）
+     * - status：任一路 COMPLETE 即 COMPLETE
+     * - authorHandle/shortcode：取非 placeholder 者
+     */
+    private fun mergeFetched(a: FetchedPostResult?, b: FetchedPostResult?): FetchedPostResult? {
+        if (a == null) return b
+        if (b == null) return a
+        val primary = if (a.bodyText.length >= b.bodyText.length) a else b
+        val secondary = if (primary === a) b else a
+        val body = primary.bodyText.ifBlank { secondary.bodyText }
+        val media = (a.media + b.media).distinctBy { it.remoteUrl }
+        val commentMap = LinkedHashMap<String, com.reater.app.data.remote.FetchedComment>()
+        for (c in (a.comments + b.comments)) {
+            val key = c.author + "\u0000" + c.text.trim()
+            val prev = commentMap[key]
+            if (prev == null || (prev.media.isEmpty() && c.media.isNotEmpty())) {
+                commentMap[key] = c
+            }
         }
+        val comments = commentMap.values.toList()
+        val status = if (a.status == "COMPLETE" || b.status == "COMPLETE") "COMPLETE"
+        else if (comments.isNotEmpty() && body.isNotBlank()) "COMPLETE"
+        else "PARTIAL"
+        // 母文合併：任一路有母文即保留（子串分享如 D-JnnrknO/DzVwcgDJw），媒體去重聯集
+        val parent = when {
+            a.parentShortcode.isNotBlank() && b.parentShortcode.isNotBlank() ->
+                if (a.parentBodyText.length >= b.parentBodyText.length) a else b
+            a.parentShortcode.isNotBlank() -> a
+            else -> b
+        }
+        val parentMedia = (a.parentMedia + b.parentMedia).distinctBy { it.remoteUrl }
+        return primary.copy(
+            bodyText = body,
+            media = media,
+            comments = comments,
+            replyCount = comments.size,
+            likeCount = maxOf(a.likeCount, b.likeCount),
+            status = status,
+            authorHandle = pickHandle(a.authorHandle, b.authorHandle),
+            authorDisplayName = when {
+                primary.authorHandle == pickHandle(a.authorHandle, b.authorHandle) ->
+                    primary.authorDisplayName
+                secondary.authorHandle == pickHandle(a.authorHandle, b.authorHandle) ->
+                    secondary.authorDisplayName
+                else -> primary.authorDisplayName
+            },
+            authorProfileUrl = primary.authorProfileUrl.ifBlank { secondary.authorProfileUrl },
+            authorVerified = primary.authorVerified || secondary.authorVerified,
+            shortcode = pickShortcode(secondary.shortcode, primary.shortcode)
+                .ifBlank { primary.shortcode },
+            resolvedUrl = primary.resolvedUrl.ifBlank { secondary.resolvedUrl },
+            postedAt = if (primary.postedAt > 0) primary.postedAt else secondary.postedAt,
+            rawJsonMin = primary.rawJsonMin.ifBlank { secondary.rawJsonMin },
+            parentShortcode = parent.parentShortcode,
+            parentAuthorHandle = parent.parentAuthorHandle,
+            parentBodyText = parent.parentBodyText,
+            parentLikeCount = maxOf(a.parentLikeCount, b.parentLikeCount),
+            parentPostedAt = if (parent.parentPostedAt > 0) parent.parentPostedAt else
+                maxOf(a.parentPostedAt, b.parentPostedAt),
+            parentMedia = parentMedia
+        )
     }
 
     fun onBodyTextChanged(text: String) {
@@ -223,6 +349,13 @@ class ShareSaveViewModel @Inject constructor(
 
     fun onCategorySelected(categoryId: Long?) {
         _uiState.update { it.copy(selectedCategoryId = categoryId) }
+        viewModelScope.launch {
+            settingsRepository.setLastSelectedCategoryId(categoryId)
+        }
+    }
+
+    fun toggleFavorite() {
+        _uiState.update { it.copy(isFavorite = !it.isFavorite) }
     }
 
     fun setShowCreateCategoryDialog(show: Boolean) {
@@ -252,6 +385,7 @@ class ShareSaveViewModel @Inject constructor(
                 avatarIcon = avatarIcon.ifBlank { "life" }
             )
             val newId = categoryDao.insertCategory(newCat)
+            settingsRepository.setLastSelectedCategoryId(newId)
             _uiState.update {
                 it.copy(
                     selectedCategoryId = newId,
@@ -276,7 +410,8 @@ class ShareSaveViewModel @Inject constructor(
                     manualNote = state.manualNote,
                     manualSummary = "",
                     categoryId = state.selectedCategoryId,
-                    fetchedResult = state.fetchedResult
+                    fetchedResult = state.fetchedResult,
+                    isFavorite = state.isFavorite
                 )
                 // 儲存後未讀提醒（設定可調分鐘數 / 開關）
                 runCatching {
