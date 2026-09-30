@@ -3,16 +3,26 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Pro 9: Globe - Deep Blue -->
-    <path
-        android:fillColor="#3B82F6"
-        android:fillAlpha="0.18"
-        android:pathData="M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#3B82F6"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,2.5 C6.75,2.5 2.5,6.75 2.5,12 C2.5,17.25 6.75,21.5 12,21.5 C17.25,21.5 21.5,17.25 21.5,12 C21.5,6.75 17.25,2.5 12,2.5 Z M2.5,12 H21.5 M12,2.5 C15,6 16.5,9 16.5,12 C16.5,15 15,18 12,21.5 M12,2.5 C9,6 7.5,9 7.5,12 C7.5,15 9,18 12,21.5" />
+    <!-- v7 PRO globe 座枱地球儀版: 寶藍球 + 金支臂 + 胡桃座 + 紅寶石釘. 無綠陸無軌道環 -->
+    <path android:fillColor="#2563EB" android:pathData="M12,3.8 C7.7,3.8 5.3,6.9 5.3,10.5 C5.3,14.1 7.7,17.1 12,17.1 C16.3,17.1 18.7,14.1 18.7,10.5 C18.7,6.9 16.3,3.8 12,3.8 Z"/>
+    <path android:fillColor="#93C5FD" android:fillAlpha="0.55"
+        android:pathData="M7.5,6 C6.5,7 6,8.3 6,9.8 L7.2,9.8 C7.2,8.7 7.6,7.6 8.4,6.8 Z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#1E3A8A"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,3.8 C7.7,3.8 5.3,6.9 5.3,10.5 C5.3,14.1 7.7,17.1 12,17.1 C16.3,17.1 18.7,14.1 18.7,10.5 C18.7,6.9 16.3,3.8 12,3.8 Z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#DBEAFE"
+        android:strokeWidth="1.0" android:strokeLineCap="round"
+        android:pathData="M5.3,10.5 H18.7 M12,3.8 C10.3,6 9.5,8.2 9.5,10.5 C9.5,12.8 10.3,15 12,17.1 M12,3.8 C13.7,6 14.5,8.2 14.5,10.5 C14.5,12.8 13.7,15 12,17.1"/>
+    <path android:fillColor="#00000000" android:strokeColor="#FBBF24"
+        android:strokeWidth="1.4" android:strokeLineCap="round"
+        android:pathData="M15.8,3.2 C18.8,5.5 20.2,8 19.8,11.5 C19.4,15 17,17.8 14.2,18.8"/>
+    <path android:fillColor="#B45309" android:pathData="M15.4,2.6 L16.4,3.4 L15.8,4.4 L14.8,3.6 Z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#92400E"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,17.1 V18.8 M9.2,20.8 H14.8 M10,18.8 H14 M10,18.8 L9.2,20.8 M14,18.8 L14.8,20.8"/>
+    <path android:fillColor="#FBBF24" android:pathData="M9.2,20.8 H14.8 L14.2,19.5 H9.8 Z"/>
+    <path android:fillColor="#EF4444" android:strokeColor="#FFFFFF" android:strokeWidth="0.6"
+        android:pathData="M13.5,8.2 C12.8,8.2 12.3,8.7 12.3,9.4 C12.3,10.3 13.5,11.6 13.5,11.6 C13.5,11.6 14.7,10.3 14.7,9.4 C14.7,8.7 14.2,8.2 13.5,8.2 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M13.5,9 A0.5,0.5 0 1 1 13.5,10 A0.5,0.5 0 1 1 13.5,9 Z"/>
+    <path android:fillColor="#FDE68A" android:pathData="M4.5,3.5 L4.7,4.1 L5.3,4.3 L4.7,4.5 L4.5,5.1 L4.3,4.5 L3.7,4.3 L4.3,4.1 Z"/>
 </vector>

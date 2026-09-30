@@ -1,5 +1,6 @@
 package com.reater.app.ui.player
 
+import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
@@ -53,11 +55,19 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -73,6 +83,26 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import java.io.File
+
+private val Context.videoPrefsDataStore by preferencesDataStore(name = "video_playback_prefs")
+
+private object VideoSpeedPrefs {
+    private val KEY_SPEED = floatPreferencesKey("video_playback_speed")
+
+    suspend fun getSpeed(context: Context): Float {
+        return runCatching {
+            context.videoPrefsDataStore.data.first()[KEY_SPEED] ?: 1.0f
+        }.getOrDefault(1.0f)
+    }
+
+    suspend fun setSpeed(context: Context, speed: Float) {
+        runCatching {
+            context.videoPrefsDataStore.edit { prefs ->
+                prefs[KEY_SPEED] = speed
+            }
+        }
+    }
+}
 
 /**
  * 內嵌式與全螢幕影片播放器（依循 Android 系統規範與 YouTube Mobile 播放器規範設計）
@@ -368,6 +398,9 @@ private fun FullscreenVideoViewer(
 ) {
     val view = LocalView.current
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     val fullscreenPlayerId = remember { java.util.UUID.randomUUID().toString() }
     var isPlaying by remember { mutableStateOf(startPlaying) }
     var isMuted by remember { mutableStateOf(startMuted) }
@@ -379,6 +412,8 @@ private fun FullscreenVideoViewer(
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var showSpeedMenu by remember { mutableStateOf(false) }
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // 預設放大轉橫向（仿 YouTube 行為；App 本體不轉向，只在播放器內部呈現橫向）
     var isLandscape by remember { mutableStateOf(true) }
@@ -387,6 +422,23 @@ private fun FullscreenVideoViewer(
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
+
+    // 載入記憶中的倍速設定
+    LaunchedEffect(Unit) {
+        val savedSpeed = VideoSpeedPrefs.getSpeed(context)
+        playbackSpeed = savedSpeed
+    }
+
+    fun applySpeed(speed: Float) {
+        playbackSpeed = speed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            mediaPlayerRef?.let { mp ->
+                runCatching {
+                    mp.playbackParams = mp.playbackParams.setSpeed(speed)
+                }
+            }
+        }
+    }
 
     // 設定 Dialog Window 透明系統列
     val dialogWindow = (view.parent as? DialogWindowProvider)?.window
@@ -412,9 +464,9 @@ private fun FullscreenVideoViewer(
         }
     }
 
-    // 自動隱藏控制器（播放中 3.5 秒自動淡出）
-    LaunchedEffect(controlsVisible, isPlaying, scrubbing) {
-        if (controlsVisible && isPlaying && !scrubbing) {
+    // 自動隱藏控制器（播放中 3.5 秒自動淡出；拖動進度條或開啟倍速選單時不自動隱藏）
+    LaunchedEffect(controlsVisible, isPlaying, scrubbing, showSpeedMenu, lastInteractionTime) {
+        if (controlsVisible && isPlaying && !scrubbing && !showSpeedMenu) {
             delay(3500)
             controlsVisible = false
         }
@@ -444,21 +496,7 @@ private fun FullscreenVideoViewer(
         position = newPos
         progress = newPos.toFloat() / currentD
         controlsVisible = true
-    }
-
-    fun cycleSpeed() {
-        val speeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-        val nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.size
-        val nextSpeed = speeds[nextIdx]
-        playbackSpeed = nextSpeed
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            mediaPlayerRef?.let { mp ->
-                runCatching {
-                    mp.playbackParams = mp.playbackParams.setSpeed(nextSpeed)
-                }
-            }
-        }
-        controlsVisible = true
+        lastInteractionTime = System.currentTimeMillis()
     }
 
     fun toggleFullscreenMute() {
@@ -468,6 +506,7 @@ private fun FullscreenVideoViewer(
             else mediaPlayerRef?.setVolume(1f, 1f)
         }
         controlsVisible = true
+        lastInteractionTime = System.currentTimeMillis()
     }
 
     fun handleClose() {
@@ -475,12 +514,12 @@ private fun FullscreenVideoViewer(
     }
 
     // 系統安全邊界：Compose 狀態化 insets（Dialog attach 後自動重算，不是一次性讀取）。
-    // 頂部貼緊：狀態列＋4dp（至少 10dp），不額外下移；
-    // 底部高於導覽列：導覽列＋16dp（至少 64dp），控制列絕不被遮擋。
+    // 橫向模式下（手機鎖直向但在全螢幕以直式容器承載旋轉），螢幕底部的手勢條/導覽列特別容易切到按鈕，
+    // 因此橫向時 safeBottom 保底加高到 88dp（或 navBottom + 40dp），直向保底 64dp。
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val safeTop = maxOf(statusTop + 4.dp, 10.dp)
-    val safeBottom = maxOf(navBottom + 16.dp, 64.dp)
+    val safeBottom = if (isLandscape) maxOf(navBottom + 40.dp, 88.dp) else maxOf(navBottom + 16.dp, 64.dp)
 
     val safeSidePadding = PaddingValues(start = 16.dp, end = 16.dp)
 
@@ -521,6 +560,11 @@ private fun FullscreenVideoViewer(
                         }
                         runCatching {
                             if (isMuted) mp.setVolume(0f, 0f) else mp.setVolume(1f, 1f)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            runCatching {
+                                mp.playbackParams = mp.playbackParams.setSpeed(playbackSpeed)
+                            }
                         }
                         if (startPosition > 0) {
                             runCatching { seekTo(startPosition) }
@@ -594,6 +638,15 @@ private fun FullscreenVideoViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.42f))
+                    // 消費點擊在操作列/覆蓋層空白處的點擊事件，避免穿透到底層手勢層誤隱藏控制列，並延展自動隱藏時間
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                controlsVisible = true
+                                lastInteractionTime = System.currentTimeMillis()
+                            }
+                        )
+                    }
             ) {
                 // 1. 頂部列：關閉按鈕、狀態標題、直橫向旋轉切換
                 Row(
@@ -635,6 +688,7 @@ private fun FullscreenVideoViewer(
                         modifier = Modifier.clickable {
                             isLandscape = !isLandscape
                             controlsVisible = true
+                            lastInteractionTime = System.currentTimeMillis()
                         }
                     ) {
                         Row(
@@ -697,6 +751,7 @@ private fun FullscreenVideoViewer(
                                     isPlaying = true
                                 }
                                 controlsVisible = true
+                                lastInteractionTime = System.currentTimeMillis()
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -762,6 +817,7 @@ private fun FullscreenVideoViewer(
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
+                            lastInteractionTime = System.currentTimeMillis()
                         },
                         onValueChangeFinished = {
                             vvRef?.let { vv ->
@@ -771,6 +827,7 @@ private fun FullscreenVideoViewer(
                             }
                             progress = scrubValue
                             scrubbing = false
+                            lastInteractionTime = System.currentTimeMillis()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -782,7 +839,7 @@ private fun FullscreenVideoViewer(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // 時間與功能控制列
                     Row(
@@ -807,7 +864,9 @@ private fun FullscreenVideoViewer(
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable { toggleFullscreenMute() }
+                                modifier = Modifier.clickable {
+                                    toggleFullscreenMute()
+                                }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -822,11 +881,15 @@ private fun FullscreenVideoViewer(
                                 }
                             }
 
-                            // 倍速切換按鈕
+                            // 倍速切換按鈕（點擊彈出倍速選單卡片）
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable { cycleSpeed() }
+                                color = if (showSpeedMenu) Color.White.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.2f),
+                                modifier = Modifier.clickable {
+                                    showSpeedMenu = !showSpeedMenu
+                                    controlsVisible = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                }
                             ) {
                                 Text(
                                     text = "${playbackSpeed}x",
@@ -844,6 +907,7 @@ private fun FullscreenVideoViewer(
                                 modifier = Modifier.clickable {
                                     isLandscape = !isLandscape
                                     controlsVisible = true
+                                    lastInteractionTime = System.currentTimeMillis()
                                 }
                             ) {
                                 Row(
@@ -863,6 +927,81 @@ private fun FullscreenVideoViewer(
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. 倍速選單（置中彈窗卡片，避免 Popup 在旋轉容器中位置偏位）
+                if (showSpeedMenu) {
+                    val availableSpeeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .clickable {
+                                showSpeedMenu = false
+                                lastInteractionTime = System.currentTimeMillis()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF202020),
+                            shadowElevation = 8.dp,
+                            modifier = Modifier
+                                .width(220.dp)
+                                .clickable(enabled = false) {}
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)
+                            ) {
+                                Text(
+                                    text = "播放速度",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                availableSpeeds.forEach { speed ->
+                                    val isSelected = (playbackSpeed == speed)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSelected) Color.White.copy(alpha = 0.15f)
+                                                else Color.Transparent
+                                            )
+                                            .clickable {
+                                                applySpeed(speed)
+                                                coroutineScope.launch {
+                                                    VideoSpeedPrefs.setSpeed(context, speed)
+                                                }
+                                                showSpeedMenu = false
+                                                lastInteractionTime = System.currentTimeMillis()
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (speed == 1.0f) "1.0x (正常)" else "${speed}x",
+                                            color = if (isSelected) Color(0xFFFF4D4D) else Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "已選擇",
+                                                tint = Color(0xFFFF4D4D),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
