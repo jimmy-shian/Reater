@@ -413,7 +413,7 @@ fun DetailDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 固定頂欄：左上 ... 溢位選單 + 分類徽章（左）+ 分享 + X 關閉（最右）
+                // 固定頂欄：左上 ... 溢位選單 + 分類徽章（中間可直接點開改分類）+ 分享 + X 關閉（最右）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -483,7 +483,8 @@ fun DetailDialog(
                     }
                     CategoryBadge(
                         category = category,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.weight(1f, fill = false),
+                        onClick = { showCategoryEditor = !showCategoryEditor }
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
@@ -522,7 +523,7 @@ fun DetailDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
-                // 改分類編輯器（由 ... 選單展開）：下拉篩選 + 即時生效
+                // 改分類編輯器（點中間徽章或 ... 選單展開）：與儲存時同款下拉，篩選 + 即時生效
                 if (showCategoryEditor) {
                     Spacer(modifier = Modifier.height(8.dp))
                     CategoryDropdown(

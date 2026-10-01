@@ -51,6 +51,8 @@ class SettingsRepository @Inject constructor(
     private val KEY_LAST_CATEGORY_ID = androidx.datastore.preferences.core.longPreferencesKey("last_selected_category_id")
     private val KEY_CUSTOM_AVATAR_ID = stringPreferencesKey("custom_avatar_id")
     private val KEY_CUSTOM_AVATAR_URI = stringPreferencesKey("custom_avatar_uri")
+    // 自訂頭像歷史（由新到舊的內部絕對路徑，以 \n 連接，上限 AvatarStorage.MAX_HISTORY）
+    private val KEY_CUSTOM_AVATAR_HISTORY = stringPreferencesKey("custom_avatar_history")
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -136,9 +138,18 @@ class SettingsRepository @Inject constructor(
         prefs[KEY_CUSTOM_AVATAR_URI]
     }
 
+    val customAvatarHistory: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CUSTOM_AVATAR_HISTORY]
+            ?.split("\n")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    }
+
     suspend fun setCustomAvatarId(id: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_CUSTOM_AVATAR_ID] = id
+            // 切回內建圖示只清除 current，歷史照片保留以便隨時切回
             prefs.remove(KEY_CUSTOM_AVATAR_URI)
         }
     }
@@ -147,9 +158,189 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { prefs ->
             if (uri != null) {
                 prefs[KEY_CUSTOM_AVATAR_URI] = uri
+                // 手動指定路徑也納入歷史（回選過往圖片走這裡）
+                val hist = (listOf(uri) + (prefs[KEY_CUSTOM_AVATAR_HISTORY]
+                    ?.split("\n")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() } ?: emptyList()))
+                    .distinct()
+                    .take(com.reater.app.ui.AvatarStorage.MAX_HISTORY)
+                prefs[KEY_CUSTOM_AVATAR_HISTORY] = hist.joinToString("\n")
             } else {
+                // 清除 current（退回圖示），歷史保留；真正刪除走 deleteCustomAvatar()
                 prefs.remove(KEY_CUSTOM_AVATAR_URI)
             }
+        }
+    }
+
+    /** 歷史回選：切換 current，不動歷史順序以外的任何檔案。 */
+    suspend fun selectCustomAvatar(path: String) {
+        val f = java.io.File(path)
+        if (!f.isAbsolute || !f.exists() || f.length() <= 0) return
+        setCustomAvatarUri(path)
+    }
+
+    /** 刪除單張歷史：刪檔 + 移出歷史；若刪的是使用中則一併清除 current 退回圖示。 */
+    suspend fun deleteCustomAvatar(path: String) {
+        runCatching { java.io.File(path).takeIf { it.isAbsolute }?.delete() }
+        context.dataStore.edit { prefs ->
+            val hist = (prefs[KEY_CUSTOM_AVATAR_HISTORY]
+                ?.split("\n")
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() } ?: emptyList())
+                .filter { it != path }
+            if (hist.isEmpty()) prefs.remove(KEY_CUSTOM_AVATAR_HISTORY)
+            else prefs[KEY_CUSTOM_AVATAR_HISTORY] = hist.joinToString("\n")
+            if (prefs[KEY_CUSTOM_AVATAR_URI] == path) prefs.remove(KEY_CUSTOM_AVATAR_URI)
+        }
+    }
+
+    /**
+     * 相簿 picker 回傳的 content:// URI 只是暫時授權，重開 App 即失效。
+     * 此處拷貝成新的時間戳內部檔（filesDir/avatar/custom_avatar_<millis>.jpg），
+     * 每次路徑都不同 -> Flow 必發新值，內外頭像即時同步且不命中 Coil 舊快取。
+     * 同時寫入歷史（上限保留），回傳內部檔案絕對路徑；失敗回傳 null。
+     */
+    suspend fun importCustomAvatar(source: android.net.Uri): String? {
+        val savedPath: String? = try {
+            val dir = java.io.File(context.filesDir, "avatar").apply { mkdirs() }
+            // 舊版單檔更名納入歷史
+            runCatching {
+                val legacy = java.io.File(dir, "custom_avatar.jpg")
+                if (legacy.exists() && legacy.length() > 0) {
+                    val renamed = java.io.File(dir, "custom_avatar_${legacy.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis()}.jpg")
+                    if (!renamed.exists()) legacy.renameTo(renamed)
+                }
+            }
+            val dest = java.io.File(dir, "custom_avatar_${System.currentTimeMillis()}.jpg")
+            context.contentResolver.openInputStream(source)?.use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            } ?: return null
+            if (dest.exists() && dest.length() > 0) {
+                dest.setLastModified(System.currentTimeMillis())
+                // 只裁多餘歷史，不刪當次
+                dir.listFiles()
+                    ?.filter {
+                        it.name.startsWith("custom_avatar") &&
+                            it.name.endsWith(".jpg") && it.absolutePath != dest.absolutePath
+                    }
+                    ?.sortedByDescending { it.lastModified() }
+                    ?.drop(com.reater.app.ui.AvatarStorage.MAX_HISTORY - 1)
+                    ?.forEach { runCatching { it.delete() } }
+                dest.absolutePath
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+        if (savedPath != null) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_CUSTOM_AVATAR_URI] = savedPath
+                val hist = (listOf(savedPath) + (prefs[KEY_CUSTOM_AVATAR_HISTORY]
+                    ?.split("\n")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() } ?: emptyList()))
+                    .distinct()
+                    .take(com.reater.app.ui.AvatarStorage.MAX_HISTORY)
+                prefs[KEY_CUSTOM_AVATAR_HISTORY] = hist.joinToString("\n")
+            }
+        }
+        return savedPath
+    }
+
+    /** 裁切編輯器產出的 Bitmap 存成新的時間戳檔並設為使用中（同樣寫歷史、保證同步刷新）。 */
+    suspend fun importAvatarBitmap(bitmap: android.graphics.Bitmap): String? {
+        val savedPath: String? = try {
+            val dir = java.io.File(context.filesDir, "avatar").apply { mkdirs() }
+            val dest = java.io.File(dir, "custom_avatar_${System.currentTimeMillis()}.jpg")
+            dest.outputStream().use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)
+            }
+            if (dest.exists() && dest.length() > 0) {
+                dest.setLastModified(System.currentTimeMillis())
+                dir.listFiles()
+                    ?.filter {
+                        it.name.startsWith("custom_avatar") &&
+                            it.name.endsWith(".jpg") && it.absolutePath != dest.absolutePath
+                    }
+                    ?.sortedByDescending { it.lastModified() }
+                    ?.drop(com.reater.app.ui.AvatarStorage.MAX_HISTORY - 1)
+                    ?.forEach { runCatching { it.delete() } }
+                dest.absolutePath
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+        if (savedPath != null) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_CUSTOM_AVATAR_URI] = savedPath
+                val hist = (listOf(savedPath) + (prefs[KEY_CUSTOM_AVATAR_HISTORY]
+                    ?.split("\n")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() } ?: emptyList()))
+                    .distinct()
+                    .take(com.reater.app.ui.AvatarStorage.MAX_HISTORY)
+                prefs[KEY_CUSTOM_AVATAR_HISTORY] = hist.joinToString("\n")
+            }
+        }
+        return savedPath
+    }
+
+    /**
+     * 開機自檢：舊版存的是暫時 content://，重開後讀不到會變空白圖。
+     * 偵測到失效就清除該筆，自動退回內建圖示；同時過濾已遺失的歷史。
+     */
+    suspend fun validateCustomAvatar() {
+        val prefs = context.dataStore.data.first()
+        val stored = prefs[KEY_CUSTOM_AVATAR_URI]
+        val hist = prefs[KEY_CUSTOM_AVATAR_HISTORY]
+            ?.split("\n")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() } ?: emptyList()
+        // 磁碟實際存在的歷史（含舊版單檔殘留）
+        val onDisk = try {
+            java.io.File(context.filesDir, "avatar").listFiles()
+                ?.filter {
+                    (it.name.startsWith("custom_avatar") && it.name.endsWith(".jpg") ||
+                        it.name == "custom_avatar.jpg") && it.exists() && it.length() > 0
+                }
+                ?.map { it.absolutePath } ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val validHist = (hist + onDisk).distinct()
+            .filter { p ->
+                if (p.startsWith("content://")) {
+                    try {
+                        context.contentResolver.openInputStream(android.net.Uri.parse(p))?.close()
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                } else if (p.startsWith("file://")) true
+                else {
+                    val f = java.io.File(p)
+                    f.exists() && f.length() > 0
+                }
+            }
+            .take(com.reater.app.ui.AvatarStorage.MAX_HISTORY)
+        val currentValid = stored?.let { s ->
+            if (s.startsWith("content://")) {
+                try {
+                    context.contentResolver.openInputStream(android.net.Uri.parse(s))?.close()
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            } else if (s.startsWith("file://")) true
+            else {
+                val f = java.io.File(s)
+                f.exists() && f.length() > 0
+            }
+        } ?: false
+        context.dataStore.edit { e ->
+            if (!currentValid) e.remove(KEY_CUSTOM_AVATAR_URI)
+            if (validHist.isEmpty()) e.remove(KEY_CUSTOM_AVATAR_HISTORY)
+            else e[KEY_CUSTOM_AVATAR_HISTORY] = validHist.joinToString("\n")
         }
     }
 
