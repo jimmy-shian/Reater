@@ -19,3 +19,6 @@ tools/licenses_issued_*.bak
 .codebase-memory/
 __pycache__/
 *.pyc
+
+# Local scripts with private keystore
+build-release.ps1

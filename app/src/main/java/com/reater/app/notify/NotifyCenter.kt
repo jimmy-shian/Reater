@@ -64,7 +64,7 @@ object NotifyCenter {
         if (!canNotify(context)) return
         ensureChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_avatar_news)
+            .setSmallIcon(R.drawable.ic_stat_reater)
             .setContentTitle("還有未讀文章")
             .setContentText(if (title.isBlank()) "你儲存的文章還沒看，點我回顧" else "「$title」還沒看，點我回顧")
             .setContentIntent(openAppIntent(context))
@@ -77,7 +77,7 @@ object NotifyCenter {
         if (!canNotify(context) || unreadCount <= 0) return
         ensureChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_avatar_news)
+            .setSmallIcon(R.drawable.ic_stat_reater)
             .setContentTitle("今日回顧")
             .setContentText("還有 $unreadCount 篇未讀，睡前清空它們吧")
             .setContentIntent(openAppIntent(context))

@@ -1,0 +1,98 @@
+# Reater one-click build / zipalign / sign / verify / copy-to-root (Template)
+# Copy this file to build-release.ps1 and fill in your keystore configuration.
+#
+# Usage:
+#   powershell -ExecutionPolicy Bypass -File .\build-release.ps1
+#   powershell -ExecutionPolicy Bypass -File .\build-release.ps1 -SkipBuild   # re-sign only (fastest when code unchanged)
+#   powershell -ExecutionPolicy Bypass -File .\build-release.ps1 -NoStopDaemon  # keep Gradle daemon alive (faster rebuild)
+param(
+    [string]$Keystore = $env:REATER_KEYSTORE_PATH,
+    [string]$Alias = $env:REATER_KEY_ALIAS,
+    [string]$StorePass = $env:REATER_STORE_PASS,
+    [string]$KeyPass = $env:REATER_KEY_PASS,
+    [switch]$SkipBuild,
+    [switch]$NoStopDaemon
+)
+
+$ErrorActionPreference = "Stop"
+$Root = $PSScriptRoot
+if ([string]::IsNullOrEmpty($Root)) { $Root = (Get-Location).Path }
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+function Step($msg) { Write-Host ""; Write-Host "=== $msg ===" -ForegroundColor Cyan }
+
+if ([string]::IsNullOrEmpty($Keystore) -or -not (Test-Path -LiteralPath $Keystore)) {
+    throw "Keystore path not specified or file not found. Please provide -Keystore or set REATER_KEYSTORE_PATH."
+}
+
+# 0. Locate SDK / build-tools (local.properties > ANDROID_HOME > ANDROID_SDK_ROOT > %LOCALAPPDATA%)
+$SdkDir = $env:ANDROID_HOME
+if ([string]::IsNullOrEmpty($SdkDir)) { $SdkDir = $env:ANDROID_SDK_ROOT }
+$localProps = Join-Path $Root "local.properties"
+if ([string]::IsNullOrEmpty($SdkDir) -and (Test-Path -LiteralPath $localProps)) {
+    $m = Select-String -LiteralPath $localProps -Pattern "^\s*sdk\.dir\s*=" | Select-Object -First 1
+    if ($m) {
+        $line = $m.Line
+        $SdkDir = $line.Substring($line.IndexOf("=") + 1).Trim() -replace "\\\\", "\" -replace "\\:", ":"
+    }
+}
+if ([string]::IsNullOrEmpty($SdkDir)) { $SdkDir = Join-Path $env:LOCALAPPDATA "Android\Sdk" }
+$BtRoot = Join-Path $SdkDir "build-tools"
+$BtVer = Get-ChildItem -Path $BtRoot -Directory -ErrorAction Stop | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+$Bt = Join-Path $BtRoot $BtVer
+Write-Host "SDK: $SdkDir (build-tools $BtVer)"
+
+$Unsigned = Join-Path $Root "app\build\outputs\apk\release\app-release-unsigned.apk"
+$Aligned  = Join-Path $Root "app\build\outputs\apk\release\app-release-aligned.apk"
+$Signed   = Join-Path $Root "app\build\outputs\apk\release\app-release-signed.apk"
+$Final    = Join-Path $Root "Reater-release-signed.apk"
+
+# 1. Build (speed: parallel + build cache; daemon/configure-on-demand in gradle.properties)
+if (-not $SkipBuild) {
+    Step "1/5 assembleRelease (--parallel --build-cache)"
+    & (Join-Path $Root "gradlew.bat") ":app:assembleRelease" --parallel --build-cache --console=plain
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { throw "assembleRelease failed" }
+} else {
+    Step "1/5 skip build (-SkipBuild)"
+}
+if (-not (Test-Path -LiteralPath $Unsigned)) { throw "missing unsigned APK, build must have failed" }
+
+# 2. Align
+Step "2/5 zipalign"
+& (Join-Path $Bt "zipalign.exe") -p -f 4 $Unsigned $Aligned
+$code = $LASTEXITCODE
+if ($code -ne 0) { throw "zipalign failed" }
+
+# 3. Sign
+Step "3/5 apksigner sign"
+& (Join-Path $Bt "apksigner.bat") sign --ks $Keystore --ks-key-alias $Alias --ks-pass "pass:$StorePass" --key-pass "pass:$KeyPass" --out $Signed $Aligned
+$code = $LASTEXITCODE
+if ($code -ne 0) { throw "apksigner sign failed" }
+
+# 4. Verify
+Step "4/5 apksigner verify"
+& (Join-Path $Bt "apksigner.bat") verify --verbose $Signed
+$code = $LASTEXITCODE
+if ($code -ne 0) { throw "apksigner verify failed" }
+
+# 5. Copy to root for easy access
+Step "5/5 copy to root"
+Copy-Item -LiteralPath $Signed -Destination $Final -Force
+$mb = [math]::Round((Get-Item -LiteralPath $Final).Length / 1MB, 2)
+
+# 6. Stop Gradle daemon to free RAM (each daemon holds up to 2GB; CPU stays smooth)
+if (-not $NoStopDaemon) {
+    Step "6/6 stop Gradle daemon (free RAM)"
+    & (Join-Path $Root "gradlew.bat") --stop | Out-Null
+    $code = $LASTEXITCODE
+    if ($code -ne 0) { Write-Host "gradlew --stop returned $code (non-fatal)" -ForegroundColor Yellow }
+} else {
+    Step "6/6 keep daemon (-NoStopDaemon)"
+}
+
+$sw.Stop()
+$secs = [int]$sw.Elapsed.TotalSeconds
+Write-Host ""
+Write-Host "DONE in ${secs}s" -ForegroundColor Green
+Write-Host "Installable APK: $Final (${mb} MB)" -ForegroundColor Green

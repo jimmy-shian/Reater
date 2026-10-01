@@ -40,7 +40,9 @@ object ThreadsWebResolver {
         val author: String,
         val text: String,
         /** 該則留言渲染出的圖/影（排除頭像；kind 為 IMAGE/VIDEO） */
-        val media: List<com.reater.app.data.remote.FetchedMedia> = emptyList()
+        val media: List<com.reater.app.data.remote.FetchedMedia> = emptyList(),
+        /** 從 DOM 尾端數字列解析出的讚數（無則 0） */
+        val likeCount: Int = 0
     )
 
     const val DEFAULT_TIMEOUT_MS = 25_000L
@@ -80,12 +82,50 @@ object ThreadsWebResolver {
             "return JSON.stringify({url:location.href,canon:canon,text:body});" +
             "}catch(e){return '{}';}})()"
 
-    /** JS：DOM 直抽留言（免登入渲染後兜底） */
+    /** JS：DOM 直抽留言（免登入渲染後兜底）
+     *
+     *  Threads article.innerText 典型結構（每行一項）：
+     *    顯示名稱 / @handle / 時間（8小時） / 內文多行 / 數字列（8,099/115/…) / 動作詞
+     *  舊版只濾英文 Like/Reply，導致時間＋數字＋顯示名全殘留進 body，
+     *  詳情頁看起來像「每欄換一行」的跑版，且讚數永遠抓不到。
+     *  此處在 JS 端先洗：去動作詞（中英）、去時間行、去純數字列（首個數字記為讚數）。
+     */
     private val EXTRACT_COMMENTS_JS: String =
         "(function(){try{" +
             "var out=[];var seen={};" +
             "var arts=document.querySelectorAll('article');" +
             "if(!arts||arts.length==0)arts=document.querySelectorAll('[data-pressable-container]');" +
+            "function isAction(s){" +
+            "var t=s.trim().toLowerCase();" +
+            "return t==='like'||t==='likes'||t==='reply'||t==='replies'||t==='repost'||t==='reposts'||" +
+            "t==='share'||t==='shares'||t==='send'||" +
+            "s==='讚'||s==='喜歡'||s==='愛心'||s==='回覆'||s==='回應'||s==='留言'||" +
+            "s==='轉發'||s==='轉po'||s==='轉帖'||s==='分享'||s==='傳送';" +
+            "}" +
+            "function isTimestamp(s){" +
+            "var t=s.trim();" +
+            "if(/^[0-9]+\\s*[\\u79d2\\u5206\\u5c0f\\u6642\\u5929\\u9031\\u5468\\u6708\\u5e74]+$/.test(t))return true;" +
+            "if(/^[0-9]+\\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|week|weeks|mo|yr)\\.?$/i.test(t))return true;" +
+            "if(t==='\\u6628\\u5929'||t==='\\u524d\\u5929'||t==='Yesterday')return true;" +
+            "if(/^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$/.test(t))return true;" +
+            "if(/^[0-9]{1,2}[\\u6708\\/\\-][0-9]{1,2}[\\u65e5]?$/.test(t))return true;" +
+            "return false;" +
+            "}" +
+            "function isCount(s){" +
+            "var t=s.trim().replace(/,/g,'');" +
+            "if(/^[0-9]+(\\.[0-9]+)?\\s*[KkMm\\u4e07\\u5343]?$/.test(t))return true;" +
+            "return false;" +
+            "}" +
+            "function parseCount(s){" +
+            "try{var t=s.trim().replace(/,/g,'');" +
+            "var m=t.match(/^([0-9]+(\\.[0-9]+)?)\\s*([KkMm\\u4e07\\u5343])?$/);" +
+            "if(!m)return 0;" +
+            "var v=parseFloat(m[1]);var u=m[3]||'';" +
+            "if(u==='K'||u==='k')v=v*1000;" +
+            "else if(u==='M'||u==='m')v=v*1000000;" +
+            "else if(u==='\\u4e07')v=v*10000;" +
+            "else if(u==='\\u5343')v=v*1000;" +
+            "return Math.floor(v);}catch(e){return 0;}}" +
             "for(var ai=0;ai<arts.length&&out.length<50;ai++){" +
             "var a=arts[ai];" +
             "var links=a.querySelectorAll('a');" +
@@ -107,10 +147,29 @@ object ThreadsWebResolver {
             "for(var pi=0;pi<parts.length;pi++){" +
             "var s=parts[pi].trim();" +
             "if(!s)continue;" +
-            "if(s==='Like'||s==='Reply'||s==='Repost'||s==='Share')continue;" +
-            "if(s.indexOf('Log in')>=0||s.indexOf('登入')>=0)continue;" +
+            "if(isAction(s))continue;" +
+            "if(s.indexOf('Log in')>=0||s.indexOf('\\u767b\\u5165')>=0)continue;" +
             "cleaned.push(s);" +
             "}" +
+            // 去頭：顯示名重複 / @handle 行 / 時間行
+            "var hi=0;" +
+            "while(hi<cleaned.length){" +
+            "var hs=cleaned[hi];" +
+            "var hsNoAt=hs.charAt(0)==='@'?hs.substring(1):hs;" +
+            "if(author&&hsNoAt.toLowerCase()===author.toLowerCase()){hi++;continue;}" +
+            "if(author&&hs.toLowerCase()===author.toLowerCase()){hi++;continue;}" +
+            "if(isTimestamp(hs)){hi++;continue;}" +
+            "break;}" +
+            "cleaned=cleaned.slice(hi);" +
+            // 去尾：純數字列＋動作詞殘留；尾端第一個數字記為讚數
+            "var likeN=0;" +
+            "while(cleaned.length>0){" +
+            "var ts=cleaned[cleaned.length-1];" +
+            "if(isAction(ts)){cleaned.pop();continue;}" +
+            "if(isCount(ts)){var v=parseCount(ts);if(likeN===0)v>0&&(likeN=v);cleaned.pop();continue;}" +
+            "break;}" +
+            // 尾端清理後若又露出時間行（少見排版），再去一次
+            "while(cleaned.length>0&&isTimestamp(cleaned[cleaned.length-1])){cleaned.pop();}" +
             "var body=cleaned.join(String.fromCharCode(10));" +
             "if(author){" +
             "var at0=body.indexOf('@'+author);" +
@@ -127,14 +186,14 @@ object ThreadsWebResolver {
             "var src=el.getAttribute('src')||'';" +
             "if(!src||src.indexOf('http')!=0)continue;" +
             "if(seenSrc[src])continue;" +
-            "if(src.indexOf('profile_pic')>=0||src.indexOf('s206x206')>=0||src.indexOf('s150x150')>=0||src.indexOf('emoji')>=0)continue;" +
+            "if(src.indexOf('profile_pic')>=0||src.indexOf('s206x206')>=0||src.indexOf('s150x150')>=0||src.indexOf('s320x320')>=0||src.indexOf('s480x480')>=0||src.indexOf('s640x640')>=0||src.indexOf('emoji')>=0||src.indexOf('avatar')>=0)continue;" +
             "var pa=el.closest?a.closest('a'):null;" +
             "if(pa){var ph=pa.getAttribute('href')||'';if(ph.indexOf('/@')>=0)continue;}" +
             "seenSrc[src]=1;" +
             "var kind=(el.tagName==='VIDEO'||el.tagName==='SOURCE'||src.indexOf('.mp4')>=0)?'VIDEO':'IMAGE';" +
             "med.push({kind:kind,url:src});" +
             "}" +
-            "out.push({author:author,text:body,media:med});" +
+            "out.push({author:author,text:body,media:med,likeCount:likeN});" +
             "}" +
             "return JSON.stringify(out);" +
             "}catch(e){return '[]';}})()"
@@ -362,25 +421,120 @@ object ThreadsWebResolver {
             (0 until minOf(arr.length(), 50)).mapNotNull { i ->
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
                 val a = o.optString("author").trim().trimStart('@')
-                val tx = o.optString("text").trim()
-                if (a.isBlank() || tx.isBlank() || a.contains(" ") || a.length > 30) null
+                val txRaw = o.optString("text").trim()
+                if (a.isBlank() || txRaw.isBlank() || a.contains(" ") || a.length > 30) null
                 else {
-                    val mediaArr = o.optJSONArray("media")
-                    val media = if (mediaArr == null) emptyList() else (0 until mediaArr.length()).mapNotNull { mi ->
-                        val mo = mediaArr.optJSONObject(mi) ?: return@mapNotNull null
-                        val url = mo.optString("url").trim()
-                        if (!url.startsWith("http")) null
-                        else com.reater.app.data.remote.FetchedMedia(
-                            kind = mo.optString("kind").ifBlank { "IMAGE" },
-                            remoteUrl = url
+                    // Kotlin 端二道清洗（防舊版 JS / 特殊排版殘留）：去頭顯示名+時間，去尾數字列
+                    val cleaned = sanitizeDomCommentText(txRaw, a)
+                    val tx = cleaned.text.take(2000)
+                    if (tx.isBlank() || tx.length < 2) null
+                    else {
+                        val mediaArr = o.optJSONArray("media")
+                        val media = if (mediaArr == null) emptyList() else (0 until mediaArr.length()).mapNotNull { mi ->
+                            val mo = mediaArr.optJSONObject(mi) ?: return@mapNotNull null
+                            val url = mo.optString("url").trim()
+                            if (!url.startsWith("http")) null
+                            else com.reater.app.data.remote.FetchedMedia(
+                                kind = mo.optString("kind").ifBlank { "IMAGE" },
+                                remoteUrl = url
+                            )
+                        }
+                        val likeFromJs = o.optInt("likeCount", 0)
+                        DomComment(
+                            author = a,
+                            text = tx,
+                            media = media.take(6),
+                            likeCount = if (likeFromJs > 0) likeFromJs else cleaned.likeCount
                         )
                     }
-                    DomComment(author = a, text = tx.take(2000), media = media.take(6))
                 }
             }
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    data class SanitizedComment(val text: String, val likeCount: Int = 0)
+
+    private val domActionLines = setOf(
+        "like", "likes", "reply", "replies", "repost", "reposts",
+        "share", "shares", "send",
+        "讚", "喜歡", "愛心", "回覆", "回應", "留言",
+        "轉發", "轉po", "轉帖", "分享", "傳送"
+    )
+
+    private val domTimestampRegex = Regex(
+        """^(\d+\s*[秒分鐘小时時天週周月年]+|\d+\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|week|weeks|mo|yr)\.?|昨天|前天|Yesterday|\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[月/\-]\d{1,2}日?)$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val domCountRegex = Regex("""^[\d,，\s]+(\.\d+)?\s*[KkMm萬千]?$""")
+
+    private fun parseDomCount(s: String): Int {
+        return try {
+            val t = s.trim().replace(",", "").replace("，", "")
+            val m = Regex("""^(\d+(\.\d+)?)\s*([KkMm萬千])?$""").find(t) ?: return 0
+            var v = m.groupValues[1].toDoubleOrNull() ?: return 0
+            when (m.groupValues[3]) {
+                "K", "k" -> v *= 1000
+                "M", "m" -> v *= 1_000_000
+                "萬" -> v *= 10_000
+                "千" -> v *= 1000
+            }
+            v.toInt()
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** 與 JS 端同規則的 Kotlin 清洗：回傳（純內文，尾端首個數字當讚數） */
+    fun sanitizeDomCommentText(raw: String, author: String): SanitizedComment {
+        val lines = raw.split("\n").map { it.trim() }
+            .filter { it.isNotEmpty() && it != "Log in" && !it.contains("Log in") && !it.contains("登入") }
+            .filter { !domActionLines.contains(it.lowercase()) }
+            .toMutableList()
+        // 去頭：顯示名 / @handle / 時間
+        var hi = 0
+        while (hi < lines.size) {
+            val hs = lines[hi]
+            val noAt = if (hs.startsWith("@")) hs.drop(1) else hs
+            if (author.isNotBlank() && noAt.equals(author, ignoreCase = true)) {
+                hi++
+                continue
+            }
+            if (domTimestampRegex.matches(hs)) {
+                hi++
+                continue
+            }
+            break
+        }
+        val body = if (hi > 0) lines.drop(hi).toMutableList() else lines
+        // 去尾：數字列＋動作詞殘留
+        var likeCount = 0
+        while (body.isNotEmpty()) {
+            val ts = body.last()
+            if (domActionLines.contains(ts.lowercase())) {
+                body.removeAt(body.lastIndex)
+                continue
+            }
+            if (domCountRegex.matches(ts)) {
+                val v = parseDomCount(ts)
+                if (likeCount == 0) likeCount = v
+                body.removeAt(body.lastIndex)
+                continue
+            }
+            break
+        }
+        while (body.isNotEmpty() && domTimestampRegex.matches(body.last())) {
+            body.removeAt(body.lastIndex)
+        }
+        var text = body.joinToString("\n").trim()
+        if (author.isNotBlank()) {
+            val at = "@$author"
+            val idx = text.indexOf(at)
+            if (idx >= 0) text = (text.substring(0, idx) + text.substring(idx + at.length)).trim()
+        }
+        return SanitizedComment(text = text, likeCount = likeCount)
     }
 
     fun parseTextPayload(raw: String?): Pair<String, String> {

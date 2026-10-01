@@ -58,9 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Repeat
+import com.reater.app.ui.components.ThreadsStatsRow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -94,46 +92,200 @@ private data class ThreadPostBlock(
     val author: String,
     val isParent: Boolean,
     val body: String,
+    /** 區塊標籤：「母文」/「分享」，主文為 null */
+    val label: String? = null,
     val isVerified: Boolean = false
 )
 
-private fun parseThreadChain(rawBody: String, defaultAuthor: String): Pair<ThreadPostBlock?, ThreadPostBlock> {
+/** 母文前綴：【母文 @author】 */
+private val THREAD_ROOT_PREFIX = Regex("""^【母文\s*@([^】]+)】""")
+
+/**
+ * 分享分隔線（必須自成一行）：--- 分享 @handle ---
+ * handle 允許點/底線/連字號；行尾僅允許空白，內文裡的零散 --- 不會誤判。
+ */
+private val THREAD_SHARE_SEP =
+    Regex("""(?m)^[ \t]*---[ \t]*分享[ \t]*@([^\r\n]+?)[ \t]*---[ \t]*\r?$""")
+
+/**
+ * 解析螺紋鏈為有序區塊（母文 → … → 主文）。
+ *
+ * 支援 N 層：「留言的留言」會存成
+ * 【母文 @A】a\n\n--- 分享 @B ---\nb\n\n--- 分享 @C ---\nc。
+ * 舊版只拆首尾兩層，中間層會殘留成 --- 分享 @B --- 原文（看起來像 3 層亂文）；
+ * 此處把每一層都拆成獨立區塊，由 UI 逐塊渲染。
+ */
+private fun parseThreadChain(rawBody: String, defaultAuthor: String): List<ThreadPostBlock> {
     val trimmed = rawBody.trim()
-    val pattern = Regex("""^【母文 @([^】]+)】([\s\S]*?)\n\n---\s*分享 @([^-\s]+)\s*---\n([\s\S]*)$""")
-    val match = pattern.find(trimmed)
-    return if (match != null) {
-        val parentAuthor = match.groupValues[1].trim()
-        val parentBody = match.groupValues[2].trim()
-        val childAuthor = match.groupValues[3].trim()
-        val childBody = match.groupValues[4].trim()
-        val parentBlock = ThreadPostBlock(
-            author = parentAuthor,
-            isParent = true,
-            body = parentBody
-        )
-        val childBlock = ThreadPostBlock(
-            author = childAuthor,
-            isParent = false,
-            body = childBody
-        )
-        Pair(parentBlock, childBlock)
-    } else {
-        val mainBlock = ThreadPostBlock(
-            author = defaultAuthor,
-            isParent = false,
-            body = trimmed
-        )
-        Pair(null, mainBlock)
+    if (trimmed.isEmpty()) return listOf(ThreadPostBlock(defaultAuthor, false, ""))
+    val rootMatch = THREAD_ROOT_PREFIX.find(trimmed)
+        ?: return listOf(ThreadPostBlock(defaultAuthor, false, trimmed))
+    val rootAuthor = rootMatch.groupValues[1].trim().trimStart('@').trim()
+    if (rootAuthor.isBlank()) return listOf(ThreadPostBlock(defaultAuthor, false, trimmed))
+    val rest = trimmed.substring(rootMatch.range.last + 1)
+    val seps = THREAD_SHARE_SEP.findAll(rest).toList()
+    if (seps.isEmpty()) {
+        // 只有母文前綴、無分享分隔：單一母文塊（由 UI 當主文渲染，保留媒體/數據列）
+        return listOf(ThreadPostBlock(rootAuthor, true, rest.trim(), label = "母文"))
     }
+    val blocks = ArrayList<ThreadPostBlock>(seps.size + 1)
+    blocks.add(
+        ThreadPostBlock(
+            author = rootAuthor,
+            isParent = true,
+            body = rest.substring(0, seps[0].range.first).trim(),
+            label = "母文"
+        )
+    )
+    for (i in seps.indices) {
+        var handle = seps[i].groupValues[1].trim().trimStart('@').trim()
+        // 防呆：分隔行 @ 後若夾雜空白，一律取第一段當帳號
+        handle = handle.split(Regex("\\s+")).firstOrNull()?.trim().orEmpty()
+        if (handle.isBlank()) handle = defaultAuthor
+        val start = seps[i].range.last + 1
+        val end = if (i + 1 < seps.size) seps[i + 1].range.first else rest.length
+        val body = rest.substring(start, end).trim()
+        val isLast = (i == seps.lastIndex)
+        blocks.add(
+            ThreadPostBlock(
+                author = handle,
+                isParent = !isLast,
+                body = body,
+                label = if (isLast) null else "分享"
+            )
+        )
+    }
+    // 避免病態堆疊拖慢渲染
+    return blocks.take(6)
 }
 
-private fun formatCountCompact(count: Int): String {
-    if (count <= 0) return ""
-    return when {
-        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0).replace(".0M", "M")
-        count >= 1_000 -> String.format("%.1fK", count / 1_000.0).replace(".0K", "K")
-        else -> count.toString()
+/**
+ * 留言鏈各區塊媒體歸屬（對應圖3/圖4 錯亂修正）。
+ *
+ * 新存檔：ThreadPostRepository.buildChainRawJson 已把每層祖先 + 主文各自的
+ * remoteUrl 寫進 ItemEntity.rawJsonMin（chainMedia/mainMedia），此處用
+ * remoteUrl 反查 MediaEntity（取 localPath 離線檔）逐塊還原。
+ * 例：母文 pito 銀晝戰績/裝備/排行圖 → 母文塊；子文 1yuunu2 提問（無圖）→ 空。
+ *
+ * 舊存檔（rawJsonMin 無 chainMedia，只有合併後的 item.media）：
+ * 合併順序恆為「祖先在前、子文在後」，且子留言通常無圖（如黃色盾牌提問），
+ * 若仍全掛在最後一塊子文下就會出現「留言配主文圖」。因此舊資料一律把
+ * 全部媒體歸還給第一塊母文，主文顯示空並由 UI 標註「舊資料已自動歸位」。
+ */
+private fun resolveThreadBlockMedia(
+    item: ItemDetail,
+    blocks: List<ThreadPostBlock>
+): List<List<com.reater.app.data.local.entity.MediaEntity>> {
+    if (blocks.isEmpty()) return emptyList()
+    // 單塊：已存髒資料可能含同內容多變體（多解析度/多碼率存成多列），顯示前先正規化去重
+    if (blocks.size == 1) return listOf(
+        com.reater.app.data.remote.MediaDedup.distinctEntities(item.media.sortedBy { it.position })
+    )
+    // 正規化查表：同一內容不同清晰度 URL 視為同一媒體（byUrl 同時支援精確與正規化命中）
+    val byUrlExact = item.media.associateBy { it.remoteUrl }
+    val byUrlNorm = LinkedHashMap<String, com.reater.app.data.local.entity.MediaEntity>()
+    for (m in item.media.sortedBy { it.position }) {
+        byUrlNorm.putIfAbsent(
+            com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl),
+            m
+        )
     }
+    fun lookup(url: String): com.reater.app.data.local.entity.MediaEntity? {
+        byUrlExact[url]?.let { return it }
+        return byUrlNorm[com.reater.app.data.remote.MediaDedup.normalizeKey(url)]
+    }
+    try {
+        val raw = item.item.rawJsonMin
+        if (raw.isNotBlank() && raw.contains("chainMedia")) {
+            val root = org.json.JSONObject(raw)
+            val chainArr = root.optJSONArray("chainMedia")
+            val mainArr = root.optJSONArray("mainMedia")
+            if (chainArr != null) {
+                val out = ArrayList<List<com.reater.app.data.local.entity.MediaEntity>>(blocks.size)
+                // 祖先塊：blocks[0..n-2] ← chainMedia[0..]
+                for (i in 0 until blocks.size - 1) {
+                    val urls = chainArr.optJSONObject(i)?.optJSONArray("media")
+                    val list = ArrayList<com.reater.app.data.local.entity.MediaEntity>()
+                    if (urls != null) {
+                        for (j in 0 until urls.length()) {
+                            val u = urls.optString(j).trim()
+                            if (u.isBlank()) continue
+                            lookup(u)?.let { list.add(it) }
+                                ?: run {
+                                    // 離線檔遺失仍用遠端顯示，避免整塊消失
+                                    list.add(
+                                        com.reater.app.data.local.entity.MediaEntity(
+                                            itemId = item.item.id,
+                                            kind = "IMAGE",
+                                            remoteUrl = u,
+                                            localPath = "",
+                                            position = -1
+                                        )
+                                    )
+                                }
+                        }
+                    }
+                    out.add(list)
+                }
+                // 主文塊 ← mainMedia
+                val mainList = ArrayList<com.reater.app.data.local.entity.MediaEntity>()
+                if (mainArr != null) {
+                    for (j in 0 until mainArr.length()) {
+                        val u = mainArr.optString(j).trim()
+                        if (u.isBlank()) continue
+                        lookup(u)?.let { mainList.add(it) }
+                            ?: run {
+                                mainList.add(
+                                    com.reater.app.data.local.entity.MediaEntity(
+                                        itemId = item.item.id,
+                                        kind = "IMAGE",
+                                        remoteUrl = u,
+                                        localPath = "",
+                                        position = -1
+                                    )
+                                )
+                            }
+                    }
+                }
+                out.add(mainList)
+                // 跨塊去重：同一內容同時出現在母文與主文映射時只留首次，避免雙份顯示；
+                // 塊內同內容多變體也只留首個（含已存髒資料）
+                val deduped = ArrayList<List<com.reater.app.data.local.entity.MediaEntity>>(out.size)
+                val seen = LinkedHashSet<String>()
+                for (block in out) {
+                    val kept = ArrayList<com.reater.app.data.local.entity.MediaEntity>(block.size)
+                    for (m in com.reater.app.data.remote.MediaDedup.distinctEntities(block)) {
+                        val key = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
+                            .ifBlank { m.remoteUrl.trim() }
+                        if (key.isBlank() || !seen.add(key)) continue
+                        kept.add(m)
+                    }
+                    deduped.add(kept)
+                }
+                // 容錯：解析成功但全空、而 item.media 非空（去重/寫入異常）→ 回退舊邏輯
+                if (deduped.flatten().isEmpty() && item.media.isNotEmpty()) {
+                    return listOf(
+                        com.reater.app.data.remote.MediaDedup.distinctEntities(
+                            item.media.sortedBy { it.position }
+                        )
+                    ) +
+                        List(blocks.size - 1) { emptyList<com.reater.app.data.local.entity.MediaEntity>() }
+                }
+                return deduped
+            }
+        }
+    } catch (_: Exception) {
+        // 落到舊資料相容
+    }
+    // 舊資料相容：全部歸還母文（blocks[0]），子文清空（顯示前先去重，避免已存雙份）
+    val sorted = com.reater.app.data.remote.MediaDedup.distinctEntities(item.media.sortedBy { it.position })
+    return listOf(sorted) + List(blocks.size - 1) { emptyList<com.reater.app.data.local.entity.MediaEntity>() }
+}
+
+/** 是否為舊合併資料（無 chainMedia 映射、卻有多塊 + 有媒體）：需顯示歸位提示 */
+private fun isLegacyMergedMedia(item: ItemDetail, blocks: List<ThreadPostBlock>): Boolean {
+    if (blocks.size <= 1 || item.media.isEmpty()) return false
+    return !item.item.rawJsonMin.contains("chainMedia")
 }
 
 private val AVATAR_PALETTE = listOf(
@@ -178,16 +330,20 @@ fun DetailDialog(
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
-    // 全螢幕媒體檢視器下標（null = 關閉）
+    // 全螢幕媒體檢視器下標（null = 關閉；索引對應「祖先在前、主文在後」的扁平有序，與存檔合併順序一致）
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     // 左上 ... 溢位選單 + 改分類編輯器
     var showOverflow by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
+    // 檢視器数据源：按 position 排序並正規化去重，避免已存雙份在全螢幕左右滑出現重複
+    val viewerSortedMedia = remember(item.media) {
+        com.reater.app.data.remote.MediaDedup.distinctEntities(item.media.sortedBy { it.position })
+    }
 
     if (viewerIndex != null) {
         MediaViewerDialog(
-            media = item.media.map { ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath) },
-            startIndex = viewerIndex ?: 0,
+            media = viewerSortedMedia.map { ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath) },
+            startIndex = (viewerIndex ?: 0).coerceIn(0, maxOf(0, viewerSortedMedia.size - 1)),
             onDismiss = { viewerIndex = null }
         )
     }
@@ -416,18 +572,64 @@ fun DetailDialog(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // 拆解母文、分享主文與留言串文結構
-                val (parentBlock, mainBlock) = remember(item.displayBody, item.item.authorHandle) {
+                // 拆解螺紋鏈：母文 →(中間分享/回覆層)…→ 主文；留言的留言會展開成 N 個區塊
+                val threadChain = remember(item.displayBody, item.item.authorHandle) {
                     parseThreadChain(item.displayBody, item.item.authorHandle)
+                }
+                val mainBlock = threadChain.last()
+                val ancestorBlocks = threadChain.dropLast(1)
+
+                // 各區塊媒體歸屬（圖3/圖4 修正：母文圖歸母文，子文圖歸子文；舊資料自動歸位到母文）
+                val blockMediaLists = remember(item.media, item.item.rawJsonMin, threadChain) {
+                    resolveThreadBlockMedia(item, threadChain)
+                }
+                val mainMediaList = blockMediaLists.lastOrNull().orEmpty()
+                // 全螢幕檢視下標基準統一用 viewerSortedMedia（頂層 Dialog 同源），此處扁平去重供判空
+                val viewerFlatMedia = remember(blockMediaLists) {
+                    com.reater.app.data.remote.MediaDedup.distinctEntities(blockMediaLists.flatten())
+                }
+                val hasAnyBlockMedia = viewerFlatMedia.isNotEmpty()
+                val legacyMoved = remember(item.item.rawJsonMin, threadChain, item.media) {
+                    isLegacyMergedMedia(item, threadChain)
                 }
 
                 val hasComments = item.comments.isNotEmpty()
-                val totalPostBlocks = if (parentBlock != null) 2 else 1
 
-                // 1. 母文區塊（若存在）
-                if (parentBlock != null) {
+                // 舊資料歸位提示（僅留言鏈 + 有媒體 + 無映射時顯示一次）
+                if (legacyMoved) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "此為留言鏈舊存檔，圖片已自動歸位到母文（原誤掛在留言下）。重新儲存可永久修正。",
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // 1. 祖先區塊（母文 + 中間分享/回覆層）：每塊皆向下連線到下一塊
+                ancestorBlocks.forEachIndexed { ai, ancestor ->
+                    val aMedia = blockMediaLists.getOrNull(ai).orEmpty()
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        // 左側軌道：頭像 + 向下垂直螺紋線連到分享主文
+                        // 左側軌道：頭像 + 向下垂直螺紋線連到下一區塊
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.width(42.dp)
@@ -436,22 +638,21 @@ fun DetailDialog(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(getAvatarColor(parentBlock.author)),
+                                    .background(getAvatarColor(ancestor.author)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = parentBlock.author.take(1).uppercase(),
+                                    text = ancestor.author.take(1).uppercase(),
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp
                                 )
                             }
-                            // 垂直貫穿連接線
+                            // 垂直貫穿連接線（祖先塊下方必有下一塊，一律繪製）
                             Box(
                                 modifier = Modifier
                                     .width(2.dp)
-                                    .weight(1f, fill = false)
-                                    .height(if (parentBlock.body.length > 50) 60.dp else 40.dp)
+                                    .height(if (ancestor.body.length > 50) 60.dp else 40.dp)
                                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                             )
                         }
@@ -462,10 +663,14 @@ fun DetailDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "@${parentBlock.author}",
+                                    text = "@${ancestor.author}",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
@@ -473,7 +678,7 @@ fun DetailDialog(
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Text(
-                                        text = "母文",
+                                        text = ancestor.label ?: "分享",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -483,45 +688,69 @@ fun DetailDialog(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             LinkifiedText(
-                                text = parentBlock.body.ifBlank { "（無內文）" },
+                                text = ancestor.body.ifBlank { "（無內文）" },
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // 互動圖示列
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.FavoriteBorder,
-                                        contentDescription = "讚",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Chat,
-                                        contentDescription = "回覆",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Repeat,
-                                        contentDescription = "轉發",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                            // 祖先區塊媒體（母文圖歸母文：銀晝戰績/裝備/排行在此顯示，不再掛到子文下）
+                            if (aMedia.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                aMedia.forEach { am ->
+                                    val aSource = if (am.localPath.isNotBlank() && File(am.localPath).exists()) {
+                                        File(am.localPath)
+                                    } else {
+                                        am.remoteUrl
+                                    }
+                                    val aIsVideo = am.kind.equals("VIDEO", ignoreCase = true)
+                                    // viewer 下標需映射回頂層 viewerSortedMedia（正規化比對，避免多變體 URL 錯位）
+                                    val aKey = com.reater.app.data.remote.MediaDedup.normalizeKey(am.remoteUrl)
+                                    val globalIdx = viewerSortedMedia.indexOfFirst {
+                                        com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == aKey
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(190.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .then(
+                                                if (aIsVideo) Modifier
+                                                else Modifier.clickable {
+                                                    if (globalIdx >= 0) viewerIndex = globalIdx
+                                                }
+                                            )
+                                    ) {
+                                        if (aIsVideo) {
+                                            InlineVideoPlayer(
+                                                remoteUrl = am.remoteUrl,
+                                                localPath = am.localPath,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            AsyncImage(
+                                                model = aSource,
+                                                contentDescription = "母文圖片",
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clickable {
+                                                        if (globalIdx >= 0) viewerIndex = globalIdx
+                                                    },
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
                                 }
                             }
+
+                            // 互動圖示列（Threads 原生四件套，共用模組）
+                            Spacer(modifier = Modifier.height(6.dp))
+                            ThreadsStatsRow(
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -552,8 +781,7 @@ fun DetailDialog(
                             Box(
                                 modifier = Modifier
                                     .width(2.dp)
-                                    .weight(1f, fill = false)
-                                    .height(if (item.media.isNotEmpty()) 120.dp else 40.dp)
+                                    .height(if (mainMediaList.isNotEmpty()) 120.dp else 40.dp)
                                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                             )
                         }
@@ -568,8 +796,28 @@ fun DetailDialog(
                                 text = "@${mainBlock.author}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            // 單一母文塊（無分享分隔的舊資料）：保留「母文」標籤
+                            if (mainBlock.label != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        text = mainBlock.label,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             if (item.item.authorVerified) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
@@ -625,10 +873,14 @@ fun DetailDialog(
                             )
                         }
 
-                        // 貼文媒體預覽
-                        if (item.media.isNotEmpty()) {
+                        // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
+                        if (mainMediaList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            item.media.forEachIndexed { mediaIndex, m ->
+                            mainMediaList.forEach { m ->
+                                val mKey = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
+                                val globalIdx = viewerSortedMedia.indexOfFirst {
+                                    com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == mKey
+                                }
                                 val imageSource = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
                                     File(m.localPath)
                                 } else {
@@ -641,7 +893,14 @@ fun DetailDialog(
                                         .height(190.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .then(if (isVideo) Modifier else Modifier.clickable { viewerIndex = mediaIndex })
+                                        .then(
+                                            if (isVideo) Modifier
+                                            else Modifier.clickable {
+                                                if (globalIdx >= 0) viewerIndex = globalIdx
+                                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
+                                                    .takeIf { it >= 0 }
+                                            }
+                                        )
                                 ) {
                                     if (isVideo) {
                                         InlineVideoPlayer(
@@ -655,7 +914,11 @@ fun DetailDialog(
                                             contentDescription = "Media",
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .clickable { viewerIndex = mediaIndex },
+                                                .clickable {
+                                                    if (globalIdx >= 0) viewerIndex = globalIdx
+                                                    else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
+                                                        .takeIf { it >= 0 }
+                                                },
                                             contentScale = ContentScale.Fit
                                         )
                                     }
@@ -664,7 +927,8 @@ fun DetailDialog(
                             }
                         }
 
-                        if (item.media.isEmpty() && item.item.lastFetchStatus == "PARTIAL") {
+                        if (mainMediaList.isEmpty() && !hasAnyBlockMedia &&
+                            item.item.lastFetchStatus == "PARTIAL") {
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -692,57 +956,14 @@ fun DetailDialog(
                             }
                         }
 
-                        // 貼文互動數據列（讚數、回覆數、轉發數，對齊圖3）
-                        val likeStr = formatCountCompact(item.item.likeCount)
-                        val replyStr = formatCountCompact(item.item.replyCount)
-                        val repostStr = formatCountCompact(item.item.repostCount)
-                        val hasAnyStats = likeStr.isNotBlank() || replyStr.isNotBlank() || repostStr.isNotBlank()
-
-                        if (hasAnyStats) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.FavoriteBorder,
-                                        contentDescription = "讚",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    if (likeStr.isNotBlank()) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(likeStr, fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Chat,
-                                        contentDescription = "回覆",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    if (replyStr.isNotBlank()) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(replyStr, fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Repeat,
-                                        contentDescription = "轉發",
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    if (repostStr.isNotBlank()) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(repostStr, fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                            }
-                        }
+                        // 貼文互動數據列（Threads 原生四件套：愛心/留言/轉發/分享，共用模組；0 則只顯示圖示）
+                        Spacer(modifier = Modifier.height(6.dp))
+                        ThreadsStatsRow(
+                            likeCount = item.item.likeCount,
+                            replyCount = item.item.replyCount,
+                            repostCount = item.item.repostCount,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
                     }
                 }
 
@@ -794,8 +1015,20 @@ fun DetailDialog(
 
                     item.comments.forEachIndexed { index, c ->
                         val isLastComment = (index == item.comments.size - 1)
-                        val commentMedia = FetchedMediaJson.decode(c.mediaJson)
-                        val commentLikes = formatCountCompact(c.likeCount)
+                        // 留言媒體顯示前先正規化去重，避免同圖多變體存成雙份
+                        val commentMedia = remember(c.mediaJson) {
+                            com.reater.app.data.remote.MediaDedup.distinctFetched(
+                                FetchedMediaJson.decode(c.mediaJson)
+                            )
+                        }
+                        // 已存舊資料可能混入顯示名/時間/數字列（DOM 未清洗版），顯示時再洗一次免重抓
+                        val displayCommentText = remember(c.text, c.author) {
+                            runCatching {
+                                com.reater.app.data.remote.threads.ThreadsWebResolver
+                                    .sanitizeDomCommentText(c.text, c.author).text
+                                    .ifBlank { c.text.trim() }
+                            }.getOrDefault(c.text.trim())
+                        }
 
                         Row(modifier = Modifier.fillMaxWidth()) {
                             // 左側頭像 + 連接線
@@ -840,14 +1073,19 @@ fun DetailDialog(
                                     text = "@${c.author}",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 LinkifiedText(
-                                    text = c.text,
+                                    text = displayCommentText,
                                     fontSize = 13.sp,
                                     lineHeight = 19.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
 
                                 // 留言媒體
@@ -893,42 +1131,13 @@ fun DetailDialog(
                                     }
                                 }
 
-                                // 留言讚與回覆圖示列（對齊圖3）
+                                // 留言互動數值列（Threads 原生四件套，共用模組；小一號圖示）
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                ThreadsStatsRow(
+                                    likeCount = c.likeCount,
+                                    iconSize = 15.dp,
                                     modifier = Modifier.padding(vertical = 2.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.FavoriteBorder,
-                                            contentDescription = "讚",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        if (commentLikes.isNotBlank()) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(commentLikes, fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
-                                        }
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.Chat,
-                                            contentDescription = "回覆",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Repeat,
-                                            contentDescription = "轉發",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                    }
-                                }
+                                )
                             }
                         }
                     }

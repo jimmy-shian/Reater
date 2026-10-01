@@ -50,7 +50,13 @@ object ThreadsSjsParser {
         /** 留言（含每則留言自帶的圖/影媒體），上限 50 */
         val comments: List<FetchedComment>,
         /** /share/ 留言鏈的母文（主本身 is_reply==true 時回溯；頂層串文為 null） */
-        val parent: ParentPost? = null
+        val parent: ParentPost? = null,
+        /**
+         * 完整祖先鏈（root → … → 直接父層）。
+         * 「留言的留言」（主回覆 B、B 回覆 A）會回溯出 [A, B]；
+         * 單層回覆時只含 [A]，與 parent 相同；頂層串文為空。
+         */
+        val parentChain: List<ParentPost> = emptyList()
     )
 
     const val MAX_COMMENTS = 50
@@ -131,6 +137,30 @@ object ThreadsSjsParser {
         val mainTpa = main.optJSONObject("text_post_app_info")
         val mainIsReply = mainTpa?.optBoolean("is_reply", false) == true
 
+        // /share/ 可能解析到留言而非主串（實測 BAV_nQgC4O → n.i.c.k.0.3.2.3 的留言，
+        // 但使用者要的是 octopus5201314 的主串「新角拿了MVP」）。
+        // 當主貼本身是留言時，自動回溯根貼文（root post）當主貼，原留言則降為留言。
+        val effectiveMain: JSONObject
+        if (mainIsReply) {
+            val chain = findParentChain(main, allPosts, shortcode)
+            val rootPost = chain.firstOrNull()?.let { root ->
+                allPosts.find { it.optString("code") == root.shortcode }
+            }
+            effectiveMain = rootPost ?: main
+        } else {
+            effectiveMain = main
+        }
+
+        // 用 effectiveMain 重新取作者/時間/內文/媒體（根貼文可能與原留言不同）
+        val effUser = effectiveMain.optJSONObject("user")
+        val effAuthorHandle = effUser?.optString("username").orEmpty().ifBlank { authorHandle }
+        val effAuthorVerified = effUser?.optBoolean("is_verified", false) == true || authorVerified
+        val effAuthorProfileUrl = effUser?.optString("profile_pic_url").orEmpty().ifBlank { authorProfileUrl }
+        val effTakenAtSec = effectiveMain.optLong("taken_at", 0L).let { if (it > 0) it else takenAtSec }
+        val effLikeCount = effectiveMain.optInt("like_count", 0).let { if (it > 0) it else likeCount }
+        val effBody = postText(effectiveMain).ifBlank { body }
+        val effMedia = postMedia(effectiveMain).ifEmpty { media }
+
         // direct_replies 歸屬過濾：頂層串文（is_reply==false）沿用嚴格 root 檢查；
         // 子串分享（主本身 is_reply==true，如 D-JnnrknO/DzVwcgDJw 實測）root 指向最終祖先而非主，
         // 若仍要求 root==主會把 5+3 則子留言全滅 → 此時信任伺服器已限定的 direct_replies 全收，
@@ -141,7 +171,7 @@ object ThreadsSjsParser {
             val root = tpa?.optJSONObject("root_post_author")
                 ?: return@filter true
             // 子串：伺服器已限定範圍，直接放行（後續 resolveReplyAuthor/去重仍會擋空作者）
-            if (mainIsReply) return@filter true
+            if (effectiveMain !== main) return@filter true
             val rootPk = root.optString("pk").ifBlank { root.optString("id") }
             val rootUser = root.optString("username")
             val pkOk = rootPk.isNotBlank() && rootPk == mainAuthorPk
@@ -168,7 +198,7 @@ object ThreadsSjsParser {
             val text = postText(p)
             val pMedia = postMedia(p)
             if (text.isBlank() && pMedia.isEmpty()) continue
-            if (text == body && pMedia.isEmpty()) continue
+            if (text == effBody && pMedia.isEmpty()) continue
             val author = resolveReplyAuthor(p)
             if (author.isBlank()) continue
             val key = author + "||" + text + "||" + (pMedia.firstOrNull()?.remoteUrl ?: "")
@@ -188,12 +218,12 @@ object ThreadsSjsParser {
         // 舊 shape thread_items 回覆（新 shape 已由 direct_replies 收齊，此處僅補舊頁）
         for (p in legacyPosts) {
             if (comments.size >= MAX_COMMENTS) break
-            if (p === main) continue
+            if (p === effectiveMain) continue
             val pCode = p.optString("code")
             if (pCode.isNotBlank() && pCode == shortcode) continue
             val text = postText(p)
             if (text.isBlank()) continue
-            if (text == body) continue
+            if (text == effBody) continue
             // 必須是真正的回覆：text_post_app_info.is_reply==true 或 reply_to_author 非空。
             // 頂層母串（is_reply==false 且無 reply_to）一律排除，否則會把同串前文當留言。
             if (!isTrueReply(p)) continue
@@ -222,11 +252,11 @@ object ThreadsSjsParser {
         if (comments.isEmpty()) {
             for (p in legacyPosts) {
                 if (comments.size >= MAX_COMMENTS) break
-                if (p === main) continue
+                if (p === effectiveMain) continue
                 val pCode = p.optString("code")
                 if (pCode.isNotBlank() && pCode == shortcode) continue
                 val text = postText(p)
-                if (text.isBlank() || text == body) continue
+                if (text.isBlank() || text == effBody) continue
                 val author = resolveReplyAuthor(p)
                 if (author.isBlank()) continue
                 val key = author + "||" + text.length + "||" + text
@@ -248,80 +278,129 @@ object ThreadsSjsParser {
         // 同頁 JSON 內含母文（is_reply==false、作者==主的 reply_to/root、時間早於主）。
         // 例：DdwK5xuk6Uk 的母為 Ddvrtejj15a（下一位勇者+圖片）；
         // Dd1Ry_jlKfT 的母為 Dd0sfd4CCLT（他故意输给...+影片）。
-        val parent = findParentPost(main, allPosts, shortcode)
+        // 「留言的留言」（主回覆 B、B 回覆 A）則沿 reply_to 逐層上溯，得到完整鏈 [A, B]，
+        // 存檔時編碼成多段 --- 分享 @... ---，詳情頁逐塊渲染，不再擠成 3 層亂文。
+        // 注意：若 effectiveMain 已回溯到根貼文，parentChain 應從 effectiveMain 重新計算，
+        // 否則會把根貼文的母文（不存在）或原留言的母文（根貼文自己）錯誤納入。
+        val parentChain = if (effectiveMain !== main) {
+            emptyList()  // 已回溯到根貼文，無母文鏈
+        } else {
+            findParentChain(main, allPosts, shortcode)
+        }
+        val parent = parentChain.firstOrNull()
 
         return SjsResult(
-            bodyText = body,
-            authorHandle = authorHandle,
-            authorDisplayName = authorHandle,
-            authorProfileUrl = authorProfileUrl,
-            authorVerified = authorVerified,
-            postedAtMs = if (takenAtSec > 0) takenAtSec * 1000 else 0L,
-            likeCount = likeCount,
-            media = media,
+            bodyText = effBody,
+            authorHandle = effAuthorHandle,
+            authorDisplayName = effAuthorHandle,
+            authorProfileUrl = effAuthorProfileUrl,
+            authorVerified = effAuthorVerified,
+            postedAtMs = if (effTakenAtSec > 0) effTakenAtSec * 1000 else 0L,
+            likeCount = effLikeCount,
+            media = effMedia,
             comments = comments,
-            parent = parent
+            parent = parent,
+            parentChain = parentChain
         )
     }
 
     /**
-     * 母文回溯：在同頁所有 post 中找最像母文者。
-     * 條件：code!=主、作者==主的 reply_to/root、is_reply==false（頂層）、taken_at 早於主、
-     * 有內文或媒體；取時間最接近主者（直接父層）。
+     * 母文鏈回溯：從主貼沿 reply_to 逐層上溯（root 先、直接父層後）。
+     * 條件：code!=當前、作者命中 reply_to（直接父層，本身可為回覆）或 root（頂層）、
+     * taken_at 早於當前、有內文或媒體；同分取時間最接近當前者（直接父層）。
+     * 上限 5 層，避免髒資料循環拖慢。
      */
-    private fun findParentPost(
+    private fun findParentChain(
         main: JSONObject,
         allPosts: List<JSONObject>,
         shortcode: String
-    ): ParentPost? {
-        val mainTpa = main.optJSONObject("text_post_app_info") ?: return null
-        if (mainTpa.optBoolean("is_reply", false) != true) return null
-        val replyToUser = mainTpa.optJSONObject("reply_to_author")?.optString("username").orEmpty()
-        val rootUser = mainTpa.optJSONObject("root_post_author")?.optString("username").orEmpty()
-        val rootPk = mainTpa.optJSONObject("root_post_author")?.optString("pk")
-            .orEmpty().ifBlank { mainTpa.optJSONObject("root_post_author")?.optString("id").orEmpty() }
-        if (replyToUser.isBlank() && rootUser.isBlank() && rootPk.isBlank()) return null
-        val mainTaken = main.optLong("taken_at", 0L)
+    ): List<ParentPost> {
+        val chain = mutableListOf<ParentPost>()
+        var current = main
+        var currentCode = shortcode
+        val visited = HashSet<String>()
+        visited.add(shortcode)
+        for (depth in 0 until 5) {
+            val parentJson = findDirectParentJson(current, allPosts, currentCode) ?: break
+            val code = parentJson.optString("code")
+            if (code.isBlank() || !visited.add(code)) break
+            chain.add(0, toParentPost(parentJson))
+            current = parentJson
+            currentCode = code
+        }
+        return chain
+    }
+
+    /**
+     * 找當前貼文的直接父層（reply_to 命中優先，含本身是回覆的中間層；
+     * 找不到才退回 root 頂層，維持舊版單層行為）。
+     */
+    private fun findDirectParentJson(
+        current: JSONObject,
+        allPosts: List<JSONObject>,
+        currentCode: String
+    ): JSONObject? {
+        val tpa = current.optJSONObject("text_post_app_info") ?: return null
+        val replyToUser = tpa.optJSONObject("reply_to_author")?.optString("username").orEmpty()
+        val rootUser = tpa.optJSONObject("root_post_author")?.optString("username").orEmpty()
+        var rootPk = tpa.optJSONObject("root_post_author")?.optString("pk").orEmpty()
+        if (rootPk.isBlank()) rootPk = tpa.optJSONObject("root_post_author")?.optString("id").orEmpty()
+        val isReply = tpa.optBoolean("is_reply", false)
+        if (!isReply && replyToUser.isBlank() && rootUser.isBlank() && rootPk.isBlank()) return null
+        val currentTaken = current.optLong("taken_at", 0L)
         var best: JSONObject? = null
-        var bestTaken = 0L
+        var bestScore = -1
+        var bestTaken = -1L
         val seenCode = HashSet<String>()
         for (p in allPosts) {
+            if (p === current) continue
             val code = p.optString("code")
-            if (code.isBlank() || code == shortcode || !seenCode.add(code)) continue
-            if (p === main) continue
-            val pu = p.optJSONObject("user")
-            val pauthor = pu?.optString("username").orEmpty()
-            val ppk = pu?.optString("pk").orEmpty().ifBlank { pu?.optString("id").orEmpty() }
-            val authorMatch = (replyToUser.isNotBlank() && pauthor.equals(replyToUser, ignoreCase = true)) ||
-                (rootUser.isNotBlank() && pauthor.equals(rootUser, ignoreCase = true)) ||
-                (rootPk.isNotBlank() && ppk.isNotBlank() && ppk == rootPk)
-            if (!authorMatch) continue
+            if (code.isBlank() || code == currentCode || !seenCode.add(code)) continue
+            val pu = p.optJSONObject("user") ?: continue
+            val pauthor = pu.optString("username").orEmpty()
+            if (pauthor.isBlank()) continue
+            val ppk = pu.optString("pk").orEmpty().ifBlank { pu.optString("id").orEmpty() }
             val ptpa = p.optJSONObject("text_post_app_info")
-            // 母文應為頂層（is_reply==false 或無 tpa）；子串回覆排除
-            if (ptpa != null && ptpa.optBoolean("is_reply", false)) continue
+            val pIsTop = ptpa == null || !ptpa.optBoolean("is_reply", false)
+            // 歸屬：直接回覆對象（中間層）優先，其次 root 頂層
+            val directHit = replyToUser.isNotBlank() && pauthor.equals(replyToUser, ignoreCase = true)
+            val rootHit = (rootUser.isNotBlank() && pauthor.equals(rootUser, ignoreCase = true)) ||
+                (rootPk.isNotBlank() && ppk.isNotBlank() && ppk == rootPk)
+            if (!directHit && !rootHit) continue
             val ptaken = p.optLong("taken_at", 0L)
-            // 時間須早於主（容差 5 秒），取最接近主者
-            if (mainTaken > 0 && ptaken > 0 && ptaken + 5 >= mainTaken) continue
+            // 時間須早於當前（容差 5 秒）
+            if (currentTaken > 0 && ptaken > 0 && ptaken + 5 >= currentTaken) continue
             val ptext = postText(p)
-            val pmedia = try { postMedia(p) } catch (_: Exception) { emptyList() }
-            if (ptext.isBlank() && pmedia.isEmpty()) continue
-            if (best == null || ptaken > bestTaken) {
+            val hasMedia = try {
+                postMedia(p).isNotEmpty()
+            } catch (_: Exception) {
+                false
+            }
+            if (ptext.isBlank() && !hasMedia) continue
+            var score = if (directHit) 2 else 0
+            if (pIsTop) score += 1
+            if (score > bestScore || (score == bestScore && ptaken > bestTaken)) {
                 best = p
+                bestScore = score
                 bestTaken = ptaken
             }
         }
-        val b = best ?: return null
-        val buser = b.optJSONObject("user")
-        val bcode = b.optString("code")
-        val btext = postText(b)
-        val bmedia = try { postMedia(b) } catch (_: Exception) { emptyList() }
+        return best
+    }
+
+    private fun toParentPost(p: JSONObject): ParentPost {
+        val u = p.optJSONObject("user")
         return ParentPost(
-            shortcode = bcode,
-            authorHandle = buser?.optString("username").orEmpty(),
-            bodyText = btext,
-            likeCount = b.optInt("like_count", 0),
-            postedAtMs = b.optLong("taken_at", 0L).let { if (it > 0) it * 1000 else 0L },
-            media = bmedia
+            shortcode = p.optString("code"),
+            authorHandle = u?.optString("username").orEmpty(),
+            bodyText = postText(p),
+            likeCount = p.optInt("like_count", 0),
+            postedAtMs = p.optLong("taken_at", 0L).let { if (it > 0) it * 1000 else 0L },
+            media = try {
+                postMedia(p)
+            } catch (_: Exception) {
+                emptyList()
+            }
         )
     }
 

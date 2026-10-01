@@ -710,7 +710,45 @@ fun ShareSaveScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Preview downloaded media（多圖橫滑 + 影片/張數徽章，點擊全螢幕檢視）
-                val previewMedia = state.fetchedResult?.media.orEmpty()
+                // 留言鏈存檔：母文圖 + 子文圖合併預覽（與 ThreadPostRepository.combinedMedia 同序：祖先在前），
+                // 否則只看子文 media 會誤以為「留言無圖」或「圖對不上內文」（圖3/圖4 教訓）。
+                val previewMedia = remember(state.fetchedResult) {
+                    val fr = state.fetchedResult
+                    if (fr == null) emptyList()
+                    else com.reater.app.data.remote.MediaDedup.distinctFetched(
+                        (fr.parentChain.flatMap { it.media } + fr.parentMedia) + fr.media
+                    )
+                }
+                // 存到留言鏈（母文存在）時明確提示，避免誤以為存的是主串
+                val isReplyChain = (state.fetchedResult?.parentChain?.isNotEmpty() == true) ||
+                    state.fetchedResult?.parentShortcode?.isNotBlank() == true
+                if (isReplyChain) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "你存的是留言鏈：上方【母文】為原貼（含原圖），下方為該則留言。要存主串請分享主貼文連結。",
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
                 var viewerIndex by remember { mutableStateOf<Int?>(null) }
                 if (viewerIndex != null) {
                     com.reater.app.ui.MediaViewerDialog(

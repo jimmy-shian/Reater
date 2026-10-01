@@ -76,13 +76,13 @@ class SmartCollectionEngine @Inject constructor(
             ),
             SavedCollectionEntity(
                 name = "📚 長期必讀",
-                iconName = "book",
+                iconName = "study",
                 rulesJson = """{"isFavorite":true,"isRead":false}""",
                 sortOrder = 2
             ),
             SavedCollectionEntity(
                 name = "💡 靈感庫",
-                iconName = "lightbulb",
+                iconName = "sparkles",
                 rulesJson = """{"isFavorite":true}""",
                 sortOrder = 3
             )

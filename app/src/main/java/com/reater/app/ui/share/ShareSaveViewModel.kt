@@ -178,7 +178,17 @@ class ShareSaveViewModel @Inject constructor(
                     current.bodyText == current.bodyDraft
                 // 子串分享（母文存在時）：內文預覽同時保留母文 + 分享留言，否則母文會遺失
                 // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧
-                val displayBody = if (merged.parentShortcode.isNotBlank() && merged.parentBodyText.isNotBlank()) {
+                // 「留言的留言」為多層鏈：【母文 @A】a + 分享 @B b + 分享 @主 c（詳情頁逐塊渲染）
+                val displayBody = if (merged.parentChain.isNotEmpty() &&
+                    merged.parentChain.first().shortcode.isNotBlank() &&
+                    merged.parentChain.first().bodyText.isNotBlank()
+                ) {
+                    buildThreadDisplayBody(
+                        merged.parentChain,
+                        merged.authorHandle,
+                        merged.bodyText
+                    )
+                } else if (merged.parentShortcode.isNotBlank() && merged.parentBodyText.isNotBlank()) {
                     "【母文 @${merged.parentAuthorHandle}】${merged.parentBodyText}\n\n--- 分享 @${merged.authorHandle} ---\n${merged.bodyText}"
                 } else {
                     merged.bodyText
@@ -221,6 +231,26 @@ class ShareSaveViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 組裝 N 層螺紋鏈存檔內文：
+     * 【母文 @root】rootBody\n\n--- 分享 @mid ---\nmidBody…\n\n--- 分享 @main ---\nmainBody。
+     * 詳情頁 parseThreadChain 會逐段拆回區塊渲染。
+     */
+    private fun buildThreadDisplayBody(
+        chain: List<com.reater.app.data.remote.threads.ThreadsSjsParser.ParentPost>,
+        mainAuthor: String,
+        mainBody: String
+    ): String {
+        val sb = StringBuilder()
+        val root = chain.first()
+        sb.append("【母文 @${root.authorHandle}】${root.bodyText}")
+        for (mid in chain.drop(1)) {
+            sb.append("\n\n--- 分享 @${mid.authorHandle} ---\n${mid.bodyText}")
+        }
+        sb.append("\n\n--- 分享 @${mainAuthor} ---\n${mainBody}")
+        return sb.toString()
+    }
+
     private fun pickShortcode(current: String, incoming: String): String {
         if (incoming.isBlank()) return current
         val good = !incoming.startsWith("share_") && !incoming.startsWith("sc_")
@@ -228,8 +258,7 @@ class ShareSaveViewModel @Inject constructor(
         return if (good || !currentGood) incoming else current
     }
 
-    private fun pickHandle(current: String, incoming: String): String {
-        val inOk = incoming.isNotBlank() && incoming != "threads_user"
+    private fun pickHandle(current: String, incoming: String): String {        val inOk = incoming.isNotBlank() && incoming != "threads_user"
         val curOk = current.isNotBlank() && current != "threads_user"
         return when {
             inOk && !curOk -> incoming
@@ -283,7 +312,8 @@ class ShareSaveViewModel @Inject constructor(
         val primary = if (a.bodyText.length >= b.bodyText.length) a else b
         val secondary = if (primary === a) b else a
         val body = primary.bodyText.ifBlank { secondary.bodyText }
-        val media = (a.media + b.media).distinctBy { it.remoteUrl }
+        // 同一內容不同清晰度 URL 只留一份，避免詳情頁出現雙份影片/圖片
+        val media = com.reater.app.data.remote.MediaDedup.distinctFetched(a.media + b.media)
         val commentMap = LinkedHashMap<String, com.reater.app.data.remote.FetchedComment>()
         for (c in (a.comments + b.comments)) {
             val key = c.author + "\u0000" + c.text.trim()
@@ -296,14 +326,18 @@ class ShareSaveViewModel @Inject constructor(
         val status = if (a.status == "COMPLETE" || b.status == "COMPLETE") "COMPLETE"
         else if (comments.isNotEmpty() && body.isNotBlank()) "COMPLETE"
         else "PARTIAL"
-        // 母文合併：任一路有母文即保留（子串分享如 D-JnnrknO/DzVwcgDJw），媒體去重聯集
+        // 母文合併：任一路有母文即保留（子串分享如 D-JnnrknO/DzVwcgDJw），媒體去重聯集；
+        // 祖先鏈取較長者（「留言的留言」多層鏈優先保留中間層）
         val parent = when {
             a.parentShortcode.isNotBlank() && b.parentShortcode.isNotBlank() ->
                 if (a.parentBodyText.length >= b.parentBodyText.length) a else b
             a.parentShortcode.isNotBlank() -> a
             else -> b
         }
-        val parentMedia = (a.parentMedia + b.parentMedia).distinctBy { it.remoteUrl }
+        fun chainLen(chain: List<com.reater.app.data.remote.threads.ThreadsSjsParser.ParentPost>) =
+            chain.sumOf { it.bodyText.length }
+        val parentChain = if (chainLen(a.parentChain) >= chainLen(b.parentChain)) a.parentChain else b.parentChain
+        val parentMedia = com.reater.app.data.remote.MediaDedup.distinctFetched(a.parentMedia + b.parentMedia)
         return primary.copy(
             bodyText = body,
             media = media,
@@ -332,7 +366,8 @@ class ShareSaveViewModel @Inject constructor(
             parentLikeCount = maxOf(a.parentLikeCount, b.parentLikeCount),
             parentPostedAt = if (parent.parentPostedAt > 0) parent.parentPostedAt else
                 maxOf(a.parentPostedAt, b.parentPostedAt),
-            parentMedia = parentMedia
+            parentMedia = parentMedia,
+            parentChain = parentChain
         )
     }
 

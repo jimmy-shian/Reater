@@ -3,16 +3,26 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Free 1: Life - Home & Daily -->
+    <!-- Free 1: Life - synced from tools/premium_icons_v2/life.svg -->
     <path
+        android:pathData="M4.5,11 L12,3.8 L19.5,11 L19.5,19 C19.5,19.9 18.8,20.6 17.9,20.6 H6.1 C5.2,20.6 4.5,19.9 4.5,19 Z"
         android:fillColor="#10B981"
-        android:fillAlpha="0.16"
-        android:pathData="M12,3 L21,10.2 V20 C21,20.55 20.55,21 20,21 H4 C3.45,21 3,20.55 3,20 V10.2 Z" />
+        android:fillAlpha="0.16" />
     <path
+        android:pathData="M10.4,20.5 V14.8 C10.4,14.1 10.9,13.6 11.6,13.6 H12.4 C13.1,13.6 13.6,14.1 13.6,14.8 V20.5 Z"
+        android:fillColor="#FBBF24"
+        android:fillAlpha="0.95" />
+    <path
+        android:pathData="M3.5,11 L12,3.6 L20.5,11 M5.8,9.8 V19 C5.8,19.8 6.4,20.5 7.2,20.5 H16.8 C17.6,20.5 18.2,19.8 18.2,19 V9.8 M10.4,20.5 V14.8 C10.4,14.1 10.9,13.6 11.6,13.6 H12.4 C13.1,13.6 13.6,14.1 13.6,14.8 V20.5"
         android:fillColor="#00000000"
-        android:strokeColor="#10B981"
-        android:strokeWidth="1.8"
+        android:strokeColor="#059669"
+        android:strokeWidth="1.7"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M3,10.5 L12,3.5 L21,10.5 M5,9.5 V19.5 C5,20.05 5.45,20.5 6,20.5 H18 C18.55,20.5 19,20.05 19,19.5 V9.5 M9.5,20.5 V14 C9.5,13.45 9.95,13 10.5,13 H13.5 C14.05,13 14.5,13.45 14.5,14 V20.5" />
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M8.2,11.2 H9.6 V12.6 H8.2 Z M14.4,11.2 H15.8 V12.6 H14.4 Z"
+        android:fillColor="#ECFDF5" />
+    <path
+        android:pathData="M12,7.5 C12,7.5 11.3,6.8 10.7,7.2 C10.2,7.5 10.3,8.3 12,9.5 C13.7,8.3 13.8,7.5 13.3,7.2 C12.7,6.8 12,7.5 12,7.5 Z"
+        android:fillColor="#F59E0B" />
 </vector>

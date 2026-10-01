@@ -35,8 +35,8 @@ interface CategoryDao {
     @Query("DELETE FROM categories WHERE id = :id")
     suspend fun deleteCategory(id: Long)
 
-    /** 既有種子分類回填精確圖示（冪等，僅更新仍為舊預設 camel 者） */
-    @Query("UPDATE categories SET avatarIcon = :icon WHERE name = :name AND (avatarIcon IS NULL OR avatarIcon = '' OR avatarIcon = 'camel')")
+    /** 既有種子分類回填精確圖示（冪等，僅更新仍為預設/舊版 id 者；未知 id 由 getDrawableRes fallback 至免費首款） */
+    @Query("UPDATE categories SET avatarIcon = :icon WHERE name = :name AND (avatarIcon IS NULL OR avatarIcon = '' OR avatarIcon = 'life' OR avatarIcon = 'camel' OR avatarIcon = 'book' OR avatarIcon = 'code' OR avatarIcon = 'news' OR avatarIcon = 'media' OR avatarIcon = 'career' OR avatarIcon = 'coffee' OR avatarIcon = 'music' OR avatarIcon = 'camera' OR avatarIcon = 'star' OR avatarIcon = 'heart')")
     suspend fun backfillSeedIcon(name: String, icon: String): Int
 
     /** 產品方向：分類為付費主打，清除全部內建預設分類 */

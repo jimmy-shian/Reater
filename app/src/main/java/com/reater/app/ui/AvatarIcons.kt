@@ -41,26 +41,10 @@ object AvatarIcons {
 
     val ALL: List<AvatarIconItem> = FREE + PRO
 
-    /** 舊版 id 相容對映（已存資料仍可正確顯示） */
-    private val LEGACY_MAP: Map<String, Int> = mapOf(
-        "camel" to R.drawable.ic_avatar_life,
-        "media" to R.drawable.ic_avatar_palette,
-        "career" to R.drawable.ic_avatar_trophy,
-        "news" to R.drawable.ic_avatar_globe,
-        "code" to R.drawable.ic_avatar_tech,
-        "book" to R.drawable.ic_avatar_study,
-        "coffee" to R.drawable.ic_avatar_travel,
-        "music" to R.drawable.ic_avatar_palette,
-        "camera" to R.drawable.ic_avatar_palette,
-        "star" to R.drawable.ic_avatar_sparkles,
-        "heart" to R.drawable.ic_avatar_life
-    )
-
     fun getDrawableRes(id: String?): Int {
-        if (id.isNullOrBlank()) return R.drawable.ic_avatar_life
+        if (id.isNullOrBlank()) return FREE.first().resId
         ALL.firstOrNull { it.id.equals(id, ignoreCase = true) }?.let { return it.resId }
-        LEGACY_MAP[id.lowercase()]?.let { return it }
-        return R.drawable.ic_avatar_life
+        return FREE.first().resId
     }
 
     fun getIconItem(id: String?): AvatarIconItem {

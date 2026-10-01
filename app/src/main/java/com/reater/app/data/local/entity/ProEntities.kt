@@ -12,7 +12,7 @@ data class SavedCollectionEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
-    val iconName: String = "folder",
+    val iconName: String = "life",
     val rulesJson: String, // e.g. {"isRead":false,"minLikes":50}
     val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis()

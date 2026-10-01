@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -309,7 +311,10 @@ fun IconGalleryDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
                                 text = "圖示總覽展示廳",
                                 fontSize = 18.sp,
@@ -317,7 +322,8 @@ fun IconGalleryDialog(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 softWrap = false,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Box(
@@ -332,7 +338,10 @@ fun IconGalleryDialog(
                                     text = if (isPro) "PRO 典藏" else "共 15 款",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isPro) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isPro) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -362,27 +371,29 @@ fun IconGalleryDialog(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
-                // 篩選標籤
+                // 篩選標籤（單行橫滑，避免擠壓下方列表）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilterChip(
                         selected = selectedFilter == 0,
                         onClick = { selectedFilter = 0 },
-                        label = { Text("全部 (${AvatarIcons.ALL.size})") }
+                        label = { Text("全部 (${AvatarIcons.ALL.size})", maxLines = 1, softWrap = false) }
                     )
                     FilterChip(
                         selected = selectedFilter == 1,
                         onClick = { selectedFilter = 1 },
-                        label = { Text("基礎免費 (5)") }
+                        label = { Text("基礎免費 (5)", maxLines = 1, softWrap = false) }
                     )
                     FilterChip(
                         selected = selectedFilter == 2,
                         onClick = { selectedFilter = 2 },
-                        label = { Text("PRO 專屬 (10)") },
+                        label = { Text("PRO 專屬 (10)", maxLines = 1, softWrap = false) },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.AutoAwesome,
@@ -501,7 +512,10 @@ private fun IconGalleryCard(
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         text = item.name,
                         fontWeight = FontWeight.Bold,
@@ -509,7 +523,8 @@ private fun IconGalleryCard(
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     if (item.isPro) {

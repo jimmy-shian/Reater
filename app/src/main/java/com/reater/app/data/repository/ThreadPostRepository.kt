@@ -65,24 +65,56 @@ class ThreadPostRepository @Inject constructor(
     ): Long = database.withWriteTransaction {
         // 子串分享（母文存在時）：免 DB 遷移，把母文前綴進 body、母文媒體排前面合併存檔。
         // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧；媒體 = 母圖 + 子（子無圖則只有母圖）。
+        // 「留言的留言」為多層鏈：【母文 @A】a + 分享 @B b + 分享 @主 c（詳情頁逐塊渲染）。
         val combinedBody: String = if (
             fetchedResult != null &&
-            fetchedResult.parentShortcode.isNotBlank() &&
-            fetchedResult.parentBodyText.isNotBlank()
+            (
+                (fetchedResult.parentChain.isNotEmpty() &&
+                    fetchedResult.parentChain.first().shortcode.isNotBlank() &&
+                    fetchedResult.parentChain.first().bodyText.isNotBlank()) ||
+                    (fetchedResult.parentShortcode.isNotBlank() &&
+                        fetchedResult.parentBodyText.isNotBlank())
+                )
         ) {
             val childBody = fetchedResult.bodyText.ifBlank { bodyText }
             // ViewModel 預覽已合併過則不再重複前綴
             if (childBody.startsWith("【母文 @")) childBody
+            else if (fetchedResult.parentChain.isNotEmpty()) {
+                val sb = StringBuilder()
+                val root = fetchedResult.parentChain.first()
+                sb.append("【母文 @${root.authorHandle}】${root.bodyText}")
+                for (mid in fetchedResult.parentChain.drop(1)) {
+                    sb.append("\n\n--- 分享 @${mid.authorHandle} ---\n${mid.bodyText}")
+                }
+                sb.append("\n\n--- 分享 @${fetchedResult.authorHandle} ---\n$childBody")
+                sb.toString()
+            }
             else "【母文 @${fetchedResult.parentAuthorHandle}】${fetchedResult.parentBodyText}\n\n--- 分享 @${fetchedResult.authorHandle} ---\n$childBody"
         } else {
             fetchedResult?.bodyText?.takeIf { it.isNotBlank() } ?: bodyText
         }
         val combinedMedia = if (
-            fetchedResult != null && fetchedResult.parentMedia.isNotEmpty()
+            fetchedResult != null && (fetchedResult.parentMedia.isNotEmpty() || fetchedResult.parentChain.any { it.media.isNotEmpty() })
         ) {
-            (fetchedResult.parentMedia + fetchedResult.media).distinctBy { it.remoteUrl }
+            // 祖先鏈媒體（root 在前）排前面，免遷移合併存檔；
+            // 同一內容不同清晰度 URL 只留首份，避免雙份影片/圖片
+            val chainMedia = fetchedResult.parentChain.flatMap { it.media }
+            com.reater.app.data.remote.MediaDedup.distinctFetched(
+                (chainMedia + fetchedResult.parentMedia) + fetchedResult.media
+            )
         } else {
             fetchedResult?.media.orEmpty()
+        }
+        // 留言鏈各區塊媒體歸屬（免 DB 遷移，編碼進 rawJsonMin；詳情頁逐塊渲染用）。
+        // 圖3/圖4 錯亂根因：舊版合併後全部掛在子文底下，母文圖（銀晝戰績/裝備/排行）
+        // 全跑到「@1yuunu2 黃色盾牌」留言下。此處記錄 chainMedia/mainMedia 的 remoteUrl，
+        // 詳情頁用 remoteUrl 反查 MediaEntity（取 localPath）逐塊顯示。
+        val resolvedRawJson: String = if (fetchedResult != null &&
+            (fetchedResult.parentChain.isNotEmpty() || fetchedResult.parentMedia.isNotEmpty())
+        ) {
+            buildChainRawJson(fetchedResult)
+        } else {
+            fetchedResult?.rawJsonMin.orEmpty()
         }
         // Upsert ItemEntity
         val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
@@ -99,7 +131,7 @@ class ThreadPostRepository @Inject constructor(
                 likeCount = fetchedResult?.likeCount ?: existing.likeCount,
                 replyCount = fetchedResult?.replyCount ?: existing.replyCount,
                 repostCount = fetchedResult?.repostCount ?: existing.repostCount,
-                rawJsonMin = fetchedResult?.rawJsonMin ?: existing.rawJsonMin,
+                rawJsonMin = resolvedRawJson.ifBlank { existing.rawJsonMin },
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
                 lastFetchAt = System.currentTimeMillis()
@@ -121,7 +153,7 @@ class ThreadPostRepository @Inject constructor(
                 replyCount = fetchedResult?.replyCount ?: 0,
                 repostCount = fetchedResult?.repostCount ?: 0,
                 lastFetchStatus = fetchedResult?.status ?: "COMPLETE",
-                rawJsonMin = fetchedResult?.rawJsonMin.orEmpty()
+                rawJsonMin = resolvedRawJson
             )
             itemDao.insertItem(newItem)
         }
@@ -155,8 +187,7 @@ class ThreadPostRepository @Inject constructor(
         )
         itemDao.insertUserEdit(userEdit)
 
-        // Insert fetched structured comments；若抓取無留言但使用者手貼了留言文字，
-        // 把手貼文字結構化入庫（支援「作者: 內容」或「@作者 內容」開頭，否則作者記為手動筆記），
+        // Insert fetched structured comments；若抓取無留言但使用者手貼了留言文字，        // 把手貼文字結構化入庫（支援「作者: 內容」或「@作者 內容」開頭，否則作者記為手動筆記），
         // 否則「貼上留言」存了卻不顯示、計數也不對。
         val manualComments = if ((fetchedResult == null || fetchedResult.comments.isEmpty()) &&
             commentsText.isNotBlank()
@@ -215,6 +246,46 @@ class ThreadPostRepository @Inject constructor(
         refreshSearchIndex(itemId)
 
         itemId
+    }
+
+    /**
+     * 留言鏈媒體歸屬編碼（免 DB 遷移）：把每層祖先 + 主文各自的 remoteUrl 存進 rawJsonMin。
+     * 詳情頁用 remoteUrl 反查 MediaEntity（取 localPath）逐塊渲染，避免母文圖掛到子文下。
+     */
+    private fun buildChainRawJson(fetched: com.reater.app.data.remote.FetchedPostResult): String {
+        return try {
+            val root = org.json.JSONObject()
+            root.put("code", fetched.shortcode)
+            val chainArr = org.json.JSONArray()
+            for (pp in fetched.parentChain) {
+                val o = org.json.JSONObject()
+                o.put("author", pp.authorHandle)
+                val urls = org.json.JSONArray()
+                for (m in pp.media) urls.put(m.remoteUrl)
+                o.put("media", urls)
+                chainArr.put(o)
+            }
+            // 舊單層 parent（無 chain 時）也保留一層，避免遺失
+            if (chainArr.length() == 0 && fetched.parentMedia.isNotEmpty()) {
+                val o = org.json.JSONObject()
+                o.put("author", fetched.parentAuthorHandle)
+                val urls = org.json.JSONArray()
+                for (m in fetched.parentMedia) urls.put(m.remoteUrl)
+                o.put("media", urls)
+                chainArr.put(o)
+            }
+            root.put("chainMedia", chainArr)
+            val mainArr = org.json.JSONArray()
+            for (m in fetched.media) mainArr.put(m.remoteUrl)
+            root.put("mainMedia", mainArr)
+            // 保留原始 code 供除錯
+            if (fetched.rawJsonMin.isNotBlank() && fetched.rawJsonMin.trimStart().startsWith("{")) {
+                root.put("orig", fetched.rawJsonMin.take(200))
+            }
+            root.toString()
+        } catch (_: Exception) {
+            fetched.rawJsonMin.orEmpty()
+        }
     }
 
     /**

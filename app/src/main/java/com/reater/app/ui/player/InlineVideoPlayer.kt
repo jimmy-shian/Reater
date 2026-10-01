@@ -1,6 +1,7 @@
 package com.reater.app.ui.player
 
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -13,7 +14,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -70,7 +70,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -108,8 +107,8 @@ private object VideoSpeedPrefs {
  * 內嵌式與全螢幕影片播放器（依循 Android 系統規範與 YouTube Mobile 播放器規範設計）
  *
  * 核心規範與設計點：
- * 1. 放大全螢幕時 App 本體鎖直向（見 Manifest），只在播放器內部做「假橫向」：
- *    橫向影片旋轉 90° 填滿高度，直向影片維持填滿，控制層一律維持直式可讀。
+ * 1. 放大全螢幕時以真實轉向切換（Activity.requestedOrientation），直/橫向影片皆自然填滿；
+ *    Manifest 有 configChanges，不會重建 Activity。關閉還原直向。
  * 2. 全螢幕內部提供直橫向切換按鈕，可自由在「直向全螢幕」與「橫向全螢幕」間切換。
  * 3. 安全邊界採 Compose 狀態化 insets（Dialog attach 後自動重算）＋保底值：
  *    頂部貼緊狀態列，底部控制列保證位於系統導覽列之上。
@@ -383,8 +382,10 @@ fun InlineVideoPlayer(
 }
 
 /**
- * 仿 YouTube 全螢幕播放檢視器（App 本體鎖直向，橫向只在播放器內部呈現）
- * - 放大進入時預設嘗試橫向呈現（橫向影片旋轉填滿），可一鍵切回直向
+ * 仿 YouTube 全螢幕播放檢視器（真實轉向版）
+ * - 放大進入時預設切橫向（改 Activity.requestedOrientation），關閉還原直向
+ * - Manifest 已宣告 configChanges，不會重建 Activity，只會重算版面
+ * - 直向 / 橫向影片皆可正常填滿，不再用假旋轉（graphicsLayer）避免裁切與觸控錯位
  * - 底部控制列保證位於系統導覽列之上，完全避開遮擋
  */
 @Composable
@@ -415,13 +416,23 @@ private fun FullscreenVideoViewer(
     var showSpeedMenu by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    // 預設放大轉橫向（仿 YouTube 行為；App 本體不轉向，只在播放器內部呈現橫向）
+    // 預設放大轉橫向（仿 YouTube 行為；真實轉向 Activity）
     var isLandscape by remember { mutableStateOf(true) }
-    // 影片實際方向（onPrepared 回報後才知道；橫向影片才值得旋轉填滿）
-    var videoIsLandscape by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
+
+    // 真實轉向：切換 Activity.requestedOrientation（Manifest 有 configChanges，不會重建）
+    val activity = context as? android.app.Activity
+    LaunchedEffect(isLandscape) {
+        runCatching {
+            activity?.requestedOrientation = if (isLandscape) {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
+    }
 
     // 載入記憶中的倍速設定
     LaunchedEffect(Unit) {
@@ -454,13 +465,16 @@ private fun FullscreenVideoViewer(
         }
     }
 
-    // 退出時釋放播放器（App 本體全程鎖直向，不需還原轉向）
+    // 退出時釋放播放器並還原直向
     DisposableEffect(fullscreenPlayerId) {
         onDispose {
             VideoPlaybackManager.unregister(fullscreenPlayerId)
             vvRef?.stopPlayback()
             vvRef = null
             mediaPlayerRef = null
+            runCatching {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
         }
     }
 
@@ -514,30 +528,21 @@ private fun FullscreenVideoViewer(
     }
 
     // 系統安全邊界：Compose 狀態化 insets（Dialog attach 後自動重算，不是一次性讀取）。
-    // 橫向模式下（手機鎖直向但在全螢幕以直式容器承載旋轉），螢幕底部的手勢條/導覽列特別容易切到按鈕，
-    // 因此橫向時 safeBottom 保底加高到 88dp（或 navBottom + 40dp），直向保底 64dp。
+    // 真實轉向後系統 insets 即為當前方向的正確值，只需通用保底即可。
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val safeTop = maxOf(statusTop + 4.dp, 10.dp)
-    val safeBottom = if (isLandscape) maxOf(navBottom + 40.dp, 88.dp) else maxOf(navBottom + 16.dp, 64.dp)
+    val safeBottom = maxOf(navBottom + 16.dp, 28.dp)
 
     val safeSidePadding = PaddingValues(start = 16.dp, end = 16.dp)
 
-    // 假橫向：只旋轉影片層（橫向影片才轉），控制層維持直式可讀。
-    // App 本體鎖直向（見 Manifest），此處不碰 requestedOrientation。
-    val effectiveRotate = isLandscape && videoIsLandscape
-
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        val screenW = maxWidth
-        val screenH = maxHeight
-
-        // 影片本體：橫向模式且為橫向影片時，容器尺寸對調並旋轉 90° 填滿高度；
-        // 直向影片或直向模式則原樣填滿。控制層一律在外層維持直式。
+        // 影片本體：真實轉向後直接填滿即可，直/橫向影片皆由 VideoView 依比例呈現
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
@@ -553,11 +558,6 @@ private fun FullscreenVideoViewer(
                         duration = mp.duration
                         isPrepared = true
                         isBuffering = false
-                        val vw = mp.videoWidth
-                        val vh = mp.videoHeight
-                        if (vw > 0 && vh > 0) {
-                            videoIsLandscape = vw > vh
-                        }
                         runCatching {
                             if (isMuted) mp.setVolume(0f, 0f) else mp.setVolume(1f, 1f)
                         }
@@ -595,13 +595,7 @@ private fun FullscreenVideoViewer(
                     vvRef = this
                 }
             },
-            modifier = if (effectiveRotate) {
-                Modifier
-                    .size(screenH, screenW)
-                    .graphicsLayer { rotationZ = 90f }
-            } else {
-                Modifier.fillMaxSize()
-            }
+            modifier = Modifier.fillMaxSize()
         )
 
         // 觸控手勢感應層（單擊切換控制列，左/右雙擊快退/快進 10 秒）
@@ -638,12 +632,16 @@ private fun FullscreenVideoViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.42f))
-                    // 消費點擊在操作列/覆蓋層空白處的點擊事件，避免穿透到底層手勢層誤隱藏控制列，並延展自動隱藏時間
+                    // 空白處單擊隱藏控制列（修復：先前此處只設 true，導致點空白關不掉）；
+                    // 雙擊維持快退/快進；按鈕本身會消費事件，不會冒泡到此處
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
-                                controlsVisible = true
-                                lastInteractionTime = System.currentTimeMillis()
+                                controlsVisible = false
+                            },
+                            onDoubleTap = { offset ->
+                                val halfWidth = size.width / 2f
+                                if (offset.x < halfWidth) seekRelative(-10000) else seekRelative(10000)
                             }
                         )
                     }

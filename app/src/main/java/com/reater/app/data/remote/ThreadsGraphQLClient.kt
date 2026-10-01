@@ -74,7 +74,12 @@ data class FetchedPostResult(
     val parentBodyText: String = "",
     val parentLikeCount: Int = 0,
     val parentPostedAt: Long = 0L,
-    val parentMedia: List<FetchedMedia> = emptyList()
+    val parentMedia: List<FetchedMedia> = emptyList(),
+    /**
+     * 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層）。
+     * parent* 單欄位永遠指向鏈首（母文），維持舊語義；多層存檔/預覽請用此鏈組裝。
+     */
+    val parentChain: List<ThreadsSjsParser.ParentPost> = emptyList()
 )
 
 /**
@@ -144,16 +149,20 @@ class ThreadsGraphQLClient @Inject constructor(
                 }
             }
 
-            // 5. 離線媒體下載（主貼 + 母文 + 留言媒體，留言檔名用 500+ 偏移避開主貼索引，母文用 900+）
-            val downloadedMediaList = mediaList.mapIndexed { index, m ->
+            // 5. 離線媒體下載（主貼 + 母文鏈 + 留言媒體，留言檔名用 500+ 偏移避開主貼索引，母文鏈用 900+）
+            // 下載前先正規化去重，避免同內容多變體下載多份造成雙份顯示
+            val dedupedMediaList = MediaDedup.distinctFetched(mediaList)
+            val downloadedMediaList = dedupedMediaList.mapIndexed { index, m ->
                 val localFilePath = mediaDownloader.downloadMedia(m.remoteUrl, extractedShortcode, index)
                 m.copy(localPath = localFilePath)
             }
             val parent = parsed.parent
-            val downloadedParentMedia = parent?.media.orEmpty().mapIndexed { index, m ->
-                val local = mediaDownloader.downloadMedia(m.remoteUrl, parent?.shortcode ?: extractedShortcode, 900 + index)
-                m.copy(localPath = local)
-            }
+            // 祖先鏈媒體：root 在前依序下載（900 + 層*8 + 序），合併時保持鏈序
+            val downloadedChain = downloadParentChainMedia(
+                parsed.parentChain.ifEmpty { listOfNotNull(parent) },
+                extractedShortcode
+            )
+            val downloadedParentMedia = MediaDedup.distinctFetched(downloadedChain.flatMap { it.media })
             val commentsWithMedia = downloadCommentMedia(commentsList, extractedShortcode)
 
             val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
@@ -182,7 +191,8 @@ class ThreadsGraphQLClient @Inject constructor(
                         parentBodyText = parent?.bodyText.orEmpty(),
                         parentLikeCount = parent?.likeCount ?: 0,
                         parentPostedAt = parent?.postedAtMs ?: 0L,
-                        parentMedia = downloadedParentMedia
+                        parentMedia = downloadedParentMedia,
+                        parentChain = downloadedChain
                     )
                 )
             } else {
@@ -209,7 +219,7 @@ class ThreadsGraphQLClient @Inject constructor(
         }
     }
 
-    /** 兩份留言清單合併：key = author + 空白正規化後的文字；後到但帶 media 者勝出 */
+    /** 兩份留言清單合併：key = author + 空白正規化後的文字；帶 media 或讚數更高者勝出 */
     private fun mergeCommentsLists(
         base: List<FetchedComment>,
         extra: List<FetchedComment>
@@ -220,11 +230,47 @@ class ThreadsGraphQLClient @Inject constructor(
             val key = c.author.trim().lowercase() + "\u0000" + norm(c.text).lowercase()
             if (key.isBlank() || key.endsWith("\u0000")) continue
             val prev = map[key]
-            if (prev == null || (prev.media.isEmpty() && c.media.isNotEmpty())) {
-                map[key] = c
+            if (prev == null ||
+                (prev.media.isEmpty() && c.media.isNotEmpty()) ||
+                (c.likeCount > prev.likeCount)
+            ) {
+                // 保留較多資訊者：media 併集 + 較高讚數（同內容多變體只留一份）
+                val merged = if (prev != null && prev.media.isNotEmpty() && c.media.isNotEmpty()) {
+                    c.copy(
+                        media = MediaDedup.distinctFetched(prev.media + c.media),
+                        likeCount = maxOf(prev.likeCount, c.likeCount)
+                    )
+                } else if (prev != null && prev.media.isNotEmpty() && c.media.isEmpty()) {
+                    c.copy(media = prev.media, likeCount = maxOf(prev.likeCount, c.likeCount))
+                } else {
+                    c
+                }
+                map[key] = merged
             }
         }
         return map.values.toList()
+    }
+
+    /**
+     * 祖先鏈媒體離線下載（root 在前依序）。
+     * 檔名索引用 900 + 層*8 + 序，避免與主貼（0..N）/留言（500+）索引衝突。
+     */
+    private suspend fun downloadParentChainMedia(
+        chain: List<ThreadsSjsParser.ParentPost>,
+        fallbackShortcode: String
+    ): List<ThreadsSjsParser.ParentPost> {
+        return chain.mapIndexed { ci, pp ->
+            if (pp.media.isEmpty()) return@mapIndexed pp
+            val updated = pp.media.mapIndexed { j, m ->
+                val local = mediaDownloader.downloadMedia(
+                    m.remoteUrl,
+                    pp.shortcode.ifBlank { fallbackShortcode },
+                    900 + ci * 8 + j
+                )
+                m.copy(localPath = local)
+            }
+            pp.copy(media = updated)
+        }
     }
 
     /**
@@ -279,9 +325,16 @@ class ThreadsGraphQLClient @Inject constructor(
                 null
             }
             // DOM 直抽留言轉換（免登入 WebView 渲染兜底，第一篇為主貼時排除）
+            // 注意：必須保留 d.media，否則留言圖會在 DOM 路徑全丟（舊版只取 author/text）。
             val domFetched = domComments.mapIndexedNotNull { i, d ->
                 if (d.text.isBlank() || d.author.isBlank()) null
-                else FetchedComment(externalId = "dom_c_$i", author = d.author, text = d.text, likeCount = 0)
+                else FetchedComment(
+                    externalId = "dom_c_$i",
+                    author = d.author,
+                    text = d.text,
+                    likeCount = d.likeCount,
+                    media = d.media.take(6)
+                )
             }
             if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
                 val domClean = domFetched.filter { it.text != sjs.bodyText }.take(50)
@@ -292,14 +345,14 @@ class ThreadsGraphQLClient @Inject constructor(
                 } else {
                     domClean
                 }
-            val downloadedMedia = sjs.media.mapIndexed { index, m ->
+            val downloadedMedia = MediaDedup.distinctFetched(sjs.media).mapIndexed { index, m ->
                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
                 m.copy(localPath = local)
             }
-            val downloadedParentMediaWeb = sjs.parent?.media.orEmpty().mapIndexed { index, m ->
-                val local = mediaDownloader.downloadMedia(m.remoteUrl, sjs.parent?.shortcode ?: shortcode, 900 + index)
-                m.copy(localPath = local)
-            }
+            val downloadedParentMediaWeb = downloadParentChainMedia(
+                sjs.parentChain.ifEmpty { listOfNotNull(sjs.parent) },
+                shortcode
+            )
             val commentsWithMedia = downloadCommentMedia(mergedComments, shortcode)
             val handle = sjs.authorHandle.ifBlank { ids.handle.ifBlank { "threads_user" } }
 
@@ -325,7 +378,8 @@ class ThreadsGraphQLClient @Inject constructor(
                     parentBodyText = sjs.parent?.bodyText.orEmpty(),
                     parentLikeCount = sjs.parent?.likeCount ?: 0,
                     parentPostedAt = sjs.parent?.postedAtMs ?: 0L,
-                    parentMedia = downloadedParentMediaWeb
+                    parentMedia = MediaDedup.distinctFetched(downloadedParentMediaWeb.flatMap { it.media }),
+                    parentChain = downloadedParentMediaWeb
                 )
             )
             }
@@ -346,14 +400,14 @@ class ThreadsGraphQLClient @Inject constructor(
                     null
                 }
                 if (fromHtml != null && (fromHtml.bodyText.isNotBlank() || fromHtml.media.isNotEmpty())) {
-                    val downloadedMedia2 = fromHtml.media.mapIndexed { index, m ->
+                    val downloadedMedia2 = MediaDedup.distinctFetched(fromHtml.media).mapIndexed { index, m ->
                         val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
                         m.copy(localPath = local)
                     }
-                    val downloadedParentMedia2 = fromHtml.parent?.media.orEmpty().mapIndexed { index, m ->
-                        val local = mediaDownloader.downloadMedia(m.remoteUrl, fromHtml.parent?.shortcode ?: shortcode, 900 + index)
-                        m.copy(localPath = local)
-                    }
+                    val downloadedParentMedia2 = downloadParentChainMedia(
+                        fromHtml.parentChain.ifEmpty { listOfNotNull(fromHtml.parent) },
+                        shortcode
+                    )
                     val handle2 = fromHtml.authorHandleFromTitle.ifBlank {
                         ids.handle.ifBlank { "threads_user" }
                     }
@@ -379,7 +433,8 @@ class ThreadsGraphQLClient @Inject constructor(
                             parentBodyText = fromHtml.parent?.bodyText.orEmpty(),
                             parentLikeCount = fromHtml.parent?.likeCount ?: 0,
                             parentPostedAt = fromHtml.parent?.postedAtMs ?: 0L,
-                            parentMedia = downloadedParentMedia2
+                            parentMedia = MediaDedup.distinctFetched(downloadedParentMedia2.flatMap { it.media }),
+                            parentChain = downloadedParentMedia2
                         )
                     )
                 }

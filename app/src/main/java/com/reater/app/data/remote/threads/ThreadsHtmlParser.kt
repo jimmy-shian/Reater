@@ -32,7 +32,9 @@ object ThreadsHtmlParser {
         /** 是否命中 SJS 精確解析（短碼匹配成功） */
         val fromSjs: Boolean,
         /** /share/ 留言鏈母文（SJS 回溯；頂層串文為 null） */
-        val parent: ThreadsSjsParser.ParentPost? = null
+        val parent: ThreadsSjsParser.ParentPost? = null,
+        /** 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層） */
+        val parentChain: List<ThreadsSjsParser.ParentPost> = emptyList()
     )
 
     fun parse(html: String, shortcode: String): ParsedPage {
@@ -62,7 +64,8 @@ object ThreadsHtmlParser {
                 media = sjs.media,
                 comments = sjs.comments,
                 fromSjs = true,
-                parent = sjs.parent
+                parent = sjs.parent,
+                parentChain = sjs.parentChain
             )
         }
         // SJS 有命中但主貼文無內文無媒體（如純轉發）：仍沿用其留言/作者
@@ -240,14 +243,21 @@ object ThreadsHtmlParser {
     }
 
     private fun parseEmbeddedMedia(html: String, shortcode: String): List<FetchedMedia> {
-        val out = linkedMapOf<String, FetchedMedia>()
+        val videos = linkedMapOf<String, FetchedMedia>()
+        val images = linkedMapOf<String, FetchedMedia>()
 
-        fun add(url: String, kind: String) {
+        fun addTo(
+            target: MutableMap<String, FetchedMedia>,
+            url: String,
+            kind: String
+        ) {
             val clean = unescapeJsonString(url).trim()
             if (clean.isBlank() || !clean.startsWith("http")) return
             if (isJunkMediaUrl(clean)) return
-            if (out.containsKey(clean)) return
-            out[clean] = FetchedMedia(kind = kind, remoteUrl = clean)
+            // 同一內容多變體（多解析度/多碼率）只留首個：以正規化 key 去重
+            val key = com.reater.app.data.remote.MediaDedup.normalizeKey(clean)
+            if (key.isBlank() || target.containsKey(key)) return
+            target[key] = FetchedMedia(kind = kind, remoteUrl = clean)
         }
 
         // 限縮範圍：shortcode 附近 ±40KB（避免抓到全頁頭像/廣告圖）
@@ -262,22 +272,38 @@ object ThreadsHtmlParser {
             }
         }
 
-        // image_versions2 candidates[].url
+        // 影片優先（單一影片有多碼率變體，只取每塊首個；海報圖 image_versions2 不另存，
+        // 否則單一影片會存成「海報圖 + 影片」或「多碼率多份」的雙份媒體）
+        Regex(""""video_versions"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(scope).forEach { block ->
+                Regex(""""url"\s*:\s*"((?:\\.|[^"\\])*)"""")
+                    .find(block.groupValues[1])
+                    ?.let { m -> addTo(videos, m.groupValues[1], "VIDEO") }
+            }
+        Regex(""""(?:video_url|playable_url)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+            .findAll(scope).forEach { m -> addTo(videos, m.groupValues[1], "VIDEO") }
+        if (videos.isNotEmpty()) return videos.values.take(6)
+
+        // 圖片：每個 image_versions2 只取首個（最大解析度），
+        // 同一張圖多解析度不再存成多份；輪播多圖則每塊各取一張（每塊 = 一張輪播圖）
+        Regex(""""image_versions2"\s*:\s*\{[^}]*?"candidates"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(scope).forEach { block ->
+                Regex(""""url"\s*:\s*"((?:\\.|[^"\\])*)"""")
+                    .find(block.groupValues[1])
+                    ?.let { m -> addTo(images, m.groupValues[1], "IMAGE") }
+            }
+        if (images.isNotEmpty()) return images.values.take(6)
+
+        // 後備：CDN 直連（同內容多變體只留首個）
         Regex(""""url"\s*:\s*"(https://[^"]*?(?:cdninstagram|fbcdn|scontent)[^"]*)"""")
             .findAll(scope).forEach { m ->
                 val url = m.groupValues[1]
-                if (url.contains(".mp4", ignoreCase = true)) add(url, "VIDEO") else add(url, "IMAGE")
+                if (url.contains(".mp4", ignoreCase = true)) addTo(videos, url, "VIDEO")
+                else addTo(images, url, "IMAGE")
             }
-        // video_versions[].url / video_url / playable_url
-        Regex(""""(?:video_url|playable_url)"\s*:\s*"((?:\\.|[^"\\])*)"""")
-            .findAll(scope).forEach { m -> add(m.groupValues[1], "VIDEO") }
-        Regex(""""video_versions"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
-            .findAll(scope).forEach { block ->
-                Regex(""""url"\s*:\s*"((?:\\.|[^"\\])*)"""").findAll(block.groupValues[1])
-                    .forEach { m -> add(m.groupValues[1], "VIDEO") }
-            }
+        if (videos.isNotEmpty()) return videos.values.take(6)
 
-        return out.values.take(6)
+        return images.values.take(6)
     }
 
     private fun isJunkMediaUrl(url: String): Boolean {
@@ -313,7 +339,9 @@ object ThreadsHtmlParser {
         fun add(url: String, kind: String) {
             val u = url.trim()
             if (u.isBlank() || !u.startsWith("http") || isJunkMediaUrl(u)) return
-            out.putIfAbsent(u, FetchedMedia(kind = kind, remoteUrl = u))
+            val key = com.reater.app.data.remote.MediaDedup.normalizeKey(u)
+            if (key.isBlank()) return
+            out.putIfAbsent(key, FetchedMedia(kind = kind, remoteUrl = u))
         }
         extractAllMetaContents(html, "og:image").forEach { add(it, "IMAGE") }
         extractAllMetaContents(html, "og:image:secure_url").forEach { add(it, "IMAGE") }
@@ -328,14 +356,9 @@ object ThreadsHtmlParser {
         ogMedia: List<FetchedMedia>,
         embeddedMedia: List<FetchedMedia>
     ): List<FetchedMedia> {
-        // 內嵌 JSON 優先（多圖/影片最準），og 當補充；去重後最多 6 個
-        val merged = linkedMapOf<String, FetchedMedia>()
-        (embeddedMedia + ogMedia).forEach { m ->
-            if (m.remoteUrl.isNotBlank() && !merged.containsKey(m.remoteUrl)) {
-                merged[m.remoteUrl] = m
-            }
-        }
-        return merged.values.take(6)
+        // 內嵌 JSON 優先（多圖/影片最準），og 當補充；
+        // 同一內容不同清晰度 URL 只留首個，避免雙份媒體
+        return com.reater.app.data.remote.MediaDedup.distinctFetched(embeddedMedia + ogMedia).take(6)
     }
 
     /**
@@ -345,21 +368,26 @@ object ThreadsHtmlParser {
      */
     fun scanCdnMedia(html: String): List<FetchedMedia> {
         val out = linkedMapOf<String, FetchedMedia>()
+        fun putMedia(url: String, kind: String) {
+            if (isJunkMediaUrl(url)) return
+            val key = com.reater.app.data.remote.MediaDedup.normalizeKey(url)
+            if (key.isBlank() || out.containsKey(key)) return
+            out[key] = FetchedMedia(kind = kind, remoteUrl = url)
+        }
         // 帶副檔名的直連（最可信）
         Regex("""https://[A-Za-z0-9.-]*scontent[A-Za-z0-9.-]*[^"'\\\s]*?\.(?:jpg|jpeg|png|webp|gif|mp4)(?:\?[^"'\\\s]*)?""",
             RegexOption.IGNORE_CASE)
             .findAll(html).forEach { m ->
                 val url = m.value
-                if (isJunkMediaUrl(url) || out.containsKey(url)) return@forEach
                 val kind = if (url.contains(".mp4", ignoreCase = true)) "VIDEO" else "IMAGE"
-                out[url] = FetchedMedia(kind = kind, remoteUrl = url)
+                putMedia(url, kind)
             }
         // 無副檔名的 CDN 連結（Meta CDN 常不帶副檔名，用參數區分）
         if (out.isEmpty()) {
             Regex("""https://[A-Za-z0-9.-]*scontent[A-Za-z0-9.-]*/[^"'\\\s]{16,}""")
                 .findAll(html).forEach { m ->
                     var url = m.value.trimEnd('.', ',', ';', ')', '\\')
-                    if (url.length < 40 || isJunkMediaUrl(url) || out.containsKey(url)) return@forEach
+                    if (url.length < 40 || isJunkMediaUrl(url)) return@forEach
                     // 靜態資源一律排除
                     if (url.contains("static.cdninstagram", ignoreCase = true)) return@forEach
                     if (url.contains("rsrc.php", ignoreCase = true)) return@forEach
@@ -368,7 +396,7 @@ object ThreadsHtmlParser {
                         url.contains("video", ignoreCase = true) -> "VIDEO"
                         else -> "IMAGE"
                     }
-                    out[url] = FetchedMedia(kind = kind, remoteUrl = url)
+                    putMedia(url, kind)
                 }
         }
         return out.values.take(6)

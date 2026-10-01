@@ -3,19 +3,34 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Pro 6: Compass - Sky Cyan -->
+    <!-- Pro 6: Compass - synced from tools/premium_icons_v2/compass.svg -->
     <path
-        android:fillColor="#0EA5E9"
-        android:fillAlpha="0.18"
-        android:pathData="M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z" />
+        android:pathData="M12,2.5 C6.8,2.5 2.5,6.8 2.5,12 C2.5,17.2 6.8,21.5 12,21.5 C17.2,21.5 21.5,17.2 21.5,12 C21.5,6.8 17.2,2.5 12,2.5 Z"
+        android:fillColor="#0EA5E9" />
     <path
+        android:pathData="M12,4.5 C7.9,4.5 4.5,7.9 4.5,12 C4.5,16.1 7.9,19.5 12,19.5 C16.1,19.5 19.5,16.1 19.5,12 C19.5,7.9 16.1,4.5 12,4.5 Z"
+        android:fillColor="#E0F2FE" />
+    <path
+        android:pathData="M14.8,9.2 L12,12 L11.2,11 Z"
+        android:fillColor="#EF4444" />
+    <path
+        android:pathData="M9.2,14.8 L12,12 L12.8,13 Z"
+        android:fillColor="#1E3A8A" />
+    <path
+        android:pathData="M12,2.8 C6.9,2.8 2.8,6.9 2.8,12 C2.8,17.1 6.9,21.2 12,21.2 C17.1,21.2 21.2,17.1 21.2,12 C21.2,6.9 17.1,2.8 12,2.8 Z M14.8,9.2 L11.2,11 L9.2,14.8 L12.8,13 Z"
         android:fillColor="#00000000"
-        android:strokeColor="#0EA5E9"
-        android:strokeWidth="1.8"
+        android:strokeColor="#075985"
+        android:strokeWidth="1.6"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,2.5 C6.75,2.5 2.5,6.75 2.5,12 C2.5,17.25 6.75,21.5 12,21.5 C17.25,21.5 21.5,17.25 21.5,12 C21.5,6.75 17.25,2.5 12,2.5 Z M14.5,9.5 L10.5,10.5 L9.5,14.5 L13.5,13.5 Z M12,4 V6 M12,18 V20 M4,12 H6 M18,12 H20" />
+        android:strokeLineJoin="round" />
     <path
-        android:fillColor="#0EA5E9"
-        android:pathData="M12,12 L14.5,9.5 L10.5,10.5 Z" />
+        android:pathData="M12,11.1 L12.9,12 L12,12.9 L11.1,12 Z"
+        android:fillColor="#FBBF24"
+        android:strokeColor="#92400E"
+        android:strokeWidth="0.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M12,5.2 L12.3,6 L13.1,6.3 L12.3,6.6 L12,7.4 L11.7,6.6 L10.9,6.3 L11.7,6 Z M5.5,12 H7 M17,12 H18.5 M12,17 V18.5"
+        android:fillColor="#FBBF24" />
 </vector>

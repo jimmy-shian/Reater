@@ -84,7 +84,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_3_4: Migration = Migration(3, 4) { connection ->
             connection.execSql("ALTER TABLE `items` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
             connection.execSql("ALTER TABLE `items` ADD COLUMN `deletedAt` INTEGER DEFAULT NULL")
-            connection.execSql("ALTER TABLE `categories` ADD COLUMN `avatarIcon` TEXT NOT NULL DEFAULT 'camel'")
+            connection.execSql("ALTER TABLE `categories` ADD COLUMN `avatarIcon` TEXT NOT NULL DEFAULT 'life'")
         }
 
         val MIGRATION_4_5: Migration = Migration(4, 5) { connection ->

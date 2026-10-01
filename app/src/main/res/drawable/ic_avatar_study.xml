@@ -3,16 +3,33 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Free 3: Study - Book & Knowledge -->
+    <!-- Free 3: Study - synced from tools/premium_icons_v2/study.svg -->
     <path
+        android:pathData="M12,5.5 C9.5,3.8 6.3,3.5 3,4.5 V18.5 C6.3,17.5 9.5,17.8 12,19.5 C14.5,17.8 17.7,17.5 21,18.5 V4.5 C17.7,3.5 14.5,3.8 12,5.5 Z"
         android:fillColor="#6366F1"
-        android:fillAlpha="0.15"
-        android:pathData="M4,19.5 C4,18.12 5.12,17 6.5,17 H20 V4 H6.5 C5.12,4 4,5.12 4,6.5 Z" />
+        android:fillAlpha="0.15" />
     <path
+        android:pathData="M15.5,3.6 H17.8 V9 L16.65,7.8 L15.5,9 Z"
+        android:fillColor="#FBBF24" />
+    <path
+        android:pathData="M12,5.5 C9.3,3.7 6,3.5 2.8,4.6 V18.4 C6,17.3 9.3,17.5 12,19.3 C14.7,17.5 18,17.3 21.2,18.4 V4.6 C18,3.5 14.7,3.7 12,5.5 Z M12,5.5 V19.3"
         android:fillColor="#00000000"
-        android:strokeColor="#6366F1"
-        android:strokeWidth="1.8"
+        android:strokeColor="#4F46E5"
+        android:strokeWidth="1.7"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M4,19.5 C4,18.12 5.12,17 6.5,17 H20 M4,19.5 C4,20.88 5.12,22 6.5,22 H20 V4 H6.5 C5.12,4 4,5.12 4,6.5 V19.5 Z M8,8 H16 M8,12 H14" />
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M6.5,8.5 H11 M6.5,11.8 H11"
+        android:fillColor="#00000000"
+        android:strokeColor="#A5B4FC"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M13.5,12.5 H14.8 M18.2,12.5 H18.8"
+        android:fillColor="#00000000"
+        android:strokeColor="#F472B6"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>
