@@ -31,6 +31,8 @@ object ThreadsHtmlParser {
         val comments: List<FetchedComment>,
         /** 是否命中 SJS 精確解析（短碼匹配成功） */
         val fromSjs: Boolean,
+        /** Threads 主題標籤（SJS 直取；非 SJS 路徑退取內文首個 hashtag） */
+        val topicTag: String = "",
         /** /share/ 留言鏈母文（SJS 回溯；頂層串文為 null） */
         val parent: ThreadsSjsParser.ParentPost? = null,
         /** 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層） */
@@ -65,7 +67,8 @@ object ThreadsHtmlParser {
                 comments = sjs.comments,
                 fromSjs = true,
                 parent = sjs.parent,
-                parentChain = sjs.parentChain
+                parentChain = sjs.parentChain,
+                topicTag = sjs.topicTag
             )
         }
         // SJS 有命中但主貼文無內文無媒體（如純轉發）：仍沿用其留言/作者
@@ -103,6 +106,7 @@ object ThreadsHtmlParser {
             parseCaptionCommentsFallback(html, body)
         }
 
+        val topic = TopicTags.firstHashtag(body)
         return ParsedPage(
             bodyText = body.trim(),
             authorDisplayName = displayName.trim(),
@@ -113,7 +117,8 @@ object ThreadsHtmlParser {
             likeCount = 0,
             media = media,
             comments = comments,
-            fromSjs = false
+            fromSjs = false,
+            topicTag = topic
         )
     }
 

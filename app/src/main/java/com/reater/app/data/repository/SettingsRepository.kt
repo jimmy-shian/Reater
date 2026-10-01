@@ -32,6 +32,14 @@ class SettingsRepository @Inject constructor(
     private val KEY_AUTO_FETCH_ENABLED = booleanPreferencesKey("auto_fetch_enabled")
     private val KEY_AI_CONSENT = booleanPreferencesKey("ai_transmission_consent")
     private val KEY_PRO_UNLOCKED = booleanPreferencesKey("pro_unlocked")
+    // Pro 雙軌授權：Play 購買與離線啟用碼各自獨立，isPro = 任一為 true。
+    // 舊版只有單一 pro_unlocked，每次 Play 對帳無購買就會寫 false 蓋掉啟用碼，
+    // 造成「更新/重開 App 就掉 Pro」。新版 Play 只寫自己的旗標，不再清啟用碼。
+    // KEY_PRO_UNLOCKED 保留為 legacy 遷移用（舊已解鎖用戶直接沿用）。
+    private val KEY_PRO_PLAY = booleanPreferencesKey("pro_play_owned")
+    private val KEY_PRO_LICENSED = booleanPreferencesKey("pro_licensed")
+    private val KEY_PRO_EMAIL = stringPreferencesKey("pro_license_email")
+    private val KEY_PRO_CODE = stringPreferencesKey("pro_license_code")
     // 外觀
     private val KEY_THEME_MODE = stringPreferencesKey("theme_mode") // system / light / dark
     private val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
@@ -72,7 +80,14 @@ class SettingsRepository @Inject constructor(
     }
 
     val isProUnlocked: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[KEY_PRO_UNLOCKED] ?: false
+        (prefs[KEY_PRO_PLAY] ?: false) ||
+            (prefs[KEY_PRO_LICENSED] ?: false) ||
+            (prefs[KEY_PRO_UNLOCKED] ?: false)
+    }
+
+    /** 啟用碼綁定的 Email（供 Deep Link / 除錯顯示，不影響驗證）。 */
+    val proLicenseEmail: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_PRO_EMAIL]
     }
 
     val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
@@ -177,7 +192,23 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun setProEntitlementFromPlay(owned: Boolean) {
-        context.dataStore.edit { it[KEY_PRO_UNLOCKED] = owned }
+        context.dataStore.edit { it[KEY_PRO_PLAY] = owned }
+    }
+
+    /**
+     * 舊版遷移：pro_unlocked=true 但新旗標皆 false（啟用碼用戶升級上來），
+     * 補寫 pro_licensed=true，避免未來移除 legacy key 時掉授權。
+     * App 啟動時呼叫一次即可。
+     */
+    suspend fun migrateLegacyProIfNeeded() {
+        context.dataStore.edit { prefs ->
+            val legacy = prefs[KEY_PRO_UNLOCKED] ?: false
+            val play = prefs[KEY_PRO_PLAY] ?: false
+            val licensed = prefs[KEY_PRO_LICENSED] ?: false
+            if (legacy && !play && !licensed) {
+                prefs[KEY_PRO_LICENSED] = true
+            }
+        }
     }
 
     suspend fun setThemeMode(mode: String) {
@@ -216,7 +247,14 @@ class SettingsRepository @Inject constructor(
 
     suspend fun unlockProWithPasscode(code: String, email: String = ""): Boolean {
         if (verifyPasscode(code, email)) {
-            setProEntitlementFromPlay(true)
+            val mail = LicenseVerifier.canonicalizeEmail(email)
+            val normalized = LicenseVerifier.normalize(code)
+            context.dataStore.edit { prefs ->
+                prefs[KEY_PRO_LICENSED] = true
+                prefs[KEY_PRO_UNLOCKED] = true // legacy 相容：舊版讀此 key 的裝置也認得
+                if (mail != null) prefs[KEY_PRO_EMAIL] = mail
+                if (normalized.isNotBlank()) prefs[KEY_PRO_CODE] = normalized
+            }
             return true
         }
         return false

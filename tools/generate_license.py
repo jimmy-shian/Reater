@@ -20,6 +20,7 @@ import re
 import hmac
 import hashlib
 import secrets
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -135,6 +136,38 @@ def obfuscated_patch(secret: bytes) -> str:
     return "\n".join(lines)
 
 
+def make_pro_links(email: str, key: str) -> tuple[str, str]:
+    """一鍵開通連結：點了就開 App 自動解鎖（需 App 已安裝新版）。
+
+    reater:// 主連結（Android 直接開 App）；https 備用（部分信箱只把 https 變可點，
+    點後經由「用 Reater 開啟」進 App）。query 與 MainActivity.parseProUnlock 對應。
+    """
+    mail = canonicalize_email(email)
+    q = urllib.parse.urlencode({"email": mail, "code": key.strip()})
+    return (f"reater://pro-unlock?{q}", f"https://reater.app/pro-unlock?{q}")
+
+
+def email_template(email: str, key: str) -> str:
+    """寄信直接貼：主旨 + 內文（含一鍵開通連結與手動備案）。"""
+    mail = canonicalize_email(email)
+    app_link, web_link = make_pro_links(mail, key)
+    return (
+        f"主旨:Reater Pro 啟用碼\n"
+        f"\n"
+        f"您好，您的 Reater Pro 啟用資訊如下：\n"
+        f"Email:{mail}\n"
+        f"啟用碼:{key}\n"
+        f"\n"
+        f"★ 一鍵開通（手機點此連結即開 App 自動解鎖）:\n"
+        f"{app_link}\n"
+        f"\n"
+        f"備用連結（若上列點不開，請複製到瀏覽器選「用 Reater 開啟」）:\n"
+        f"{web_link}\n"
+        f"\n"
+        f"手動開通備案：開啟 Reater → 右上頭像 → 輸入 Email + 啟用碼 → 驗證並啟用。\n"
+    )
+
+
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if "--rotate" in sys.argv:
@@ -181,7 +214,13 @@ if __name__ == "__main__":
             serial = key.replace("-", "")[3:7]
             if not no_log:
                 append_ledger(canonicalize_email(email), key, serial)
+            app_link, web_link = make_pro_links(email, key)
             print(f"   啟用碼:   {key}  (自驗: {'OK' if ok else 'FAIL'})")
+            print(f"   一鍵開通: {app_link}")
+            print(f"   備用連結: {web_link}")
+        print("   ---- 寄信範本（直接複製貼上） ----")
+        # 範本只取帳本最後一筆（本次最後一組），多組請逐組複製上列連結
+        print(email_template(email, key))
     except ValueError as e:
         print(f"   錯誤: {e}")
         sys.exit(1)

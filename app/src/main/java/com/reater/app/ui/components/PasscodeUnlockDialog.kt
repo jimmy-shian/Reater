@@ -56,7 +56,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun PasscodeUnlockDialog(
     viewModel: MainViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialEmail: String = "",
+    initialCode: String = ""
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -64,8 +66,8 @@ fun PasscodeUnlockDialog(
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
 
-    var passcode by remember { mutableStateOf("") }
-    var emailInput by remember { mutableStateOf("") }
+    var passcode by remember(initialCode) { mutableStateOf(initialCode) }
+    var emailInput by remember(initialEmail) { mutableStateOf(initialEmail) }
     var isVerifying by remember { mutableStateOf(false) }
 
     val unlockScrollState = rememberScrollState()

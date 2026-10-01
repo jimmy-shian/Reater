@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <exclude domain="file" path="datastore/reater_settings.preferences_pb" />
+    <!-- reater_settings 必須備份：內含 Pro 雙旗標與個人頭像，更新/換機才不會掉授權。
+         API Key 雖同檔但是 Tink 加密，且解密用的 reater_key_prefs 不備份，
+         還原後舊 Key 解不開會直接視為空，不會有外洩風險。 -->
     <exclude domain="sharedpref" path="reater_key_prefs.xml" />
 </full-backup-content>

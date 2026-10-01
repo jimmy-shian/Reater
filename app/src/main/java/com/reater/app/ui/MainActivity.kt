@@ -153,8 +153,41 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pro 一鍵開通 Deep Link：冷啟動時先收下，Compose 端 LaunchedEffect 會自動驗證解鎖
+        parseProUnlock(intent?.data)?.let { proDeepLinkFlow.value = it }
         setContent {
             MainThemedScreen()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTask 熱啟動（App 已在前景）：同樣丟進 Flow，Compose 端會接著處理
+        parseProUnlock(intent.data)?.let { proDeepLinkFlow.value = it }
+    }
+
+    data class ProUnlockDeepLink(val email: String, val code: String)
+
+    companion object {
+        /** 待處理的一鍵開通連結（冷/熱啟動共用，Compose 消費後清 null）。 */
+        val proDeepLinkFlow = MutableStateFlow<ProUnlockDeepLink?>(null)
+
+        /**
+         * 解析 reater://pro-unlock?email=..&code=..（code 也接受 key 別名）
+         * 與 https://reater.app/pro-unlock?email=..&code=.. 備用格式。
+         */
+        fun parseProUnlock(uri: Uri?): ProUnlockDeepLink? {
+            if (uri == null) return null
+            val scheme = uri.scheme?.lowercase() ?: return null
+            val isCustom = scheme == "reater" && uri.host?.lowercase() == "pro-unlock"
+            val isHttps = scheme == "https" && uri.host?.lowercase() == "reater.app" &&
+                (uri.path?.startsWith("/pro-unlock") == true)
+            if (!isCustom && !isHttps) return null
+            val email = uri.getQueryParameter("email")?.trim().orEmpty()
+            val code = (uri.getQueryParameter("code") ?: uri.getQueryParameter("key"))?.trim().orEmpty()
+            if (email.isBlank() || code.isBlank()) return null
+            return ProUnlockDeepLink(email = email, code = code)
         }
     }
 }
@@ -340,6 +373,34 @@ class MainViewModel @Inject constructor(
 
     fun setShowProLimitNotice(show: Boolean) {
         _showProLimitNotice.value = show
+    }
+
+    // 分類編輯狀態：null = 未開啟編輯；非 null = 正在編輯該分類
+    private val _editingCategory = MutableStateFlow<CategoryEntity?>(null)
+    val editingCategory: StateFlow<CategoryEntity?> = _editingCategory
+
+    fun setEditingCategory(category: CategoryEntity?) {
+        _editingCategory.value = category
+    }
+
+    fun renameCategory(id: Long, name: String, avatarIcon: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            categoryDao.updateCategoryMeta(id, name.trim(), avatarIcon.ifBlank { "life" })
+            _editingCategory.value = null
+        }
+    }
+
+    fun deleteCategory(id: Long) {
+        viewModelScope.launch {
+            val target = categories.value.firstOrNull { it.id == id } ?: return@launch
+            // 內建分類不可刪除：僅允許重新命名/換圖
+            if (target.isDefault) return@launch
+            categoryDao.deleteCategory(id)
+            categoryDao.nullOutDanglingCategoryRefs()
+            if (_proCategoryFilter.value == id) _proCategoryFilter.value = null
+            _editingCategory.value = null
+        }
     }
 
     fun createCategory(name: String, avatarIcon: String) {
@@ -630,6 +691,26 @@ fun MainScreen(
     var showUnlockDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<ItemDetail?>(null) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
+    // Deep Link 帶入的預填值（一鍵開通失敗時讓用戶直接按驗證重試）
+    var unlockPrefillEmail by remember { mutableStateOf("") }
+    var unlockPrefillCode by remember { mutableStateOf("") }
+
+    // Pro 一鍵開通：reater://pro-unlock?email=..&code=.. 點開即自動驗證解鎖
+    val deepLink by MainActivity.proDeepLinkFlow.collectAsState()
+    LaunchedEffect(deepLink) {
+        val pending = deepLink ?: return@LaunchedEffect
+        MainActivity.proDeepLinkFlow.value = null
+        unlockPrefillEmail = pending.email
+        unlockPrefillCode = pending.code
+        val success = viewModel.unlockWithPasscode(pending.code, pending.email)
+        Toast.makeText(
+            context,
+            if (success) "Reater Pro 已成功解鎖！"
+            else "一鍵開通失敗，已帶入啟用碼，請按「驗證並啟用」重試",
+            Toast.LENGTH_LONG
+        ).show()
+        if (!success) showUnlockDialog = true
+    }
 
     if (itemToDelete != null) {
         AlertDialog(
@@ -736,144 +817,54 @@ fun MainScreen(
     if (showUnlockDialog) {
         PasscodeUnlockDialog(
             viewModel = viewModel,
-            onDismiss = { showUnlockDialog = false }
+            onDismiss = { showUnlockDialog = false },
+            initialEmail = unlockPrefillEmail,
+            initialCode = unlockPrefillCode
         )
     }
 
-    // PRO Tab 建分類 Dialog（與分享頁同規格：免費 3 上限、圖示 8 精確款）
+    // PRO Tab 建分類 Dialog（鍵盤友善版：按鈕不被鍵盤蓋、返回不丟稿、Done 直接建立）
     val showCreateCat by viewModel.showCreateCategoryDialog.collectAsState()
     val createPrefill by viewModel.createCategoryPrefill.collectAsState()
     if (showCreateCat) {
-        var catName by remember(createPrefill) { mutableStateOf(createPrefill) }
-        var selectedAvatar by remember { mutableStateOf("life") }
-        Dialog(onDismissRequest = { viewModel.setShowCreateCategoryDialog(false) }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f)
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    com.reater.app.ui.components.DialogHeader(
-                        title = "新建分類",
-                        onClose = { viewModel.setShowCreateCategoryDialog(false) },
-                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
-                    )
-                    androidx.compose.material3.HorizontalDivider(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .dismissFocusOnTap(focusManager)
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                    run {
-                        val customCount = categories.count { !it.isDefault }
-                        if (!isPro) {
-                            val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
-                            Text(
-                                text = if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
-                                else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = catName,
-                        onValueChange = { catName = it },
-                        placeholder = { Text("分類名稱（如：技術、生活、閱讀）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(text = "選擇圖示", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        com.reater.app.ui.AvatarIcons.ALL.forEach { item ->
-                            val isSelected = selectedAvatar == item.id
-                            val isLocked = item.isPro && !isPro
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                    .border(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                                        else if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.5f)
-                                        else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        if (isLocked) {
-                                            showUnlockDialog = true
-                                        } else {
-                                            selectedAvatar = item.id
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = item.resId),
-                                    contentDescription = item.name,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = Color.Unspecified
-                                )
-                                if (isLocked) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = "Pro 專屬",
-                                            tint = Color(0xFFFFB300),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        OutlinedButton(onClick = { viewModel.setShowCreateCategoryDialog(false) }) {
-                            Text("取消")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { viewModel.createCategory(catName, selectedAvatar) },
-                            enabled = catName.isNotBlank()
-                        ) {
-                            Text("建立")
-                        }
-                    }
-                    }
-                }
-            }
+        val customCount = categories.count { !it.isDefault }
+        val quotaText = if (!isPro) {
+            val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
+            if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
+            else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+        } else null
+        // key 帶 prefill：從下拉「新增 xxx」進來時帶入關鍵字；返回捨棄後草稿不殘留
+        androidx.compose.runtime.key(createPrefill) {
+            com.reater.app.ui.components.CategoryCreateDialog(
+                initialName = createPrefill,
+                quotaText = quotaText,
+                isPro = isPro,
+                onProIconLocked = { showUnlockDialog = true },
+                onDismiss = { viewModel.setShowCreateCategoryDialog(false) },
+                onConfirm = { name, avatar -> viewModel.createCategory(name, avatar) }
+            )
         }
+    }
+
+    // 分類編輯 Dialog（入口：PRO 分類頁 → 自訂分類 → ✎；內建分類可改名不可刪除）
+    val editingCategory by viewModel.editingCategory.collectAsState()
+    editingCategory?.let { editing ->
+        // 取最新 entity，避免改名後顯示舊值
+        val live = categories.firstOrNull { it.id == editing.id } ?: editing
+        com.reater.app.ui.components.CategoryEditDialog(
+            category = live,
+            isPro = isPro,
+            onProIconLocked = { showUnlockDialog = true },
+            onDismiss = { viewModel.setEditingCategory(null) },
+            onSave = { name, avatar ->
+                viewModel.renameCategory(live.id, name, avatar)
+                Toast.makeText(context, "分類已更新", Toast.LENGTH_SHORT).show()
+            },
+            onDelete = {
+                viewModel.deleteCategory(live.id)
+                Toast.makeText(context, "分類已刪除，貼文改為未分類", Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     // PRO 配額滿額提示（與 ProCopy 同文案；確認即轉解鎖）
@@ -978,21 +969,37 @@ fun MainScreen(
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
-                    if (isPro) {
-                        IconButton(onClick = { showIconGallery = true }) {
+                    // 個人頭像：未解鎖也顯示頭像本體（不再是鎖圖示）。
+                    // 未解鎖點擊 → Pro 開通 UI；已解鎖點擊 → 同 Reater 標題的 15 頭像設定頁。
+                    IconButton(
+                        onClick = {
+                            if (isPro) showIconGallery = true
+                            else showUnlockDialog = true
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
                             UserAvatarView(
                                 avatarId = customAvatarId,
                                 avatarUri = customAvatarUri,
                                 size = 32.dp
                             )
-                        }
-                    } else {
-                        IconButton(onClick = { showUnlockDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "解鎖 Pro",
-                                tint = MaterialTheme.colorScheme.outline
-                            )
+                            if (!isPro) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(14.dp)
+                                        .background(Color(0xFFFFB300), CircleShape)
+                                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(9.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                     IconButton(onClick = { showSettingsDialog = true }) {
@@ -1251,7 +1258,8 @@ fun MainScreen(
                                 ).show()
                             },
                             onDelete = { itemToDelete = it },
-                            onOpenUnlock = { showUnlockDialog = true }
+                            onOpenUnlock = { showUnlockDialog = true },
+                            onEditCategory = { viewModel.setEditingCategory(it) }
                         )
                     }
                     4 -> {
@@ -1339,7 +1347,8 @@ private fun ProCategoryTabContent(
     onToggleRead: (ItemDetail) -> Unit,
     onToggleFavorite: (ItemDetail) -> Unit,
     onDelete: (ItemDetail) -> Unit,
-    onOpenUnlock: () -> Unit
+    onOpenUnlock: () -> Unit,
+    onEditCategory: (CategoryEntity) -> Unit = {}
 ) {
     val customCount = categories.count { !it.isDefault }
     val quotaText = if (isPro) "分類無上限・共 ${categories.size} 個"
@@ -1389,6 +1398,74 @@ private fun ProCategoryTabContent(
                         "+ 新增分類（升級 Pro 無上限）"
                     else "+ 新增分類"
                 )
+            }
+        }
+        // 分類管理：重新命名 / 更換圖示 / 刪除（自訂可刪，內建僅可改名）
+        if (categories.isNotEmpty()) {
+            item {
+                Text(
+                    text = "管理分類（點 ✎ 編輯）",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
+            items(categories, key = { it.id }) { cat ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                id = com.reater.app.ui.AvatarIcons.getDrawableRes(cat.avatarIcon)
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = Color.Unspecified
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = cat.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (cat.isDefault) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "內建",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(
+                            onClick = { onEditCategory(cat) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "編輯分類",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
         if (isPro && collections.isNotEmpty()) {

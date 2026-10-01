@@ -22,6 +22,7 @@ import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
+import com.reater.app.data.remote.threads.TopicTags
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +51,22 @@ class ThreadPostRepository @Inject constructor(
         return itemDao.searchItemDetailsFts(quoted)
     }
     fun observePostDetail(id: Long): Flow<ItemDetail?> = itemDao.observeItemDetailById(id)
+
+    /**
+     * 儲存畫面分類預選：同主題優先、同作者其次。
+     * 各自取過往「最常用」分類（次數相同取最近使用）；都無紀錄回 null（呼叫方沿用全域上次選擇）。
+     */
+    suspend fun suggestCategoryId(authorHandle: String, topicTag: String): Long? {
+        val topic = topicTag.trim()
+        if (topic.isNotBlank()) {
+            itemDao.getMostFrequentCategoryByTopic(topic)?.let { return it.categoryId }
+        }
+        val author = authorHandle.trim()
+        if (author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
+            itemDao.getMostFrequentCategoryByAuthor(author)?.let { return it.categoryId }
+        }
+        return null
+    }
 
     suspend fun savePost(
         canonicalUrl: String,
@@ -116,12 +133,16 @@ class ThreadPostRepository @Inject constructor(
         } else {
             fetchedResult?.rawJsonMin.orEmpty()
         }
-        // Upsert ItemEntity
-        val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
-        val itemId = if (existing != null) {
-            val updated = existing.copy(
-                shortcode = shortcode,
-                authorHandle = authorHandle.ifBlank { existing.authorHandle },
+          // Upsert ItemEntity
+          val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
+          // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
+          val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
+              .ifBlank { TopicTags.firstHashtag(combinedBody) }
+          val itemId = if (existing != null) {
+              val updated = existing.copy(
+                  shortcode = shortcode,
+                  authorHandle = authorHandle.ifBlank { existing.authorHandle },
+                  topicTag = resolvedTopic.ifBlank { existing.topicTag },
                 authorDisplayName = fetchedResult?.authorDisplayName ?: existing.authorDisplayName,
                 authorProfileUrl = fetchedResult?.authorProfileUrl ?: existing.authorProfileUrl,
                 authorVerified = fetchedResult?.authorVerified ?: existing.authorVerified,
@@ -139,11 +160,12 @@ class ThreadPostRepository @Inject constructor(
             itemDao.updateItem(updated)
             existing.id
         } else {
-            val newItem = ItemEntity(
-                canonicalUrl = canonicalUrl,
-                shortcode = shortcode,
-                authorHandle = authorHandle,
-                authorDisplayName = fetchedResult?.authorDisplayName ?: authorHandle,
+              val newItem = ItemEntity(
+                  canonicalUrl = canonicalUrl,
+                  shortcode = shortcode,
+                  authorHandle = authorHandle,
+                  topicTag = resolvedTopic,
+                  authorDisplayName = fetchedResult?.authorDisplayName ?: authorHandle,
                 authorProfileUrl = fetchedResult?.authorProfileUrl.orEmpty(),
                 authorVerified = fetchedResult?.authorVerified ?: false,
                 postedAt = fetchedResult?.postedAt ?: System.currentTimeMillis(),
@@ -455,9 +477,10 @@ class ThreadPostRepository @Inject constructor(
         val detail = itemDao.getItemDetailById(itemId) ?: return
         val tags = detail.tags.joinToString(" ") { it.name }
         val comments = detail.comments.joinToString(" ") { it.text }
-        val searchable = listOf(
-            detail.item.bodyText,
-            detail.item.commentsText,
+          val searchable = listOf(
+              detail.item.bodyText,
+              detail.item.topicTag,
+              detail.item.commentsText,
             detail.userEdit?.userBodyOverride.orEmpty(),
             detail.manualNote,
             detail.manualSummary,

@@ -235,157 +235,32 @@ fun ShareSaveScreen(
         }
     }
 
-    // Create Category Dialog（支援下拉選單帶入篩選關鍵字預填）
+    // Create Category Dialog（鍵盤友善版：按鈕不被鍵盤蓋、返回不丟稿、Done 直接建立）
     var createPrefill by remember { mutableStateOf("") }
-    // 下拉選單要求新增時帶入關鍵字：透過 key 重建對話框初始值
     if (state.showCreateCategoryDialog) {
-        var catName by remember(createPrefill) { mutableStateOf(createPrefill) }
-        var selectedAvatar by remember { mutableStateOf("life") }
-
-        Dialog(onDismissRequest = {
-            createPrefill = ""
-            viewModel.setShowCreateCategoryDialog(false)
-        }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f)
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    com.reater.app.ui.components.DialogHeader(
-                        title = "新建分類",
-                        onClose = {
-                            createPrefill = ""
-                            viewModel.setShowCreateCategoryDialog(false)
-                        },
-                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
-                    )
-                    androidx.compose.material3.HorizontalDivider(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .dismissFocusOnTap(focusManager)
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                    // 配額提示：免費版 3 個自訂分類上限（內建 8 分類不計）
-                    run {
-                        val customCount = categories.count { !it.isDefault }
-                        val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
-                        if (!isPro) {
-                            Text(
-                                text = if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
-                                else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = catName,
-                        onValueChange = { catName = it },
-                        placeholder = { Text("分類名稱 (如：技術、生活、閱讀)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "選擇頭像標籤圖示",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AvatarIcons.ALL.forEach { item ->
-                            val isSelected = selectedAvatar == item.id
-                            val isLocked = item.isPro && !isPro
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                    .border(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                                        else if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.5f)
-                                        else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        if (isLocked) {
-                                            Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            selectedAvatar = item.id
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = item.resId),
-                                    contentDescription = item.name,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = Color.Unspecified
-                                )
-                                if (isLocked) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = "Pro 專屬",
-                                            tint = Color(0xFFFFB300),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        OutlinedButton(onClick = {
-                            createPrefill = ""
-                            viewModel.setShowCreateCategoryDialog(false)
-                        }) {
-                            Text("取消")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                viewModel.createCategory(catName, selectedAvatar)
-                                createPrefill = ""
-                            },
-                            enabled = catName.isNotBlank()
-                        ) {
-                            Text("建立")
-                        }
-                    }
-                    }
+        val customCount = categories.count { !it.isDefault }
+        val quotaText = if (!isPro) {
+            val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
+            if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
+            else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+        } else null
+        androidx.compose.runtime.key(createPrefill) {
+            com.reater.app.ui.components.CategoryCreateDialog(
+                initialName = createPrefill,
+                quotaText = quotaText,
+                isPro = isPro,
+                onProIconLocked = {
+                    Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = {
+                    createPrefill = ""
+                    viewModel.setShowCreateCategoryDialog(false)
+                },
+                onConfirm = { name, avatar ->
+                    viewModel.createCategory(name, avatar)
+                    createPrefill = ""
                 }
-            }
+            )
         }
     }
 
@@ -530,6 +405,15 @@ fun ShareSaveScreen(
                         viewModel.setShowCreateCategoryDialog(true)
                     }
                 )
+                // 歷史預選提示：同主題/同作者過往最常用分類（手動更改後消失）
+                AnimatedVisibility(visible = state.suggestedBasis.isNotBlank()) {
+                    Text(
+                        text = if (state.suggestedBasis == "topic") "已依過往同主題紀錄預選分類" else "已依過往同作者紀錄預選分類",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 

@@ -4,6 +4,7 @@ import com.reater.app.data.remote.threads.ThreadsHtmlParser
 import com.reater.app.data.remote.threads.ThreadsOEmbedClient
 import com.reater.app.data.remote.threads.ThreadsPageFetcher
 import com.reater.app.data.remote.threads.ThreadsSjsParser
+import com.reater.app.data.remote.threads.TopicTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -75,6 +76,8 @@ data class FetchedPostResult(
     val parentLikeCount: Int = 0,
     val parentPostedAt: Long = 0L,
     val parentMedia: List<FetchedMedia> = emptyList(),
+    /** Threads 主題標籤（pill 欄位優先，否則內文首個 hashtag；供同主題預選分類用） */
+    val topicTag: String = "",
     /**
      * 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層）。
      * parent* 單欄位永遠指向鏈首（母文），維持舊語義；多層存檔/預覽請用此鏈組裝。
@@ -192,7 +195,8 @@ class ThreadsGraphQLClient @Inject constructor(
                         parentLikeCount = parent?.likeCount ?: 0,
                         parentPostedAt = parent?.postedAtMs ?: 0L,
                         parentMedia = downloadedParentMedia,
-                        parentChain = downloadedChain
+                        parentChain = downloadedChain,
+                        topicTag = parsed.topicTag
                     )
                 )
             } else {
@@ -379,7 +383,8 @@ class ThreadsGraphQLClient @Inject constructor(
                     parentLikeCount = sjs.parent?.likeCount ?: 0,
                     parentPostedAt = sjs.parent?.postedAtMs ?: 0L,
                     parentMedia = MediaDedup.distinctFetched(downloadedParentMediaWeb.flatMap { it.media }),
-                    parentChain = downloadedParentMediaWeb
+                    parentChain = downloadedParentMediaWeb,
+                    topicTag = sjs.topicTag
                 )
             )
             }
@@ -434,7 +439,8 @@ class ThreadsGraphQLClient @Inject constructor(
                             parentLikeCount = fromHtml.parent?.likeCount ?: 0,
                             parentPostedAt = fromHtml.parent?.postedAtMs ?: 0L,
                             parentMedia = MediaDedup.distinctFetched(downloadedParentMedia2.flatMap { it.media }),
-                            parentChain = downloadedParentMedia2
+                            parentChain = downloadedParentMedia2,
+                            topicTag = fromHtml.topicTag
                         )
                     )
                 }
@@ -469,7 +475,8 @@ class ThreadsGraphQLClient @Inject constructor(
                             } ?: emptyList(),
                             rawJsonMin = "{\"code\":\"$shortcode\"}",
                             resolvedUrl = resolvedUrl,
-                            status = "COMPLETE"
+                            status = "COMPLETE",
+                            topicTag = TopicTags.firstHashtag(bodyGuess)
                         )
                     )
                 }
@@ -501,7 +508,8 @@ class ThreadsGraphQLClient @Inject constructor(
                         media = emptyList(),
                         rawJsonMin = "{\"code\":\"$shortcode\"}",
                         resolvedUrl = resolvedUrl,
-                        status = "COMPLETE"
+                        status = "COMPLETE",
+                        topicTag = TopicTags.firstHashtag(cleanText)
                     )
                 )
             }

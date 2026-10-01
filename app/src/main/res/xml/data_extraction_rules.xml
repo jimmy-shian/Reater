@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="file" path="datastore/reater_settings.preferences_pb" />
+        <!-- 同 backup_rules：保留 reater_settings（Pro 授權），只排除 Tink 金鑰 -->
         <exclude domain="sharedpref" path="reater_key_prefs.xml" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="file" path="datastore/reater_settings.preferences_pb" />
         <exclude domain="sharedpref" path="reater_key_prefs.xml" />
     </device-transfer>
 </data-extraction-rules>
