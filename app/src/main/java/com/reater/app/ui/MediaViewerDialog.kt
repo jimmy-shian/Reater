@@ -9,18 +9,30 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,27 +44,39 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -74,7 +98,11 @@ data class ViewerMedia(
 }
 
 /**
- * 全螢幕媒體檢視器：點擊放大、左右切換、X 關閉、圖片下載到相簿、影片外部開啟。
+ * 全螢幕媒體檢視器：左右滑動切換、雙指/雙擊放大、X 關閉、圖片下載到相簿、影片外部開啟。
+ *
+ * 對齊 InlineVideoPlayer.FullscreenVideoViewer 的系統列處理：
+ * Dialog Window 透明系統列 + 狀態化 insets（attach 後自動重算）+ 保底值，
+ * 底部控制列保證位於系統導覽列之上（三鍵列/手勢列皆不遮擋）。
  */
 @Composable
 fun MediaViewerDialog(
@@ -84,8 +112,24 @@ fun MediaViewerDialog(
 ) {
     if (media.isEmpty()) return
     val context = LocalContext.current
-    var index by remember(startIndex) { mutableIntStateOf(startIndex.coerceIn(0, media.size - 1)) }
-    val current = media[index]
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+
+    val pagerState = rememberPagerState(
+        initialPage = startIndex.coerceIn(0, media.size - 1),
+        pageCount = { media.size }
+    )
+    // 當前頁圖片是否處於放大狀態：放大時停用 Pager 滑動，改由圖片自身平移
+    var zoomedOnCurrentPage by remember { mutableStateOf(false) }
+    val currentPage = pagerState.currentPage
+    val current = media[currentPage.coerceIn(0, media.size - 1)]
+
+    // 切頁時重置放大旗標（新頁由其 ZoomableImage 重新回報；影片頁直接歸 false）
+    LaunchedEffect(currentPage) {
+        if (media.getOrNull(currentPage)?.isVideo == true) {
+            zoomedOnCurrentPage = false
+        }
+    }
 
     DisposableEffect(Unit) {
         com.reater.app.ui.player.VideoPlaybackManager.pauseAll()
@@ -93,6 +137,32 @@ fun MediaViewerDialog(
             com.reater.app.ui.player.VideoPlaybackManager.pauseAll()
         }
     }
+
+    // 與影片全螢幕播放器同規格：Dialog Window 透明系統列
+    val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+    SideEffect {
+        dialogWindow?.let { win ->
+            WindowCompat.setDecorFitsSystemWindows(win, false)
+            win.statusBarColor = android.graphics.Color.TRANSPARENT
+            win.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                win.isNavigationBarContrastEnforced = false
+                win.isStatusBarContrastEnforced = false
+            }
+        }
+    }
+
+    // 系統安全邊界：與影片全螢幕播放器同式（狀態化 insets＋保底），
+    // 另加 resources 後備高度：巢狀 Dialog 在部分機型拿到的 navigationBars/statusBars
+    // inset 為 0，用系統資源高度兜底，保證頂列不塌進狀態列、底列不被導覽列蓋住。
+    val density = LocalDensity.current
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val resNavBottom = remember(context, density) { systemBarFallback(context, density, "navigation_bar_height") }
+    val resStatusTop = remember(context, density) { systemBarFallback(context, density, "status_bar_height") }
+    val safeTop = maxOf(statusTop + 4.dp, resStatusTop + 4.dp, 10.dp)
+    val safeBottom = maxOf(navBottom + 16.dp, resNavBottom + 16.dp, 28.dp)
+    val safeSide = PaddingValues(start = 16.dp, end = 16.dp)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -106,38 +176,48 @@ fun MediaViewerDialog(
             color = Color.Black
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // 媒體本體（延伸至邊緣，沉浸式）：影片內建播放，圖片維持縮放檢視
-                androidx.compose.runtime.key(index, current.remoteUrl, current.localPath) {
-                    if (current.isVideo) {
+                // 媒體本體：HorizontalPager 支援左右滑動；圖片頁內建雙指/雙擊縮放
+                HorizontalPager(
+                    state = pagerState,
+                    // 放大時停用翻頁，單指改為平移圖片；未放大時單指滑動翻頁、雙指縮放
+                    userScrollEnabled = !zoomedOnCurrentPage,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { page -> "${page}_${media[page].remoteUrl}_${media[page].localPath}" }
+                ) { page ->
+                    val item = media[page]
+                    val isCurrent = (page == currentPage)
+                    if (item.isVideo) {
                         com.reater.app.ui.player.InlineVideoPlayer(
-                            remoteUrl = current.remoteUrl,
-                            localPath = current.localPath,
+                            remoteUrl = item.remoteUrl,
+                            localPath = item.localPath,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        AsyncImage(
-                            model = current.bestSource(),
-                            contentDescription = "Media ${index + 1}",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                        ZoomableImagePage(
+                            model = item.bestSource(),
+                            contentDescription = "Media ${page + 1}",
+                            onZoomChange = { zoomed ->
+                                // 只接受當前頁的回報，避免預載入頁互相覆蓋
+                                if (isCurrent) zoomedOnCurrentPage = zoomed
+                            },
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
 
-                // 頂列：計數 + X 關閉（排除狀態列/瀏海/上導覽列，系統預設留白）
+                // 頂列：計數 + X 關閉（避開狀態列/瀏海）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
                         .background(Color.Black.copy(alpha = 0.45f))
-                        .statusBarsPadding()
-                        .displayCutoutPadding()
+                        .padding(top = safeTop)
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${index + 1} / ${media.size}",
+                        text = "${currentPage + 1} / ${media.size}",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -153,13 +233,18 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 左右切換
-                if (media.size > 1) {
-                    if (index > 0) {
+                // 左右切換箭頭（滑動為主、按鈕為輔，保留無障礙操作）
+                if (media.size > 1 && !zoomedOnCurrentPage) {
+                    if (currentPage > 0) {
                         IconButton(
-                            onClick = { index-- },
+                            onClick = {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(currentPage - 1)
+                                }
+                            },
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
+                                .padding(start = 8.dp)
                                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
                         ) {
                             Icon(
@@ -169,11 +254,16 @@ fun MediaViewerDialog(
                             )
                         }
                     }
-                    if (index < media.size - 1) {
+                    if (currentPage < media.size - 1) {
                         IconButton(
-                            onClick = { index++ },
+                            onClick = {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(currentPage + 1)
+                                }
+                            },
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
+                                .padding(end = 8.dp)
                                 .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
                         ) {
                             Icon(
@@ -185,16 +275,14 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 底列：下載（圖片）/ 外部開啟（影片）
-                // 修正：截圖顯示「開啟影片」低於導覽列被裁切。改用 safeDrawing + systemBars 雙重排除，
-                // 並加大底部留白至 32dp，確保手勢列/三鍵列上仍完整可見可點。
+                // 底列：下載（圖片）/ 外部開啟（影片），與影片播放器同規格避開導覽列
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .background(Color.Black.copy(alpha = 0.55f))
-                        .navigationBarsPadding()
-                        .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 32.dp),
+                        .padding(safeSide)
+                        .padding(top = 12.dp, bottom = safeBottom),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -253,6 +341,141 @@ fun MediaViewerDialog(
             }
         }
     }
+}
+
+/**
+ * 可縮放圖片：雙指捏合局部放大（1x ~ 5x）＋ 單指平移（放大時）＋ 雙擊切換 1x/2.5x（以點擊為焦點）。
+ *
+ * 手勢分流（避免與 HorizontalPager 搶奪單指滑動）：
+ * - 未放大：單指不消費，交給 Pager 翻頁；雙指捏合縮放。
+ * - 已放大：停用 Pager（上層 userScrollEnabled=false），單指平移圖片。
+ */
+@Composable
+private fun ZoomableImagePage(
+    model: Any,
+    contentDescription: String?,
+    onZoomChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember(model) { mutableFloatStateOf(1f) }
+    var offset by remember(model) { mutableStateOf(Offset.Zero) }
+
+    LaunchedEffect(scale) {
+        onZoomChange(scale > 1.02f)
+    }
+
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        val density = LocalDensity.current
+        val maxWpx = with(density) { maxWidth.toPx() }
+        val maxHpx = with(density) { maxHeight.toPx() }
+
+        fun clamp(o: Offset, s: Float): Offset {
+            if (s <= 1f) return Offset.Zero
+            val boundX = (maxWpx * (s - 1f) / 2f).coerceAtLeast(0f)
+            val boundY = (maxHpx * (s - 1f) / 2f).coerceAtLeast(0f)
+            return Offset(
+                o.x.coerceIn(-boundX, boundX),
+                o.y.coerceIn(-boundY, boundY)
+            )
+        }
+
+        AsyncImage(
+            model = model,
+            contentDescription = contentDescription,
+            modifier = Modifier
+                .fillMaxSize()
+                .clipToBounds()
+                // 雙擊：1x <-> 2.5x，以點擊位置為焦點
+                .pointerInput(model) {
+                    detectTapGestures(
+                        onDoubleTap = { tap ->
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            if (scale > 1.2f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                            } else {
+                                val newScale = 2.5f
+                                val k = newScale / scale.coerceAtLeast(1f)
+                                val tapped = tap - center
+                                offset = clamp(offset * k + tapped * (1f - k), newScale)
+                                scale = newScale
+                            }
+                        }
+                    )
+                }
+                // 捏合縮放（雙指）＋ 平移（僅放大時消費單指，避免擋住 Pager 翻頁）
+                .pointerInput(model, maxWpx, maxHpx) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.filter { it.pressed }
+                            when {
+                                pressed.size >= 2 -> {
+                                    val zoomChange = event.calculateZoom()
+                                    val panChange = event.calculatePan()
+                                    if (zoomChange != 1f) {
+                                        val old = scale
+                                        val new = (old * zoomChange).coerceIn(1f, 5f)
+                                        if (new != old) {
+                                            // 以手勢重心為焦點，保持重心下內容穩定
+                                            val centroid = event.calculateCentroid()
+                                            val center = Offset(size.width / 2f, size.height / 2f)
+                                            val k = new / old
+                                            val focal = centroid - center
+                                            offset = clamp(offset * k + focal * (1f - k) + panChange, new)
+                                            scale = new
+                                        } else if (scale > 1f && panChange != Offset.Zero) {
+                                            offset = clamp(offset + panChange, scale)
+                                        }
+                                        pressed.forEach { it.consume() }
+                                    } else if (scale > 1f && panChange != Offset.Zero) {
+                                        offset = clamp(offset + panChange, scale)
+                                        pressed.forEach { it.consume() }
+                                    }
+                                }
+                                pressed.size == 1 && scale > 1f -> {
+                                    val pan = event.calculatePan()
+                                    if (pan != Offset.Zero) {
+                                        offset = clamp(offset + pan, scale)
+                                        pressed.forEach { it.consume() }
+                                    }
+                                }
+                                else -> {
+                                    // 未放大單指：不消費，交給 HorizontalPager 翻頁
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                }
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+/**
+ * 系統列高度後備值：Compose insets 在巢狀 Dialog 回 0 時，用系統資源高度兜底。
+ */
+private fun systemBarFallback(
+    context: Context,
+    density: androidx.compose.ui.unit.Density,
+    name: String
+): androidx.compose.ui.unit.Dp {
+    return runCatching {
+        val id = context.resources.getIdentifier(name, "dimen", "android")
+        if (id > 0) with(density) {
+            context.resources.getDimensionPixelSize(id).toDp()
+        } else 0.dp
+    }.getOrDefault(0.dp)
 }
 
 /**
