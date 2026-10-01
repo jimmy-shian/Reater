@@ -15,16 +15,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +61,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -63,9 +70,9 @@ import com.reater.app.ui.AvatarStorage
 import kotlin.math.max
 
 /**
- * 頭像裁切編輯器：圓形範圍內雙指縮放＋單指拖曳選擇要保留的位置，
- * 取代過去「直接正中間 Crop」的行為。確認後回傳 512 正方形 Bitmap，
- * 由呼叫方存成新的時間戳內部檔（保證內外即時同步刷新）。
+ * 頭像裁切編輯器：圓形範圍內單指拖曳＋雙指縮放（或 −/滑桿/＋）選擇保留位置。
+ * 圖片以 ContentScale.Crop 鋪底（保證不變形），手勢只疊加縮放與位移；
+ * 確認後回傳 512 正方形 Bitmap，由呼叫方存成新的時間戳內部檔。
  */
 @Composable
 fun AvatarCropDialog(
@@ -95,10 +102,15 @@ fun AvatarCropDialog(
         )
     }
 
+    fun setScale(ns: Float) {
+        val clamped = ns.coerceIn(1f, 4f)
+        userScale = clamped
+        offset = clampOffset(clamped, offset)
+    }
+
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newScale = (userScale * zoomChange).coerceIn(1f, 4f)
-        userScale = newScale
-        offset = clampOffset(newScale, offset + panChange)
+        setScale(userScale * zoomChange)
+        offset = clampOffset(userScale, offset + panChange)
     }
 
     Dialog(
@@ -108,14 +120,16 @@ fun AvatarCropDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.9f)
                 .clip(RoundedCornerShape(18.dp)),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(
@@ -127,7 +141,10 @@ fun AvatarCropDialog(
                         text = "編輯頭像位置",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
                         Icon(
@@ -137,26 +154,28 @@ fun AvatarCropDialog(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "單指拖曳移動・雙指縮放，下方滑桿也可微調",
+                    text = "拖曳移動・雙指或按鈕縮放，圓內即頭像",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
+                // 正方形裁切區：圖片 Crop 鋪底不變形，手勢疊加縮放位移。
+                // sizeIn 限寬（先於 aspectRatio）保證任何螢幕都維持正方形。
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .sizeIn(maxWidth = 440.dp)
                         .aspectRatio(1f)
                         .onSizeChanged { displayPx = it.width.toFloat() }
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
-                    val bs = baseScale()
-                    val imgWdp = with(density) { (source.width * bs).toDp() }
-                    val imgHdp = with(density) { (source.height * bs).toDp() }
-
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -164,9 +183,9 @@ fun AvatarCropDialog(
                         Image(
                             bitmap = remember(source) { source.asImageBitmap() },
                             contentDescription = "待裁切圖片",
-                            contentScale = ContentScale.FillBounds,
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .size(imgWdp, imgHdp)
+                                .fillMaxSize()
                                 .graphicsLayer {
                                     scaleX = userScale
                                     scaleY = userScale
@@ -187,34 +206,59 @@ fun AvatarCropDialog(
                         drawPath(path, Color(0xFF111827).copy(alpha = 0.55f))
                         drawCircle(
                             color = Color(0xFFFFB300),
-                            radius = size.minDimension / 2 - 2.dp.toPx(),
-                            style = Stroke(width = 3.dp.toPx())
+                            radius = size.minDimension / 2 - with(density) { 2.dp.toPx() },
+                            style = Stroke(width = with(density) { 3.dp.toPx() })
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+                // 縮放控制：− / 滑桿 / ＋，單行不換行
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ZoomIn,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { setScale(userScale - 0.25f) },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "縮小",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                     Slider(
                         value = userScale,
-                        onValueChange = { v ->
-                            val ns = v.coerceIn(1f, 4f)
-                            userScale = ns
-                            offset = clampOffset(ns, offset)
-                        },
+                        onValueChange = { setScale(it) },
                         valueRange = 1f..4f,
+                        steps = 11,
                         modifier = Modifier.weight(1f)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { setScale(userScale + 0.25f) },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "放大",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -226,7 +270,12 @@ fun AvatarCropDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("取消", fontSize = 13.sp)
+                        Text(
+                            "取消",
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                     Button(
                         onClick = {
@@ -238,9 +287,16 @@ fun AvatarCropDialog(
                         modifier = Modifier.weight(1f),
                         enabled = displayPx > 0
                     ) {
-                        Text("套用此範圍", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "套用",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }

@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,6 +52,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,6 +112,22 @@ fun IconGalleryDialog(
     val hasCustomPhoto = !currentAvatarUri.isNullOrBlank()
     fun isEffectivelySelected(id: String): Boolean = !hasCustomPhoto && currentAvatarId == id
 
+    // 取消勾選回退記憶（開窗當下快照＋每次套用前更新）：再點實心勾時回到相片或上一個圖示，不關頁籤
+    val entryAvatarId = remember { currentAvatarId }
+    val entryPhotoPath = remember { currentAvatarUri }
+    var previousIconId by remember { mutableStateOf(entryAvatarId) }
+    var lastPhotoPath by remember { mutableStateOf(entryPhotoPath) }
+    fun rememberBeforeApply() {
+        previousIconId = currentAvatarId
+        lastPhotoPath = currentAvatarUri
+    }
+    // 再點實心勾＝取消勾選：有相片記憶（且仍在歷史裡）就回到相片，否則回到上一個圖示；全程不關頁籤
+    fun deselectToPrevious() {
+        val photo = lastPhotoPath?.takeIf { p -> avatarHistory.any { it == p } }
+        if (photo != null) onSelectHistory(photo)
+        else onSelectAvatar(previousIconId)
+    }
+
     // 自訂相片頁簽內的相簿選擇器：選完先進裁切編輯器（可調位置/縮放），
     // 確認後才存成新的時間戳內部檔；解碼失敗才走舊的直接匯入。
     val context = LocalContext.current
@@ -137,14 +156,6 @@ fun IconGalleryDialog(
     }
     // 非 Pro 不顯示自訂頁簽；但已有舊照片時仍顯示以便管理/刪除
     val showCustomTab = isPro || hasCustomPhoto
-
-    val displayedIcons = remember(selectedFilter) {
-        when (selectedFilter) {
-            1 -> AvatarIcons.FREE
-            2 -> AvatarIcons.PRO
-            else -> AvatarIcons.ALL
-        }
-    }
 
     // 大圖查看彈窗
     if (inspectingItem != null) {
@@ -295,12 +306,17 @@ fun IconGalleryDialog(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // 操作按鈕
+                    // 操作按鈕（使用中可再點一下取消勾選，回到相片或上一個圖示）
                     if (isSelected) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    deselectToPrevious()
+                                    inspectingItem = null
+                                }
                         ) {
                             Row(
                                 modifier = Modifier.padding(vertical = 12.dp),
@@ -315,7 +331,7 @@ fun IconGalleryDialog(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "目前正在使用此頭像",
+                                    text = "使用中・再點一下取消勾選",
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp
@@ -339,6 +355,7 @@ fun IconGalleryDialog(
                     } else {
                         Button(
                             onClick = {
+                                rememberBeforeApply()
                                 onSelectAvatar(item.id)
                                 inspectingItem = null
                             },
@@ -436,23 +453,7 @@ fun IconGalleryDialog(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
-                if (hasCustomPhoto) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = "目前使用自訂相片頭貼，15 款圖示皆為未勾選；點圓形勾選可切回圖示",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-
-                // 篩選標籤（單行橫滑，避免擠壓下方列表）
+                // 篩選標籤（單行橫滑；下方內容亦可左右滑動切換頁籤，兩者雙向同步）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -502,54 +503,81 @@ fun IconGalleryDialog(
                     }
                 }
 
-                if (selectedFilter == 3) {
-                    // 自訂相片頭貼頁簽（PRO）：選擇 / 裁切編輯 / 更換 / 刪除＋過往圖片回選
-                    CustomPhotoSection(
-                        avatarId = currentAvatarId,
-                        avatarUri = currentAvatarUri,
-                        hasCustomPhoto = hasCustomPhoto,
-                        onPick = { customPhotoPicker.launch("image/*") },
-                        onClear = onClearPhoto,
-                        avatarHistory = avatarHistory,
-                        onSelectHistory = onSelectHistory,
-                        onDeleteHistory = onDeleteHistory,
-                        onEditCurrent = {
-                            currentAvatarUri?.let { path ->
-                                cropScope.launch(Dispatchers.IO) {
-                                    val bmp = AvatarStorage.decodeFile(path)
-                                    withContext(Dispatchers.Main) {
-                                        if (bmp != null) cropSource = bmp
+                // 內容左右滑動切換頁籤（頁數依自訂頁簽是否顯示而定）
+                val pageCount = if (showCustomTab) 4 else 3
+                val startPage = if (customActiveKey && showCustomTab) 3 else 0
+                val pagerState = rememberPagerState(initialPage = startPage) { pageCount }
+                val settledPage = selectedFilter.coerceIn(0, pageCount - 1)
+                LaunchedEffect(settledPage) {
+                    if (pagerState.currentPage != settledPage) {
+                        pagerState.animateScrollToPage(settledPage)
+                    }
+                }
+                LaunchedEffect(pagerState.currentPage, pageCount) {
+                    val p = pagerState.currentPage.coerceIn(0, pageCount - 1)
+                    if (p != selectedFilter) selectedFilter = p
+                }
+                fun iconsForPage(page: Int) = when (page) {
+                    1 -> AvatarIcons.FREE
+                    2 -> AvatarIcons.PRO
+                    else -> AvatarIcons.ALL
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f)
+                ) { page ->
+                    if (page == 3 && showCustomTab) {
+                        // 自訂相片頭貼頁簽（PRO）：選擇 / 裁切編輯 / 更換 / 刪除＋過往圖片回選
+                        CustomPhotoSection(
+                            avatarId = currentAvatarId,
+                            avatarUri = currentAvatarUri,
+                            hasCustomPhoto = hasCustomPhoto,
+                            onPick = { customPhotoPicker.launch("image/*") },
+                            onClear = onClearPhoto,
+                            avatarHistory = avatarHistory,
+                            onSelectHistory = onSelectHistory,
+                            onDeleteHistory = onDeleteHistory,
+                            onEditCurrent = {
+                                currentAvatarUri?.let { path ->
+                                    cropScope.launch(Dispatchers.IO) {
+                                        val bmp = AvatarStorage.decodeFile(path)
+                                        withContext(Dispatchers.Main) {
+                                            if (bmp != null) cropSource = bmp
+                                        }
                                     }
                                 }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        // 15 款圖示展示列表（編號 01~15 依總覽順序排列）
+                        val pageIcons = iconsForPage(page)
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(pageIcons, key = { it.id }) { item ->
+                                val number = AvatarIcons.ALL.indexOfFirst { it.id == item.id } + 1
+                                IconGalleryCard(
+                                    item = item,
+                                    number = number,
+                                    isSelected = isEffectivelySelected(item.id),
+                                    isProUser = isPro,
+                                    onInspect = { inspectingItem = item },
+                                    onApply = {
+                                        if (item.isPro && !isPro) {
+                                            onOpenUnlock()
+                                        } else {
+                                            rememberBeforeApply()
+                                            onSelectAvatar(item.id)
+                                        }
+                                    },
+                                    onDeselect = { deselectToPrevious() }
+                                )
                             }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    // 15 款圖示展示列表（編號 01~15 依總覽順序排列）
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(displayedIcons, key = { it.id }) { item ->
-                            val number = AvatarIcons.ALL.indexOfFirst { it.id == item.id } + 1
-                            IconGalleryCard(
-                                item = item,
-                                number = number,
-                                isSelected = isEffectivelySelected(item.id),
-                                isProUser = isPro,
-                                onInspect = { inspectingItem = item },
-                                onApply = {
-                                    if (item.isPro && !isPro) {
-                                        onOpenUnlock()
-                                    } else {
-                                        onSelectAvatar(item.id)
-                                    }
-                                }
-                            )
                         }
                     }
                 }
@@ -565,7 +593,8 @@ private fun IconGalleryCard(
     isSelected: Boolean,
     isProUser: Boolean,
     onInspect: () -> Unit,
-    onApply: () -> Unit
+    onApply: () -> Unit,
+    onDeselect: () -> Unit = {}
 ) {
     val isLocked = item.isPro && !isProUser
 
@@ -591,74 +620,86 @@ private fun IconGalleryCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 圖示本體預覽（點擊可大圖查看）
+            // 圖示本體預覽（點擊可大圖查看；編號徽章疊在圖左上角，文字列只留名稱＋類型）
             Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.14f)
-                        else MaterialTheme.colorScheme.surfaceVariant
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.4f)
-                        else Color.Transparent,
-                        shape = CircleShape
-                    ),
+                modifier = Modifier.size(58.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    painter = painterResource(id = item.resId),
-                    contentDescription = item.name,
+                Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .alpha(if (isLocked) 0.35f else 1f),
-                    tint = Color.Unspecified
-                )
-                // 未解鎖：灰色鎖定罩住圖示本體
-                if (isLocked) {
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.14f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (item.isPro) Color(0xFFFFB300).copy(alpha = 0.4f)
+                            else Color.Transparent,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = item.resId),
+                        contentDescription = item.name,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .alpha(if (isLocked) 0.35f else 1f),
+                        tint = Color.Unspecified
+                    )
+                    // 未解鎖：灰色鎖定罩住圖示本體
+                    if (isLocked) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF374151).copy(alpha = 0.72f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Pro 鎖定",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+                if (number > 0) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF374151).copy(alpha = 0.72f), CircleShape),
+                            .align(Alignment.TopStart)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(3.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(3.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 0.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Pro 鎖定",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                        Text(
+                            text = "%02d".format(number),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (number > 0) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant,
-                                    RoundedCornerShape(3.dp)
-                                )
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "%02d".format(number),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
                     Text(
                         text = item.name,
                         fontWeight = FontWeight.Bold,
@@ -712,17 +753,19 @@ private fun IconGalleryCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 右側操作：圓形勾選（已套用=實心主色勾，未套用=空心圓點選；鎖定款維持解鎖鈕）
+            // 右側操作：圓形勾選（實心=使用中，再點一下取消回到相片/上一個圖示；空心=點選套用；鎖定款維持解鎖鈕）
             if (isSelected) {
                 Box(
                     modifier = Modifier
                         .size(32.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable { onDeselect() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "目前頭像",
+                        contentDescription = "取消勾選，回到相片或上一個圖示",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -823,14 +866,15 @@ private fun CustomPhotoSection(
         }
         if (hasCustomPhoto) {
             item {
-                Row(
+                // 直排全寬按鈕：半寬並排在小螢幕會把文字擠成兩行，改直排根治跑版
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = onPick,
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             Icons.Default.Refresh,
@@ -838,12 +882,26 @@ private fun CustomPhotoSection(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("更換照片", fontSize = 13.sp)
+                        Text("更換照片", fontSize = 13.sp, maxLines = 1)
+                    }
+                    // 編輯位置：重進裁切器拖曳/縮放選取要保留的範圍，存成新檔即時同步
+                    OutlinedButton(
+                        onClick = onEditCurrent,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("編輯位置（拖曳・縮放選取範圍）", fontSize = 13.sp, maxLines = 1)
                     }
                     OutlinedButton(
                         onClick = onClear,
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             Icons.Default.Delete,
@@ -852,27 +910,12 @@ private fun CustomPhotoSection(
                             tint = MaterialTheme.colorScheme.error
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("刪除照片", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                        Text("刪除照片", fontSize = 13.sp, color = MaterialTheme.colorScheme.error, maxLines = 1)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                // 編輯位置：重進裁切器拖曳/縮放選取要保留的範圍，存成新檔即時同步
-                OutlinedButton(
-                    onClick = onEditCurrent,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("編輯位置（拖曳・縮放選取範圍）", fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "刪除後自動退回圖示頭貼；到「全部」頁簽點圓形勾選可切回 15 款圖示。",
+                    text = "刪除後自動退回圖示頭貼；也可在圖示頁點圓形勾選切換。",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.outline,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
