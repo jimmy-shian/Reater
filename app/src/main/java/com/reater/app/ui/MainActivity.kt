@@ -22,6 +22,7 @@ import com.reater.app.ui.components.IconGalleryDialog
 import com.reater.app.ui.components.UserAvatarView
 import com.reater.app.ui.analytics.AnalyticsScreen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -661,6 +662,15 @@ fun MainScreen(
     val collections by viewModel.smartCollections.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val proCategoryFilter by viewModel.proCategoryFilter.collectAsState()
+    // 各分類項目數（供 PRO 分類管理列顯示「N 個項目」）
+    val categoryCounts = remember(allPosts) {
+        buildMap<Long, Int> {
+            allPosts.forEach { detail ->
+                val cid = detail.userEdit?.categoryId ?: return@forEach
+                put(cid, (get(cid) ?: 0) + 1)
+            }
+        }
+    }
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val ioScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -835,9 +845,9 @@ fun MainScreen(
             currentAvatarId = customAvatarId,
             currentAvatarUri = customAvatarUri,
             onSelectAvatar = { id ->
+                // 留在圖示總覽不關閉：圓形勾選可再點一下取消，回到相片或上一個圖示
                 viewModel.setCustomAvatarId(id)
-                Toast.makeText(context, "已成功更換個人頭貼", Toast.LENGTH_SHORT).show()
-                showIconGallery = false
+                Toast.makeText(context, "已套用，再點一次圓形勾選可取消", Toast.LENGTH_SHORT).show()
             },
             onOpenUnlock = {
                 showIconGallery = false
@@ -1385,6 +1395,7 @@ fun MainScreen(
                                 }
                             },
                             collections = collections,
+                            categoryCounts = categoryCounts,
                             onOpenUnlock = { showUnlockDialog = true },
                             onEditCategory = { viewModel.setEditingCategory(it) },
                             onToggleCollection = { id, enabled -> viewModel.setCollectionEnabled(id, enabled) }
@@ -1480,6 +1491,7 @@ private fun ProCategoryTabContent(
     isPro: Boolean,
     onAddCategoryClick: () -> Unit,
     collections: List<SavedCollectionEntity>,
+    categoryCounts: Map<Long, Int> = emptyMap(),
     onOpenUnlock: () -> Unit,
     onEditCategory: (CategoryEntity) -> Unit = {},
     onToggleCollection: (Long, Boolean) -> Unit = { _, _ -> }
@@ -1506,13 +1518,6 @@ private fun ProCategoryTabContent(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "此頁僅管理標籤（改名 / 換圖示 / 刪除），篩選請到上方全部 / 未讀 / 收藏頁。",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.outline,
-                lineHeight = 17.sp
-            )
             Spacer(modifier = Modifier.height(8.dp))
             if (categories.isEmpty()) {
                 Text(
@@ -1531,13 +1536,13 @@ private fun ProCategoryTabContent(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
-                        "+ 新增分類（升級 Pro 無上限）"
-                    else "+ 新增分類"
+                        "新增分類（升級 Pro 無上限）"
+                    else "新增分類"
                 )
             }
         }
         // 分類管理：重新命名 / 更換圖示 / 刪除，前三頁第二列下拉會同步使用。
-        // 顯示用顏色圓點（colorArgb），不用 Icon drawable 當圖示。
+        // 左側顯示該分類的真實圖示，下方顯示該分類項目數。
         if (categories.isNotEmpty()) {
             item {
                 Text(
@@ -1561,12 +1566,12 @@ private fun ProCategoryTabContent(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val dotColor = if (cat.colorArgb != 0) Color(cat.colorArgb)
-                        else MaterialTheme.colorScheme.primary
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .background(dotColor, CircleShape)
+                        Image(
+                            painter = painterResource(
+                                id = com.reater.app.ui.AvatarIcons.getDrawableRes(cat.avatarIcon)
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -1589,8 +1594,9 @@ private fun ProCategoryTabContent(
                                 }
                             }
                             Spacer(modifier = Modifier.height(2.dp))
+                            val itemCount = categoryCounts[cat.id] ?: 0
                             Text(
-                                text = "圖示・${com.reater.app.ui.AvatarIcons.getIconItem(cat.avatarIcon).name}",
+                                text = "$itemCount 個項目",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 maxLines = 1,
@@ -1672,8 +1678,12 @@ private fun ProCategoryTabContent(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
+                            // 名稱前的 emoji 裝飾不顯示，只留純文字
+                            val displayName = remember(col.name) {
+                                col.name.replace(Regex("^[^\\p{L}\\p{N}]+"), "").trim().ifBlank { col.name }
+                            }
                             Text(
-                                text = col.name,
+                                text = displayName,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 15.sp,
                                 color = if (col.isEnabled) MaterialTheme.colorScheme.onSurface
