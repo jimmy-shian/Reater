@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -79,6 +81,7 @@ import com.reater.app.ui.MediaViewerDialog
 import com.reater.app.ui.ViewerMedia
 import com.reater.app.ui.components.CategoryBadge
 import com.reater.app.ui.components.CategoryDropdown
+import com.reater.app.ui.components.CopyableTextBlock
 import com.reater.app.ui.components.LinkifiedText
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.feed.formatPostShareText
@@ -304,6 +307,187 @@ private val AVATAR_PALETTE = listOf(
 private fun getAvatarColor(name: String): Color {
     val hash = abs(name.hashCode())
     return AVATAR_PALETTE[hash % AVATAR_PALETTE.size]
+}
+
+/**
+ * 圖2 文章圖片簡易左右顯示：單張維持大圖；多張改橫滑縮圖列（省垂直空間）。
+ * 縮圖 132dp 正方裁切（Crop 無灰邊），點任一開全螢幕檢視器；右上顯示「n 張・左右滑」提示。
+ */
+@Composable
+private fun MediaGalleryRow(
+    media: List<com.reater.app.data.local.entity.MediaEntity>,
+    onOpenAt: (com.reater.app.data.local.entity.MediaEntity) -> Unit
+) {
+    if (media.isEmpty()) return
+    if (media.size == 1) {
+        val m = media[0]
+        val source: Any = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
+            File(m.localPath)
+        } else {
+            m.remoteUrl
+        }
+        val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(190.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
+        ) {
+            if (isVideo) {
+                InlineVideoPlayer(
+                    remoteUrl = m.remoteUrl,
+                    localPath = m.localPath,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AsyncImage(
+                    model = source,
+                    contentDescription = "貼文圖片",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { onOpenAt(m) },
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "${media.size} 張・左右滑動查看",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            itemsIndexed(media, key = { _, m -> m.remoteUrl + m.localPath }) { _, m ->
+                val source: Any = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
+                    File(m.localPath)
+                } else {
+                    m.remoteUrl
+                }
+                val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .size(132.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
+                ) {
+                    if (isVideo) {
+                        InlineVideoPlayer(
+                            remoteUrl = m.remoteUrl,
+                            localPath = m.localPath,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AsyncImage(
+                            model = source,
+                            contentDescription = "貼文圖片",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { onOpenAt(m) },
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 留言圖片同樣橫滑簡易顯示（FetchedMedia 版，複用同一視覺語言）。
+ */
+@Composable
+private fun CommentMediaGalleryRow(
+    media: List<FetchedMedia>,
+    onOpenAt: (Int) -> Unit
+) {
+    if (media.isEmpty()) return
+    if (media.size == 1) {
+        val cm = media[0]
+        val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (cmIsVideo) {
+                InlineVideoPlayer(
+                    remoteUrl = cm.remoteUrl,
+                    localPath = cm.localPath,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                val cmSource: Any = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
+                    File(cm.localPath)
+                } else {
+                    cm.remoteUrl
+                }
+                AsyncImage(
+                    model = cmSource,
+                    contentDescription = "留言圖片",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { onOpenAt(0) },
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "${media.size} 張・左右滑動查看",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            itemsIndexed(media, key = { i, m -> m.remoteUrl + m.localPath + i }) { ci, cm ->
+                val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    if (cmIsVideo) {
+                        InlineVideoPlayer(
+                            remoteUrl = cm.remoteUrl,
+                            localPath = cm.localPath,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        val cmSource: Any = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
+                            File(cm.localPath)
+                        } else {
+                            cm.remoteUrl
+                        }
+                        AsyncImage(
+                            model = cmSource,
+                            contentDescription = "留言圖片",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { onOpenAt(ci) },
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -688,63 +872,37 @@ fun DetailDialog(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            LinkifiedText(
-                                text = ancestor.body.ifBlank { "（無內文）" },
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            // 母文/分享內文：外框＋一鍵複製＋點擊展開（Prompt 長文專用）
+                            if (ancestor.body.isBlank()) {
+                                Text(
+                                    text = "（無內文）",
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                CopyableTextBlock(
+                                    text = ancestor.body,
+                                    label = ancestor.label ?: "分享",
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
 
                             // 祖先區塊媒體（母文圖歸母文：銀晝戰績/裝備/排行在此顯示，不再掛到子文下）
+                            // 圖2：多圖改左右橫滑簡易顯示，省垂直空間
                             if (aMedia.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                aMedia.forEach { am ->
-                                    val aSource = if (am.localPath.isNotBlank() && File(am.localPath).exists()) {
-                                        File(am.localPath)
-                                    } else {
-                                        am.remoteUrl
-                                    }
-                                    val aIsVideo = am.kind.equals("VIDEO", ignoreCase = true)
-                                    // viewer 下標需映射回頂層 viewerSortedMedia（正規化比對，避免多變體 URL 錯位）
+                                MediaGalleryRow(media = aMedia) { am ->
                                     val aKey = com.reater.app.data.remote.MediaDedup.normalizeKey(am.remoteUrl)
                                     val globalIdx = viewerSortedMedia.indexOfFirst {
                                         com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == aKey
                                     }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(190.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                            .then(
-                                                if (aIsVideo) Modifier
-                                                else Modifier.clickable {
-                                                    if (globalIdx >= 0) viewerIndex = globalIdx
-                                                }
-                                            )
-                                    ) {
-                                        if (aIsVideo) {
-                                            InlineVideoPlayer(
-                                                remoteUrl = am.remoteUrl,
-                                                localPath = am.localPath,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        } else {
-                                            AsyncImage(
-                                                model = aSource,
-                                                contentDescription = "母文圖片",
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .clickable {
-                                                        if (globalIdx >= 0) viewerIndex = globalIdx
-                                                    },
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                    if (globalIdx >= 0) viewerIndex = globalIdx
                                 }
+                                Spacer(modifier = Modifier.height(6.dp))
                             }
 
                             // 互動圖示列（Threads 原生四件套，共用模組）
@@ -863,69 +1021,40 @@ fun DetailDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
-                            LinkifiedText(
-                                text = rawBody.ifBlank { "無內文" },
-                                fontSize = 14.sp,
-                                lineHeight = 21.sp,
-                                softWrap = true,
-                                color = if (rawBody.isBlank()) MaterialTheme.colorScheme.outline
-                                else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            // 主文內文：外框＋一鍵複製＋點擊展開（Prompt 長文專用）
+                            if (rawBody.isBlank()) {
+                                Text(
+                                    text = "無內文",
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                CopyableTextBlock(
+                                    text = rawBody,
+                                    label = mainBlock.label,
+                                    fontSize = 14.sp,
+                                    lineHeight = 21.sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
 
                         // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
+                        // 圖2：多圖改左右橫滑簡易顯示，單張仍大圖
                         if (mainMediaList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            mainMediaList.forEach { m ->
+                            MediaGalleryRow(media = mainMediaList) { m ->
                                 val mKey = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
                                 val globalIdx = viewerSortedMedia.indexOfFirst {
                                     com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == mKey
                                 }
-                                val imageSource = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
-                                    File(m.localPath)
-                                } else {
-                                    m.remoteUrl
-                                }
-                                val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(190.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .then(
-                                            if (isVideo) Modifier
-                                            else Modifier.clickable {
-                                                if (globalIdx >= 0) viewerIndex = globalIdx
-                                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
-                                                    .takeIf { it >= 0 }
-                                            }
-                                        )
-                                ) {
-                                    if (isVideo) {
-                                        InlineVideoPlayer(
-                                            remoteUrl = m.remoteUrl,
-                                            localPath = m.localPath,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    } else {
-                                        AsyncImage(
-                                            model = imageSource,
-                                            contentDescription = "Media",
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable {
-                                                    if (globalIdx >= 0) viewerIndex = globalIdx
-                                                    else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
-                                                        .takeIf { it >= 0 }
-                                                },
-                                            contentScale = ContentScale.Fit
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
+                                if (globalIdx >= 0) viewerIndex = globalIdx
+                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
+                                    .takeIf { it >= 0 }
                             }
+                            Spacer(modifier = Modifier.height(6.dp))
                         }
 
                         if (mainMediaList.isEmpty() && !hasAnyBlockMedia &&
@@ -1081,55 +1210,27 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                LinkifiedText(
+                                // 留言內文：外框＋一鍵複製＋點擊展開
+                                CopyableTextBlock(
                                     text = displayCommentText,
                                     fontSize = 13.sp,
                                     lineHeight = 19.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    collapsedMaxLines = 4,
+                                    collapseThresholdChars = 140,
+                                    collapseThresholdLines = 5,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                // 留言媒體
+                                // 留言媒體（圖2：多圖橫滑簡易顯示）
                                 if (commentMedia.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    commentMedia.forEachIndexed { ci, cm ->
-                                        val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(180.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        ) {
-                                            if (cmIsVideo) {
-                                                InlineVideoPlayer(
-                                                    remoteUrl = cm.remoteUrl,
-                                                    localPath = cm.localPath,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            } else {
-                                                val cmSource = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
-                                                    File(cm.localPath)
-                                                } else {
-                                                    cm.remoteUrl
-                                                }
-                                                AsyncImage(
-                                                    model = cmSource,
-                                                    contentDescription = "留言圖片",
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clickable {
-                                                            commentViewerMedia = commentMedia.map { m ->
-                                                                ViewerMedia(kind = m.kind, remoteUrl = m.remoteUrl, localPath = m.localPath)
-                                                            }
-                                                            commentViewerIndex = ci
-                                                        },
-                                                    contentScale = ContentScale.Fit
-                                                )
-                                            }
+                                    CommentMediaGalleryRow(media = commentMedia) { ci ->
+                                        commentViewerMedia = commentMedia.map { m ->
+                                            ViewerMedia(kind = m.kind, remoteUrl = m.remoteUrl, localPath = m.localPath)
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        commentViewerIndex = ci
                                     }
+                                    Spacer(modifier = Modifier.height(4.dp))
                                 }
 
                                 // 留言互動數值列（Threads 原生四件套，共用模組；小一號圖示）

@@ -22,6 +22,7 @@ object AvatarStorage {
     private const val DIR_NAME = "avatar"
     private const val LEGACY_FILE_NAME = "custom_avatar.jpg"
     private const val PREFIX = "custom_avatar_"
+    private const val ORIG_PREFIX = "custom_avatar_orig_"
     const val MAX_HISTORY = 8
     const val OUTPUT_SIZE = 512
 
@@ -34,15 +35,65 @@ object AvatarStorage {
 
     fun isAvatarFile(f: File): Boolean {
         if (f.name == LEGACY_FILE_NAME) return true
-        return f.name.startsWith(PREFIX) && f.name.endsWith(".jpg")
+        if (f.name.startsWith(ORIG_PREFIX)) return true
+        if (!f.name.startsWith(PREFIX)) return false
+        return f.name.endsWith(".jpg") || f.name.endsWith(".png")
+    }
+
+    /** 是否為原始檔（完整保留、不可直接當頭像顯示，只供裁切器讀取）。 */
+    fun isOriginalFile(f: File): Boolean =
+        f.name.startsWith(ORIG_PREFIX) &&
+            (f.name.endsWith(".jpg") || f.name.endsWith(".png"))
+
+    /** 是否為成品檔（裁切後/直接匯入，可顯示、可回選；原始檔除外）。 */
+    fun isDisplayFile(f: File): Boolean {
+        if (f.name == LEGACY_FILE_NAME) return true
+        if (f.name.startsWith(ORIG_PREFIX)) return false
+        if (!f.name.startsWith(PREFIX)) return false
+        return f.name.endsWith(".jpg") || f.name.endsWith(".png")
     }
 
     /** 由新到舊排列的歷史檔案（含舊版單檔遷移對象）。 */
     fun listHistoryFiles(context: Context): List<File> {
         val dir = avatarDir(context)
-        val files = dir.listFiles()?.filter { isAvatarFile(it) && it.length() > 0 }
+        val files = dir.listFiles()?.filter { isDisplayFile(it) && it.length() > 0 }
             ?: return emptyList()
         return files.sortedByDescending { it.lastModified() }
+    }
+
+    /** 從成品檔名抽出時間戳；失敗回傳 null。 */
+    fun extractTs(name: String): Long? {
+        return try {
+            var core = name
+            if (core.startsWith(ORIG_PREFIX)) core = core.removePrefix(ORIG_PREFIX)
+            else if (core.startsWith(PREFIX)) core = core.removePrefix(PREFIX)
+            else if (core == LEGACY_FILE_NAME) return null
+            else return null
+            core = core.substringBeforeLast(".")
+            // 相容舊的 _orig 後綴寫法（若曾出現）
+            core = core.removeSuffix("_orig")
+            core.toLong()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 成品檔對應的原始檔（同 ts 配對）；不存在回傳 null。 */
+    fun pairedOriginalFile(context: Context, displayPath: String?): File? {
+        if (displayPath.isNullOrBlank()) return null
+        return try {
+            val ts = extractTs(File(displayPath).name) ?: return null
+            val cand = File(avatarDir(context), "$ORIG_PREFIX$ts.jpg")
+            // 相容 PNG 原始檔
+            val candPng = File(avatarDir(context), "$ORIG_PREFIX$ts.png")
+            when {
+                cand.exists() && cand.length() > 0 -> cand
+                candPng.exists() && candPng.length() > 0 -> candPng
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun listHistoryPaths(context: Context): List<String> =
@@ -72,18 +123,87 @@ object AvatarStorage {
         }
     }
 
-    /** 裁切編輯器產出的正方形 Bitmap 存成新的時間戳檔，回傳絕對路徑。 */
+    /** 裁切編輯器產出的正方形 Bitmap 存成新的時間戳檔，回傳絕對路徑（PNG 保留透明 letterbox）。 */
     fun saveBitmap(context: Context, bitmap: Bitmap): String? {
         return try {
             val dir = avatarDir(context)
-            val dest = File(dir, "$PREFIX${System.currentTimeMillis()}.jpg")
+            val dest = File(dir, "$PREFIX${System.currentTimeMillis()}.png")
             dest.outputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
             if (dest.exists() && dest.length() > 0) {
                 dest.setLastModified(System.currentTimeMillis())
                 pruneOverflow(dir)
                 dest.absolutePath
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 新流程第一步：把 picker 的 content Uri 原樣存成原始檔，回傳絕對路徑。
+     * 原始檔完整保留全圖（不裁切），只供裁切器讀取；檔名與後續成品共用同一 ts 配對。
+     * 呼叫方需先產生 ts（System.currentTimeMillis()）並在存成品時沿用。
+     */
+    fun saveOriginal(context: Context, sourceUri: Uri, ts: Long): String? {
+        return try {
+            val dir = avatarDir(context)
+            migrateLegacyIfNeeded(dir)
+            val dest = File(dir, "$ORIG_PREFIX$ts.jpg")
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                dest.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return null
+            if (dest.exists() && dest.length() > 0) {
+                dest.setLastModified(ts)
+                dest.absolutePath
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 新流程第二步：裁切 Bitmap 存成與原始檔同 ts 的成品檔，回傳絕對路徑。
+     * 原始檔保留不刪；只裁多餘的成品配對（原始＋成品一起刪）。
+     */
+    fun saveCroppedWithTs(context: Context, bitmap: Bitmap, ts: Long): String? {
+        return try {
+            val dir = avatarDir(context)
+            val dest = File(dir, "$PREFIX$ts.png")
+            dest.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            if (dest.exists() && dest.length() > 0) {
+                dest.setLastModified(ts)
+                // 原始檔時間同步，避免被誤判為孤兒
+                File(dir, "$ORIG_PREFIX$ts.jpg").takeIf { it.exists() }?.setLastModified(ts)
+                File(dir, "$ORIG_PREFIX$ts.png").takeIf { it.exists() }?.setLastModified(ts)
+                prunePairsOverflow(dir)
+                dest.absolutePath
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 重編流程：沿用舊原始檔複製一份新 ts，再存新成品。
+     * 回傳 Pair(新成品路徑, 新原始路徑)；任一失敗回傳 null。
+     */
+    fun duplicateOriginalForReEdit(context: Context, origFile: File, newTs: Long): File? {
+        return try {
+            val dir = avatarDir(context)
+            val ext = if (origFile.name.endsWith(".png")) ".png" else ".jpg"
+            val dest = File(dir, "$ORIG_PREFIX$newTs$ext")
+            origFile.inputStream().use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (dest.exists() && dest.length() > 0) {
+                dest.setLastModified(newTs)
+                dest
             } else null
         } catch (_: Exception) {
             null
@@ -132,7 +252,10 @@ object AvatarStorage {
         return try {
             val f = File(path)
             if (!f.isAbsolute) return false
-            f.delete()
+            // 成品連同配對原始檔一起刪，避免孤兒膨脹
+            if (isDisplayFile(f)) deletePairFor(f)
+            else f.delete()
+            true
         } catch (_: Exception) {
             false
         }
@@ -208,10 +331,36 @@ object AvatarStorage {
 
     private fun pruneOverflow(dir: File) {
         try {
-            val files = dir.listFiles()?.filter { isAvatarFile(it) }
+            val files = dir.listFiles()?.filter { isDisplayFile(it) }
                 ?.sortedByDescending { it.lastModified() } ?: return
-            files.drop(MAX_HISTORY).forEach { runCatching { it.delete() } }
+            files.drop(MAX_HISTORY).forEach { runCatching { deletePairFor(it) } }
         } catch (_: Exception) {
         }
+    }
+
+    /** 以成品數量為準裁剪：超出的成品連同其配對原始檔一起刪；孤兒原始檔順手清理。 */
+    private fun prunePairsOverflow(dir: File) {
+        try {
+            val displays = dir.listFiles()?.filter { isDisplayFile(it) }
+                ?.sortedByDescending { it.lastModified() } ?: return
+            displays.drop(MAX_HISTORY).forEach { runCatching { deletePairFor(it) } }
+            // 孤兒原始檔：沒有對應成品且超過上限，只保留最新的 MAX_HISTORY 個原始檔
+            val liveTs = displays.take(MAX_HISTORY).mapNotNull { extractTs(it.name) }.toSet()
+            val orphans = dir.listFiles()?.filter { isOriginalFile(it) && it.length() > 0 }
+                ?.filter { extractTs(it.name) !in liveTs }
+                ?.sortedByDescending { it.lastModified() } ?: return
+            // 保留與現存成品同 ts 的原始檔（重編需要）；其餘孤兒全清避免膨脹
+            orphans.forEach { runCatching { it.delete() } }
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 刪除成品及其配對原始檔。 */
+    fun deletePairFor(displayFile: File) {
+        runCatching { displayFile.delete() }
+        val ts = extractTs(displayFile.name) ?: return
+        val dir = displayFile.parentFile ?: return
+        runCatching { File(dir, "$ORIG_PREFIX$ts.jpg").delete() }
+        runCatching { File(dir, "$ORIG_PREFIX$ts.png").delete() }
     }
 }

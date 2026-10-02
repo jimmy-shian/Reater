@@ -161,13 +161,17 @@ object ThreadsWebResolver {
             "if(isTimestamp(hs)){hi++;continue;}" +
             "break;}" +
             "cleaned=cleaned.slice(hi);" +
-            // 去尾：純數字列＋動作詞殘留；尾端第一個數字記為讚數
+            // 去尾：純數字列＋動作詞殘留；Threads 尾端數字由上而下為 愛心/回覆/轉發，
+            // 圖1修正：舊版取「最後一行」當讚數，3 數並列時會把轉發數誤當讚數；
+            // 此處先收集全部尾端數字（由上而下），第一個才是讚數。
             "var likeN=0;" +
+            "var tailNums=[];" +
             "while(cleaned.length>0){" +
             "var ts=cleaned[cleaned.length-1];" +
             "if(isAction(ts)){cleaned.pop();continue;}" +
-            "if(isCount(ts)){var v=parseCount(ts);if(likeN===0)v>0&&(likeN=v);cleaned.pop();continue;}" +
+            "if(isCount(ts)){tailNums.unshift(parseCount(ts));cleaned.pop();continue;}" +
             "break;}" +
+            "if(tailNums.length>0)likeN=tailNums[0];" +
             // 尾端清理後若又露出時間行（少見排版），再去一次
             "while(cleaned.length>0&&isTimestamp(cleaned[cleaned.length-1])){cleaned.pop();}" +
             "var body=cleaned.join(String.fromCharCode(10));" +
@@ -487,11 +491,14 @@ object ThreadsWebResolver {
         }
     }
 
-    /** 與 JS 端同規則的 Kotlin 清洗：回傳（純內文，尾端首個數字當讚數） */
+    /** 與 JS 端同規則的 Kotlin 清洗：回傳（純內文，尾端數字由上而下首個當讚數） */
     fun sanitizeDomCommentText(raw: String, author: String): SanitizedComment {
         val lines = raw.split("\n").map { it.trim() }
             .filter { it.isNotEmpty() && it != "Log in" && !it.contains("Log in") && !it.contains("登入") }
             .filter { !domActionLines.contains(it.lowercase()) }
+            // 圖1 文字渲染修正：內文若夾雜「8小時」「昨天」這類時間行，舊版只去頭尾，
+            // 中段時間行會殘留成換行亂文；此處凡是命中時間格式的行一律過濾。
+            .filter { !domTimestampRegex.matches(it) }
             .toMutableList()
         // 去頭：顯示名 / @handle / 時間
         var hi = 0
@@ -506,11 +513,13 @@ object ThreadsWebResolver {
                 hi++
                 continue
             }
+            // 顯示名重複行（如「王小明」/「王小明」連續兩行）：與 @handle 不同但明顯非內文時跳過
+            // 保守處理：僅當該行超短（<=12字）且下一行仍是同作者相關行時才視為頭部雜訊——此處只處理最常見的 handle 變體
             break
         }
         val body = if (hi > 0) lines.drop(hi).toMutableList() else lines
-        // 去尾：數字列＋動作詞殘留
-        var likeCount = 0
+        // 去尾：數字列＋動作詞殘留；由上而下首個數字才是讚數（圖1 修正）
+        val tailNums = mutableListOf<Int>()
         while (body.isNotEmpty()) {
             val ts = body.last()
             if (domActionLines.contains(ts.lowercase())) {
@@ -518,13 +527,13 @@ object ThreadsWebResolver {
                 continue
             }
             if (domCountRegex.matches(ts)) {
-                val v = parseDomCount(ts)
-                if (likeCount == 0) likeCount = v
+                tailNums.add(0, parseDomCount(ts))
                 body.removeAt(body.lastIndex)
                 continue
             }
             break
         }
+        val likeCount = tailNums.firstOrNull() ?: 0
         while (body.isNotEmpty() && domTimestampRegex.matches(body.last())) {
             body.removeAt(body.lastIndex)
         }
@@ -534,6 +543,9 @@ object ThreadsWebResolver {
             val idx = text.indexOf(at)
             if (idx >= 0) text = (text.substring(0, idx) + text.substring(idx + at.length)).trim()
         }
+        // 內文若仍以純數字開頭（如殘留計數），去掉首行數字避免「3K」混入正文
+        text = text.lines().dropWhile { domCountRegex.matches(it.trim()) }
+            .joinToString("\n").trim()
         return SanitizedComment(text = text, likeCount = likeCount)
     }
 

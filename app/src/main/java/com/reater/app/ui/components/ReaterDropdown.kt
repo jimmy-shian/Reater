@@ -85,7 +85,8 @@ object ReaterDropdownMotion {
 @Composable
 fun ReaterDropdownArrow(
     expanded: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    iconSize: androidx.compose.ui.unit.Dp = 22.dp
 ) {
     val rotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -97,7 +98,7 @@ fun ReaterDropdownArrow(
         contentDescription = if (expanded) "收合選單" else "展開選單",
         tint = MaterialTheme.colorScheme.outline,
         modifier = modifier
-            .size(22.dp)
+            .size(iconSize)
             .rotate(rotation)
     )
 }
@@ -115,33 +116,38 @@ fun ReaterDropdownTrigger(
     modifier: Modifier = Modifier,
     leading: @Composable (() -> Unit)? = null,
     badge: @Composable (() -> Unit)? = null,
-    contentExtra: (RowScope.() -> Unit)? = null
+    contentExtra: (RowScope.() -> Unit)? = null,
+    compact: Boolean = false
 ) {
     val elevation by animateDpAsState(
         targetValue = if (expanded) 10.dp else 2.dp,
         animationSpec = tween(ReaterDropdownMotion.ExpandMs, easing = FastOutSlowInEasing),
         label = "dropdownTriggerShadow"
     )
+    val corner = if (compact) 8.dp else 12.dp
     Surface(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation, RoundedCornerShape(12.dp)),
-        shape = RoundedCornerShape(12.dp),
+            .shadow(elevation, RoundedCornerShape(corner)),
+        shape = RoundedCornerShape(corner),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = if (compact) 10.dp else 12.dp,
+                    vertical = if (compact) 6.dp else 12.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leading?.invoke()
             if (leading != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,
-                fontSize = 14.sp,
+                fontSize = if (compact) 12.sp else 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
@@ -152,7 +158,7 @@ fun ReaterDropdownTrigger(
             if (badge != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = value,
-                fontSize = 14.sp,
+                fontSize = if (compact) 12.sp else 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -162,7 +168,10 @@ fun ReaterDropdownTrigger(
             )
             contentExtra?.invoke(this)
             Spacer(modifier = Modifier.width(4.dp))
-            ReaterDropdownArrow(expanded = expanded)
+            ReaterDropdownArrow(
+                expanded = expanded,
+                iconSize = if (compact) 16.dp else 22.dp
+            )
         }
     }
 }

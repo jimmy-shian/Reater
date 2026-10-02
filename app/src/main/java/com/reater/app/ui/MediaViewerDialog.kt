@@ -15,22 +15,22 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -123,9 +123,12 @@ fun MediaViewerDialog(
     var zoomedOnCurrentPage by remember { mutableStateOf(false) }
     val currentPage = pagerState.currentPage
     val current = media[currentPage.coerceIn(0, media.size - 1)]
+    // 向下滑動關閉：跟隨手指的垂直位移（圖片與影片頁共用，放開超過閾值即回到文章）
+    var dismissOffsetY by remember { mutableFloatStateOf(0f) }
 
-    // 切頁時重置放大旗標（新頁由其 ZoomableImage 重新回報；影片頁直接歸 false）
+    // 切頁時重置放大旗標與下滑位移（新頁由其 ZoomableImage 重新回報；影片頁直接歸 false）
     LaunchedEffect(currentPage) {
+        dismissOffsetY = 0f
         if (media.getOrNull(currentPage)?.isVideo == true) {
             zoomedOnCurrentPage = false
         }
@@ -152,17 +155,11 @@ fun MediaViewerDialog(
         }
     }
 
-    // 系統安全邊界：與影片全螢幕播放器同式（狀態化 insets＋保底），
-    // 另加 resources 後備高度：巢狀 Dialog 在部分機型拿到的 navigationBars/statusBars
-    // inset 為 0，用系統資源高度兜底，保證頂列不塌進狀態列、底列不被導覽列蓋住。
+    // 系統安全邊界：與影片全螢幕同規格，影片/圖片本體吃滿，頂/底列各自只吃
+    // safeDrawing 的 Top/Bottom + Horizontal，呼吸統一 8dp。舊寫法底部
+    // maxOf(+24dp, 保底 40dp) 再 +8dp，最高把底列頂起 70dp 以上，必須改掉。
     val density = LocalDensity.current
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val resNavBottom = remember(context, density) { systemBarFallback(context, density, "navigation_bar_height") }
-    val resStatusTop = remember(context, density) { systemBarFallback(context, density, "status_bar_height") }
-    val safeTop = maxOf(statusTop + 4.dp, resStatusTop + 4.dp, 10.dp)
-    val safeBottom = maxOf(navBottom + 16.dp, resNavBottom + 16.dp, 28.dp)
-    val safeSide = PaddingValues(start = 16.dp, end = 16.dp)
+    val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -175,7 +172,35 @@ fun MediaViewerDialog(
             modifier = Modifier.fillMaxSize(),
             color = Color.Black
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = dismissOffsetY
+                        alpha = (1f - (dismissOffsetY / 1200f).coerceIn(0f, 0.6f))
+                    }
+                    // 向下滑動關閉（圖片未放大、影片頁皆可）：只吃向下位移，
+                    // 橫向滑動留給 Pager 翻頁；放大時停用，改由圖片自身平移。
+                    .pointerInput(zoomedOnCurrentPage, dismissThresholdPx) {
+                        if (zoomedOnCurrentPage) return@pointerInput
+                        detectVerticalDragGestures(
+                            onDragCancel = { dismissOffsetY = 0f },
+                            onDragEnd = {
+                                if (dismissOffsetY > dismissThresholdPx) {
+                                    dismissOffsetY = 0f
+                                    onDismiss()
+                                } else {
+                                    dismissOffsetY = 0f
+                                }
+                            },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount > 0f || dismissOffsetY > 0f) {
+                                    dismissOffsetY = (dismissOffsetY + dragAmount).coerceAtLeast(0f)
+                                }
+                            }
+                        )
+                    }
+            ) {
                 // 媒體本體：HorizontalPager 支援左右滑動；圖片頁內建雙指/雙擊縮放
                 HorizontalPager(
                     state = pagerState,
@@ -205,13 +230,17 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 頂列：計數 + X 關閉（避開狀態列/瀏海）
+                // 頂列：計數 + X 關閉（只吃 Top + Horizontal safeDrawing）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
                         .background(Color.Black.copy(alpha = 0.45f))
-                        .padding(top = safeTop)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                            )
+                        )
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -275,14 +304,18 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 底列：下載（圖片）/ 外部開啟（影片），與影片播放器同規格避開導覽列
+                // 底列：下載/開啟（只吃 Bottom + Horizontal safeDrawing，呼吸 8dp）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(safeSide)
-                        .padding(top = 12.dp, bottom = safeBottom),
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            )
+                        )
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -460,22 +493,6 @@ private fun ZoomableImagePage(
             contentScale = ContentScale.Fit
         )
     }
-}
-
-/**
- * 系統列高度後備值：Compose insets 在巢狀 Dialog 回 0 時，用系統資源高度兜底。
- */
-private fun systemBarFallback(
-    context: Context,
-    density: androidx.compose.ui.unit.Density,
-    name: String
-): androidx.compose.ui.unit.Dp {
-    return runCatching {
-        val id = context.resources.getIdentifier(name, "dimen", "android")
-        if (id > 0) with(density) {
-            context.resources.getDimensionPixelSize(id).toDp()
-        } else 0.dp
-    }.getOrDefault(0.dp)
 }
 
 /**

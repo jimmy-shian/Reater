@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Share
@@ -154,6 +155,11 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 全螢幕 Dialog（影片/圖片檢視器）要正確拿到 WindowInsets，
+        // Activity 必須先 edge-to-edge，否則 Dialog 內 navigationBars/statusBars
+        // 在部分機型回 0，只能靠資源高度兜底，直/橫向都會錯位。
+        // 參見 developer.android.com/develop/ui/compose/system/setup-e2e
+        enableEdgeToEdge()
         // Pro 一鍵開通 Deep Link：冷啟動時先收下，Compose 端 LaunchedEffect 會自動驗證解鎖
         parseProUnlock(intent?.data)?.let { proDeepLinkFlow.value = it }
         setContent {
@@ -217,9 +223,10 @@ private fun MainThemedScreen(
                         it.isAppearanceLightNavigationBars = darkIcons
                     }
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    // edge-to-edge：系統列一律透明，由各畫面自行吃 safeDrawing insets；
+                    // 若在此寫死黑/白不透明，Dialog 透明設定會被蓋掉，控制列被迫墊高避讓。
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = if (isDark) android.graphics.Color.BLACK
-                    else android.graphics.Color.WHITE
+                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
                 }
             }
         }
@@ -265,6 +272,9 @@ class MainViewModel @Inject constructor(
     val customAvatarHistory: StateFlow<List<String>> = settingsRepository.customAvatarHistory
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val customAvatarOriginal: StateFlow<String?> = settingsRepository.customAvatarOriginal
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     fun setCustomAvatarId(id: String) {
         viewModelScope.launch { settingsRepository.setCustomAvatarId(id) }
     }
@@ -293,6 +303,33 @@ class MainViewModel @Inject constructor(
     fun saveCroppedAvatar(bitmap: android.graphics.Bitmap, onDone: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             val saved = settingsRepository.importAvatarBitmap(bitmap)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    /**
+     * 新流程：picker 原圖先存原始檔（全圖保留），裁切結果存同 ts 成品。
+     * 重編一律從原始檔讀取，不裁成品，根治越編越小/模糊。
+     */
+    fun importOriginalThenCropped(
+        source: android.net.Uri,
+        cropped: android.graphics.Bitmap,
+        onDone: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val saved = settingsRepository.importOriginalThenCropped(source, cropped)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    /** 重編儲存：從原始檔重裁（呼叫方需傳入 currentOriginal），無原始檔時退化為一般儲存。 */
+    fun reEditSaveCropped(
+        cropped: android.graphics.Bitmap,
+        oldOriginalPath: String?,
+        onDone: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val saved = settingsRepository.reEditSaveCropped(cropped, oldOriginalPath)
             withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
         }
     }
@@ -678,6 +715,7 @@ fun MainScreen(
     val customAvatarId by viewModel.customAvatarId.collectAsState()
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
     val customAvatarHistory by viewModel.customAvatarHistory.collectAsState()
+    val customAvatarOriginal by viewModel.customAvatarOriginal.collectAsState()
     var showIconGallery by remember { mutableStateOf(false) }
 
     val reaterExportLauncher = rememberLauncherForActivityResult(
@@ -844,6 +882,7 @@ fun MainScreen(
             isPro = isPro,
             currentAvatarId = customAvatarId,
             currentAvatarUri = customAvatarUri,
+            currentAvatarOriginal = customAvatarOriginal,
             onSelectAvatar = { id ->
                 // 留在圖示總覽不關閉：圓形勾選可再點一下取消，回到相片或上一個圖示
                 viewModel.setCustomAvatarId(id)
@@ -877,11 +916,31 @@ fun MainScreen(
                 Toast.makeText(context, "已刪除該張過往圖片", Toast.LENGTH_SHORT).show()
             },
             onSaveCropped = { bitmap ->
-                // 裁切確認：存成新的時間戳內部檔，留在圖示總覽不關閉方便預覽
+                // 舊流程退路（無原始檔）：存成新的時間戳內部檔，留在圖示總覽不關閉方便預覽
                 viewModel.saveCroppedAvatar(bitmap) { success ->
                     Toast.makeText(
                         context,
                         if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onSaveCroppedWithSource = { bitmap, sourceUri ->
+                // 新流程：原始檔完整保留＋成品同 ts 配對
+                viewModel.importOriginalThenCropped(sourceUri, bitmap) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onSaveReEdit = { bitmap, oldOriginal ->
+                // 重編：從原始檔重裁，不裁成品避免畫質遞減
+                viewModel.reEditSaveCropped(bitmap, oldOriginal) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已更新頭像位置（原圖保留）" else "儲存裁切圖片失敗，請重試",
                         Toast.LENGTH_SHORT
                     ).show()
                 }

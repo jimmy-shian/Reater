@@ -46,6 +46,10 @@ object ThreadsSjsParser {
         val authorVerified: Boolean,
         val postedAtMs: Long,
         val likeCount: Int,
+        /** 伺服器宣告的回覆總數（direct_reply_count 系列；無則 0，呼叫方用 comments.size 兜底） */
+        val replyCount: Int = 0,
+        /** 伺服器宣告的轉發總數（多 key 相容；無則 0） */
+        val repostCount: Int = 0,
         val media: List<FetchedMedia>,
         /** 留言（含每則留言自帶的圖/影媒體），上限 50 */
         val comments: List<FetchedComment>,
@@ -142,13 +146,20 @@ object ThreadsSjsParser {
         // /share/ 可能解析到留言而非主串（實測 BAV_nQgC4O → n.i.c.k.0.3.2.3 的留言，
         // 但使用者要的是 octopus5201314 的主串「新角拿了MVP」）。
         // 當主貼本身是留言時，自動回溯根貼文（root post）當主貼，原留言則降為留言。
+        // 例外：self-thread（作者回覆自己補充正文，如 DdAkapOFCgT 回覆自己，
+        // reply_to == root == 自己）：分享的就是該則補充，不可回溯，否則會把
+        // snippet 長文（529 字 prompt）換成根貼短文。僅當回覆他人時才回溯。
         val effectiveMain: JSONObject
         if (mainIsReply) {
             val chain = findParentChain(main, allPosts, shortcode)
             val rootPost = chain.firstOrNull()?.let { root ->
                 allPosts.find { it.optString("code") == root.shortcode }
             }
-            effectiveMain = rootPost ?: main
+            val rootAuthor = chain.firstOrNull()?.authorHandle.orEmpty()
+            val replyToUser = mainTpa?.optJSONObject("reply_to_author")?.optString("username").orEmpty()
+            val isSelfThread = (rootAuthor.isNotBlank() && rootAuthor.equals(authorHandle, ignoreCase = true)) ||
+                (replyToUser.isNotBlank() && replyToUser.equals(authorHandle, ignoreCase = true))
+            effectiveMain = if (isSelfThread) main else (rootPost ?: main)
         } else {
             effectiveMain = main
         }
@@ -162,6 +173,12 @@ object ThreadsSjsParser {
         val effLikeCount = effectiveMain.optInt("like_count", 0).let { if (it > 0) it else likeCount }
         val effBody = postText(effectiveMain).ifBlank { body }
         val effMedia = postMedia(effectiveMain).ifEmpty { media }
+        // 伺服器宣告的回覆/轉發總數（圖1「數字解析顯示不確」修正：
+        // 舊版 replyCount 一律用 comments.size，抓不全時就會與 Threads 顯示不符；
+        // 此處優先讀 direct_reply_count 系列，多 key 相容，抓不到才由呼叫方用 comments.size 兜底）
+        val effCounts = postCounts(effectiveMain)
+        val effReplyCount = effCounts.first
+        val effRepostCount = effCounts.second
 
         // direct_replies 歸屬過濾：頂層串文（is_reply==false）沿用嚴格 root 檢查；
         // 子串分享（主本身 is_reply==true，如 D-JnnrknO/DzVwcgDJw 實測）root 指向最終祖先而非主，
@@ -299,12 +316,55 @@ object ThreadsSjsParser {
             authorVerified = effAuthorVerified,
             postedAtMs = if (effTakenAtSec > 0) effTakenAtSec * 1000 else 0L,
             likeCount = effLikeCount,
+            replyCount = effReplyCount,
+            repostCount = effRepostCount,
             media = effMedia,
             comments = comments,
             parent = parent,
             parentChain = parentChain,
             topicTag = TopicTags.resolve(effectiveMain, effBody)
         )
+    }
+
+    /**
+     * 伺服器宣告計數（圖1 修正）：direct_reply_count / reply_count / comment_count
+     * 與 repost / reshare 系列多 key 相容讀取。缺失回 0。
+     */
+    fun postCounts(post: JSONObject): Pair<Int, Int> {
+        fun optPositive(vararg keys: String): Int {
+            for (k in keys) {
+                val v = post.optInt(k, 0)
+                if (v > 0) return v
+            }
+            return 0
+        }
+        val tpa = post.optJSONObject("text_post_app_info")
+        var reply = 0
+        var repost = 0
+        if (tpa != null) {
+            reply = tpa.optInt("direct_reply_count", 0)
+            if (reply <= 0) reply = tpa.optInt("direct_replies_count", 0)
+            if (reply <= 0) reply = tpa.optInt("reply_count", 0)
+            if (reply <= 0) reply = tpa.optInt("comment_count", 0)
+            repost = tpa.optInt("repost_count", 0)
+            if (repost <= 0) repost = tpa.optInt("reposts_count", 0)
+            if (repost <= 0) repost = tpa.optInt("reshare_count", 0)
+            if (repost <= 0) repost = tpa.optInt("quote_count", 0)
+            // 有些 shape 把計數放在第二層 info
+            val inner = tpa.optJSONObject("post_info")
+            if (inner != null) {
+                if (reply <= 0) reply = inner.optInt("direct_reply_count", 0)
+                if (repost <= 0) repost = inner.optInt("repost_count", 0)
+            }
+        }
+        if (reply <= 0) reply = optPositive(
+            "direct_reply_count", "direct_replies_count",
+            "reply_count", "comment_count", "comments_count"
+        )
+        if (repost <= 0) repost = optPositive(
+            "repost_count", "reposts_count", "reshare_count", "quote_count", "quotes_count"
+        )
+        return reply to repost
     }
 
     /**
@@ -614,21 +674,53 @@ object ThreadsSjsParser {
         return ""
     }
 
-    /** caption.text 優先；無則拼 text_fragments plaintext（官方欄位，見 EasyDown 文件） */
+    /** caption.text 優先；無則拼 text_fragments plaintext（官方欄位，見 EasyDown 文件）；
+     * 另含 snippet_attachment_info.text_fragments（文字區塊/2-2 卡片實測：
+     * DdAkapOFCgT 的 529 字 prompt 只在此欄，caption 僅 16 字短標題）。
+     * 三段去重後以 \n\n 拼接，避免只取短標題遺失正文。 */
     fun postText(post: JSONObject): String {
+        val parts = mutableListOf<String>()
+        fun addPart(s: String) {
+            val t = s.trim()
+            if (t.isBlank() || t == "null") return
+            // 已收錄（含子字串）則跳過，避免 caption == text_fragments 首段時重複
+            if (parts.any { it == t || it.contains(t) || t.contains(it) }) {
+                // 較長者勝出：若新段更長，取代舊的短段
+                val idx = parts.indexOfFirst { it.contains(t) }
+                if (idx >= 0 && t.length > parts[idx].length) parts[idx] = t
+                return
+            }
+            parts.add(t)
+        }
         val rawCap = post.optJSONObject("caption")?.optString("text").orEmpty()
         val caption = if (rawCap == "null") "" else rawCap
-        if (caption.isNotBlank()) return caption.trim()
-        val fragments = post.optJSONObject("text_post_app_info")
-            ?.optJSONObject("text_fragments")
-            ?.optJSONArray("fragments") ?: return ""
-        val sb = StringBuilder()
-        for (i in 0 until fragments.length()) {
-            val part = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
-            if (part == "null") continue
-            sb.append(part)
+        addPart(caption)
+        val tpa = post.optJSONObject("text_post_app_info")
+        // 主 text_fragments（多 fragment 仍直接拼接為一段，與舊行為一致）
+        val fragments = tpa?.optJSONObject("text_fragments")?.optJSONArray("fragments")
+        if (fragments != null) {
+            val sb = StringBuilder()
+            for (i in 0 until fragments.length()) {
+                val part = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
+                if (part == "null" || part.isBlank()) continue
+                sb.append(part)
+            }
+            addPart(sb.toString())
         }
-        return sb.toString().trim()
+        // 文字區塊：snippet_attachment_info.text_fragments（/share/BAuxH1CWYu 實測主欄位）
+        val snippetFrags = tpa?.optJSONObject("snippet_attachment_info")
+            ?.optJSONObject("text_fragments")?.optJSONArray("fragments")
+        if (snippetFrags != null) {
+            val sb = StringBuilder()
+            for (i in 0 until snippetFrags.length()) {
+                val part = snippetFrags.optJSONObject(i)?.optString("plaintext").orEmpty()
+                if (part == "null" || part.isBlank()) continue
+                if (sb.isNotEmpty()) sb.append("\n\n")
+                sb.append(part.trim())
+            }
+            addPart(sb.toString())
+        }
+        return parts.joinToString("\n\n").trim()
     }
 
     // ---------- 媒體 ----------
