@@ -19,17 +19,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -541,20 +536,13 @@ private fun FullscreenVideoViewer(
         onClose(position, isPlaying, isMuted)
     }
 
-    // 系統安全邊界（官方 edge-to-edge 寫法）：
-    // developer.android.com/develop/ui/compose/system/setup-e2e：
-    // 影片本體 fillMaxSize 直接畫到系統列下方（沉浸式），只有「控制列」吃
-    // WindowInsets.safeDrawing（= statusBars + navigationBars + displayCutout 聯集，
-    // 橫/直向自動切換），再各加一次小呼吸 8dp。禁止以下三種疊加：
-    // 1) navigationBars/statusBars/cutout 分開取再各自 +12dp 取 max（重複留白，
-    //    橫向右側按鈕被擠出裁切）；2) 資源高度 navigation_bar_height 當 maxOf 兜底
-    //    （該值是直向三鍵列高度，橫向底部 inset 應為 0 卻被撐到 58dp，進度條浮到
-    //    畫面中段；直向手勢列也被墊太高）；3) asPaddingValues 手動算 Dp（composition
-    //    讀到的是上一幀，且不會參與 consume，巢狀 Dialog 更易錯位）。
-    // 改用 Modifier.windowInsetsPadding（layout 階段取值、自動 consume），直向與
-    // 橫向截圖才會同時貼齊：頂列貼狀態列、底列貼導覽列之上 8dp。
-    // 頂列：只吃 Top + Horizontal，影片區不被推擠
-    // 底列：只吃 Bottom + Horizontal，同理
+    // 系統安全邊界：直向 / 橫向拆開撰寫（見 SafeBarModifiers.kt）。
+    // 影片本體 fillMaxSize 直接畫到系統列下方（沉浸式），只有「控制列」吃安全邊界：
+    // - 直向頂列：左右均衡，頂部保證在狀態列之下；
+    //   直向底列：bottom = max(實際 inset + 12dp, 48dp)，保證在三鍵列/手勢列之上，
+    //   修復進度條掉進手機導覽列返回區塊無法使用的問題。
+    // - 橫向頂列：左側可貼邊、右側空出導覽列返回鍵；
+    //   橫向底列：bottom 上抬、右側空出返回鍵，避免進度條右端被裁、底部純粹過低。
     // 中央控制組：不吃 insets，永遠置中於影片。
 
     // 向下滑動關閉手勢（含放開回彈/超過閾值關閉）；Slider 是橫向拖曳，不會誤觸。
@@ -715,18 +703,13 @@ private fun FullscreenVideoViewer(
                         )
                     }
             ) {
-                // 1. 頂部列：關閉按鈕、狀態標題、直橫向旋轉切換
-                // 只吃 Top + Horizontal 的 safeDrawing，呼吸 8dp 一次即可
+                // 1. 頂部列：直向 / 橫向拆開（fullscreenTopBarModifier），
+                // 關閉按鈕、狀態標題、直橫向旋轉切換共用同一容器。
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(
-                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                            )
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .then(fullscreenTopBarModifier(isLandscape)),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -850,20 +833,13 @@ private fun FullscreenVideoViewer(
                 }
 
                 // 3. 底部 YouTube 風格進度條與資訊按鈕列
-                // 只吃 Bottom + Horizontal 的 safeDrawing，直向手勢列/三鍵列與橫向
-                // cutout/側邊手勢都會自動避開；呼吸統一 8dp，進度條貼底 12dp 高度區。
-                // 禁止再疊資源高度兜底，否則橫向底部 inset 明明為 0 卻被撐到 58dp，
-                // 進度條浮到畫面中段、右側按鈕被擠出裁切（本次截圖主因）。
+                // 直向 / 橫向拆開（fullscreenBottomBarModifier）：
+                // 直向上抬 48dp 保底避開導覽列返回區塊，橫向上抬並右側留白避開返回鍵。
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(
-                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
-                            )
-                        )
-                        .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)
+                        .then(fullscreenBottomBarModifier(isLandscape))
                 ) {
                     // 拖曳中時間預覽懸浮提示
                     if (scrubbing) {

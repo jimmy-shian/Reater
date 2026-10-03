@@ -3,6 +3,7 @@ package com.reater.app.ui
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -21,16 +22,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
+import com.reater.app.ui.player.fullscreenBottomBarModifier
+import com.reater.app.ui.player.fullscreenTopBarModifier
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -155,9 +154,12 @@ fun MediaViewerDialog(
         }
     }
 
-    // 系統安全邊界：與影片全螢幕同規格，影片/圖片本體吃滿，頂/底列各自只吃
-    // safeDrawing 的 Top/Bottom + Horizontal，呼吸統一 8dp。舊寫法底部
-    // maxOf(+24dp, 保底 40dp) 再 +8dp，最高把底列頂起 70dp 以上，必須改掉。
+    // 系統安全邊界：直向 / 橫向拆開撰寫，與影片全螢幕同一套
+    // fullscreenTopBarModifier / fullscreenBottomBarModifier（見 SafeBarModifiers.kt）。
+    // 影片/圖片本體吃滿，頂/底列各自帶保底 inset，避免「下載圖片」貼底被導覽列蓋掉。
+    // 直向底列保底 48dp（避開三鍵列/手勢列），橫向底列上抬＋右側留白避開返回鍵。
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val density = LocalDensity.current
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
 
@@ -230,18 +232,14 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 頂列：計數 + X 關閉（只吃 Top + Horizontal safeDrawing）
+                // 頂列：直向 / 橫向拆開（fullscreenTopBarModifier），計數 + X 關閉。
+                // 背景先鋪滿再接 padding inset，媒體沉浸式延伸到系統列下方。
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
                         .background(Color.Black.copy(alpha = 0.45f))
-                        .windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(
-                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                            )
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .then(fullscreenTopBarModifier(isLandscape)),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -304,18 +302,15 @@ fun MediaViewerDialog(
                     }
                 }
 
-                // 底列：下載/開啟（只吃 Bottom + Horizontal safeDrawing，呼吸 8dp）
+                // 底列：直向 / 橫向拆開（fullscreenBottomBarModifier），下載/開啟共用。
+                // 直向保底 48dp 保證「下載圖片」在導覽列之上，橫向右側留白避開返回鍵。
+                // 背景先鋪滿再接 padding inset，沉浸式不留黑邊。
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .background(Color.Black.copy(alpha = 0.55f))
-                        .windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(
-                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
-                            )
-                        )
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+                        .then(fullscreenBottomBarModifier(isLandscape)),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
