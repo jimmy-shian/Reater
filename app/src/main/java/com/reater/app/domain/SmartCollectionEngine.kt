@@ -72,56 +72,21 @@ class SmartCollectionEngine @Inject constructor(
                 name = "🔥 高讚熱門",
                 iconName = "fire",
                 rulesJson = """{"minLikes":100}""",
-                sortOrder = 1,
-                isEnabled = true
+                sortOrder = 1
             ),
             SavedCollectionEntity(
                 name = "📚 長期必讀",
                 iconName = "study",
                 rulesJson = """{"isFavorite":true,"isRead":false}""",
-                sortOrder = 2,
-                isEnabled = true
+                sortOrder = 2
             ),
             SavedCollectionEntity(
                 name = "💡 靈感庫",
                 iconName = "sparkles",
                 rulesJson = """{"isFavorite":true}""",
-                sortOrder = 3,
-                isEnabled = true
+                sortOrder = 3
             )
         )
         defaults.forEach { proDao.insertCollection(it) }
-    }
-
-    companion object {
-        private val describeJson = Json { ignoreUnknownKeys = true }
-
-        /**
-         * 把 rulesJson 轉成中文規則說明，例如「讚數 ≥ 100」「已收藏・未讀」。
-         * 解析失敗或無條件時回傳「自訂條件」。
-         */
-        fun describeRules(
-            rulesJson: String,
-            categoryNameOf: ((Long) -> String?)? = null
-        ): String {
-            val rule = try {
-                describeJson.decodeFromString(CollectionRule.serializer(), rulesJson)
-            } catch (e: Exception) {
-                return "自訂條件"
-            }
-            val parts = mutableListOf<String>()
-            rule.categoryId?.let { cid ->
-                val n = categoryNameOf?.invoke(cid)
-                if (n != null) parts.add("分類「$n」") else parts.add("分類 ID $cid")
-            }
-            rule.isFavorite?.let { parts.add(if (it) "已收藏" else "未收藏") }
-            rule.isRead?.let { parts.add(if (it) "已讀" else "未讀") }
-            rule.minLikes?.let { parts.add("讚數 ≥ $it") }
-            rule.hasMedia?.let { parts.add(if (it) "含媒體" else "無媒體") }
-            rule.author?.takeIf { it.isNotBlank() }?.let { parts.add("作者含「$it」") }
-            rule.tag?.takeIf { it.isNotBlank() }?.let { parts.add("標籤「$it」") }
-            if (parts.isEmpty()) return "全部內容"
-            return parts.joinToString("・")
-        }
     }
 }
