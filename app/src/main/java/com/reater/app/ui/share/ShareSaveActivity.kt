@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,10 +26,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -62,10 +66,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -81,10 +89,10 @@ import coil.compose.AsyncImage
 import com.reater.app.R
 import com.reater.app.data.remote.threads.ThreadsWebResolver
 import com.reater.app.ui.AvatarIcons
-import com.reater.app.ui.components.DismissFocusOnScroll
 import com.reater.app.ui.components.dismissFocusOnTap
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class ShareSaveActivity : ComponentActivity() {
@@ -179,6 +187,7 @@ class ShareSaveActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShareSaveScreen(
     viewModel: ShareSaveViewModel,
@@ -191,9 +200,18 @@ fun ShareSaveScreen(
     val context = LocalContext.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
-    // 主內容捲動狀態提升：內容區垂直滑動即收鍵盤（多行框內拖曳不受影響）
+    // 主內容捲動狀態：注意「捲動即收鍵盤」在此頁停用——鍵盤彈出時的 ime 佈局變化
+    // 會觸發內容捲動，若此時 clearFocus 就會形成「彈鍵盤→被捲動→被收焦點→收鍵盤」
+    // 的閃爍迴圈，導致精華留言/個人筆記點不出鍵盤。只保留「點空白收鍵盤」。
     val shareContentScrollState = rememberScrollState()
-    DismissFocusOnScroll(shareContentScrollState, focusManager)
+    val scope = rememberCoroutineScope()
+    // 輸入框焦點鏈：內文 Next → 留言 Next → 筆記 Done，鍵盤不蓋住輸入框
+    val bodyFocusRequester = remember { FocusRequester() }
+    val commentsFocusRequester = remember { FocusRequester() }
+    val noteFocusRequester = remember { FocusRequester() }
+    val bodyBiv = remember { BringIntoViewRequester() }
+    val commentsBiv = remember { BringIntoViewRequester() }
+    val noteBiv = remember { BringIntoViewRequester() }
 
     LaunchedEffect(state.isSaved) {
         if (state.isSaved) {
@@ -235,6 +253,96 @@ fun ShareSaveScreen(
         }
     }
 
+    // 同一篇已存在：覆蓋並更新內容（重新抓取）/ 另存一篇新的（方形按鈕、左右均分）
+    if (state.showDuplicateDialog) {
+        Dialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    com.reater.app.ui.components.DialogHeader(
+                        title = "已經儲存過這篇文章",
+                        onClose = { viewModel.dismissDuplicateDialogs() }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "要覆蓋並更新內容（重新抓取），還是另存一篇新的？",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.confirmSaveAsNew() },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("另存一篇新的", maxLines = 1, softWrap = false)
+                        }
+                        Button(
+                            onClick = { viewModel.confirmOverwrite() },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("覆蓋並更新內容", maxLines = 1, softWrap = false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 同一篇在垃圾桶：復原並更新內容（重新抓取）/ 僅復原（方形按鈕、左右均分）
+    if (state.showTrashDialog) {
+        Dialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    com.reater.app.ui.components.DialogHeader(
+                        title = "這篇文章在垃圾桶",
+                        onClose = { viewModel.dismissDuplicateDialogs() }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "要復原並更新內容（重新抓取），還是僅復原？",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.confirmRestoreOnly() },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("僅復原", maxLines = 1, softWrap = false)
+                        }
+                        Button(
+                            onClick = { viewModel.confirmRestoreAndUpdate() },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("復原並更新內容", maxLines = 1, softWrap = false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Create Category Dialog（鍵盤友善版：按鈕不被鍵盤蓋、返回不丟稿、Done 直接建立）
     var createPrefill by remember { mutableStateOf("") }
     if (state.showCreateCategoryDialog) {
@@ -268,7 +376,11 @@ fun ShareSaveScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.55f))
+            // ime inset 在最外層一次處理：鍵盤彈出時整個卡片縮小，不在捲動區內再縮一次
+            .imePadding()
+            .navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 20.dp)
+            // 只留外層點空白收鍵盤：子元件（TextField/按鈕）會先消費點擊，不會誤清焦點
             .dismissFocusOnTap(focusManager),
         contentAlignment = Alignment.TopCenter
     ) {
@@ -329,8 +441,6 @@ fun ShareSaveScreen(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(shareContentScrollState)
-                        .dismissFocusOnTap(focusManager)
-                        .imePadding()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                 if (state.targetUrl.isNotBlank()) {
@@ -527,8 +637,13 @@ fun ShareSaveScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 100.dp, max = 220.dp),
-                    shape = RoundedCornerShape(8.dp)
+                        .heightIn(min = 100.dp, max = 220.dp)
+                        .focusRequester(bodyFocusRequester)
+                        .bringIntoViewRequester(bodyBiv)
+                        .onFocusChanged { if (it.isFocused) scope.launch { bodyBiv.bringIntoView() } },
+                    shape = RoundedCornerShape(8.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { commentsFocusRequester.requestFocus() })
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -587,8 +702,13 @@ fun ShareSaveScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 72.dp, max = 160.dp),
-                    shape = RoundedCornerShape(8.dp)
+                        .heightIn(min = 72.dp, max = 160.dp)
+                        .focusRequester(commentsFocusRequester)
+                        .bringIntoViewRequester(commentsBiv)
+                        .onFocusChanged { if (it.isFocused) scope.launch { commentsBiv.bringIntoView() } },
+                    shape = RoundedCornerShape(8.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { noteFocusRequester.requestFocus() })
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -736,8 +856,13 @@ fun ShareSaveScreen(
                     placeholder = { Text(stringResource(R.string.note_placeholder)) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 56.dp, max = 140.dp),
-                    shape = RoundedCornerShape(8.dp)
+                        .heightIn(min = 56.dp, max = 140.dp)
+                        .focusRequester(noteFocusRequester)
+                        .bringIntoViewRequester(noteBiv)
+                        .onFocusChanged { if (it.isFocused) scope.launch { noteBiv.bringIntoView() } },
+                    shape = RoundedCornerShape(8.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
