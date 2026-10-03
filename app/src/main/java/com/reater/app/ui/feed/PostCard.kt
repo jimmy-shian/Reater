@@ -69,13 +69,13 @@ import java.io.File
 
 /**
  * 格式化單一貼文分享文字：
- * "網址: 我的說明摘要 or AI摘要 or 空著"
- * 網址一律去除 ?xmt= / ?slof= 等追蹤參數後再輸出。
+ * "摘要\n乾淨連結"（摘要 = AI摘要 or 筆記；無摘要則只輸出連結）
+ * 連結一律去除 ?xmt= / ?slof= 等追蹤參數後再輸出。
  */
 fun formatPostShareText(itemDetail: ItemDetail): String {
     val url = com.reater.app.domain.UrlParser.stripTrackingParams(itemDetail.item.canonicalUrl)
     val summary = itemDetail.manualSummary.ifBlank { itemDetail.manualNote }.trim()
-    return if (summary.isNotBlank()) "$url: $summary" else "$url: "
+    return if (summary.isNotBlank()) "$summary\n$url" else url
 }
 
 @Composable
@@ -241,7 +241,7 @@ fun PostCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 一鍵複製分享單一網址 ("網址: 摘要")
+                    // 一鍵複製分享單一貼文 ("摘要\n乾淨連結")
                     IconButton(
                         onClick = {
                             val shareText = formatPostShareText(itemDetail)

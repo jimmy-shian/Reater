@@ -967,33 +967,6 @@ fun DetailDialog(
                     }
                 }
 
-                // AI 摘要
-                if (currentSummary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "✨ AI 智能摘要",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = currentSummary,
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                }
-
                 // 個人筆記
                 if (item.manualNote.isNotBlank()) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1139,6 +1112,33 @@ fun DetailDialog(
                                     modifier = Modifier.padding(vertical = 2.dp)
                                 )
                             }
+                        }
+                    }
+                }
+
+                // AI 摘要（最底：精華留言下方、底部操作列上方）
+                if (currentSummary.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "✨ AI 智能摘要",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = currentSummary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         }
                     }
                 }
