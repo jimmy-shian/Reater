@@ -323,7 +323,7 @@ fun PostCard(
             // Body Text — 點內文即展開詳情（像 Threads）；URL 仍可點擊外部跳轉
             LinkifiedText(
                 text = remember(itemDetail.displayBody) {
-                    itemDetail.displayBody.trim()
+                    com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(itemDetail.displayBody).trim()
                         .replace(Regex("\n{3,}"), "\n\n")
                         .ifBlank { "無內文" }
                 },

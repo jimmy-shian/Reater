@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -160,6 +163,173 @@ private fun parseThreadChain(rawBody: String, defaultAuthor: String): List<Threa
     }
     // 避免病態堆疊拖慢渲染
     return blocks.take(6)
+}
+
+/** 文字區塊可複製門檻：短訊息不套灰框、不顯示複製鍵 */
+private const val COPYABLE_MIN_CHARS = 60
+private const val COPYABLE_MIN_LINES = 4
+private const val SNIPPET_LEAD_MAX_CHARS = 80
+
+/**
+ * 拆分「一般訊息 + 文字區塊」：
+ * - 新存檔（含結構標記）：精確拆分，一般訊息一律純顯示（再長也不給複製鍵），
+ *   只有真正的文字區塊 (snippet) 配灰框＋複製鍵。
+ * - 舊資料/無標記（DOM 兜底、舊存檔）：啟發式兜底，沿用舊行為避免舊文字區塊失去複製鍵。
+ * - 單段短文 → (全文, "")：純文字顯示，不可複製。
+ * - 單段長文 → ("", 全文)：整塊可複製（僅舊資料兜底會走到此分支）。
+ * - 首段短 + 後段長 → (首段, 後段)：首段純文字，後段可複製 (只複製文字區塊)。
+ */
+private fun splitLeadAndSnippet(text: String): Pair<String, String> {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return "" to ""
+    // 結構化標記優先（新存檔精確拆分）
+    if (com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(trimmed)) {
+        return com.reater.app.data.remote.threads.ThreadsSjsParser.splitSnippetBlock(trimmed)
+    }
+    val parts = trimmed.split(Regex("\\n\\n+")).map { it.trim() }.filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return "" to ""
+    if (parts.size == 1) {
+        val single = parts[0]
+        val long = single.length >= COPYABLE_MIN_CHARS || single.lines().size >= COPYABLE_MIN_LINES
+        return if (long) "" to single else single to ""
+    }
+    val lead = parts[0]
+    val rest = parts.drop(1).joinToString("\n\n").trim()
+    if (rest.isEmpty()) {
+        val long = lead.length >= COPYABLE_MIN_CHARS || lead.lines().size >= COPYABLE_MIN_LINES
+        return if (long) "" to lead else lead to ""
+    }
+    // 首段短 + 後段長 → 拆分 (一般訊息純顯示，文字區塊可複製)
+    if (lead.length <= SNIPPET_LEAD_MAX_CHARS &&
+        (rest.length >= COPYABLE_MIN_CHARS || rest.lines().size >= COPYABLE_MIN_LINES)
+    ) {
+        return lead to rest
+    }
+    // 整體長 → 整塊可複製；整體短 → 純文字
+    val wholeLong = trimmed.length >= COPYABLE_MIN_CHARS || trimmed.lines().size >= COPYABLE_MIN_LINES
+    return if (wholeLong) "" to trimmed else trimmed to ""
+}
+
+/**
+ * 可收合的純文字（一般訊息用：無灰框、無複製鍵；過長才出現展開/收起）。
+ */
+@Composable
+private fun CollapsiblePlainText(
+    text: String,
+    modifier: Modifier = Modifier,
+    collapsedMaxLines: Int = 4,
+    fontSize: TextUnit = 14.sp,
+    lineHeight: TextUnit = 20.sp,
+    color: Color = MaterialTheme.colorScheme.onSurface
+) {
+    if (text.isBlank()) return
+    var expanded by remember(text) { mutableStateOf(false) }
+    val collapsible = text.length > COPYABLE_MIN_CHARS || text.lines().size >= COPYABLE_MIN_LINES
+    val maxLines = if (!collapsible || expanded) Int.MAX_VALUE else collapsedMaxLines
+    Column(modifier = modifier.fillMaxWidth()) {
+        LinkifiedText(
+            text = text,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = color,
+            softWrap = true,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            onNeutralClick = { if (collapsible) expanded = !expanded },
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (collapsible) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 2.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = if (expanded) "收起" else "展開全文",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "收起" else "展開全文",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 選擇性可複製文字：
+ * - 一般訊息（短或長）→ 純文字顯示 (無灰框、無複製鍵；長文可展開收起)。
+ * - 文字區塊 (snippet) → CopyableTextBlock (灰框 + 複製鍵 + 展開收起)。
+ * - 混合 (一般訊息 + 文字區塊) → 上方純文字 + 下方灰框 (只複製文字區塊)。
+ */
+@Composable
+private fun SelectiveTextBlock(
+    text: String,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    collapsedMaxLines: Int = 6,
+    collapseThresholdChars: Int = 200,
+    collapseThresholdLines: Int = 7,
+    fontSize: TextUnit = 14.sp,
+    lineHeight: TextUnit = 20.sp,
+    color: Color = MaterialTheme.colorScheme.onSurface
+) {
+    if (text.isBlank()) return
+    val (lead, snippet) = remember(text) { splitLeadAndSnippet(text) }
+    if (lead.isNotBlank() && snippet.isNotBlank()) {
+        Column(modifier = modifier.fillMaxWidth()) {
+            CollapsiblePlainText(
+                text = lead,
+                collapsedMaxLines = 4,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                color = color,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            CopyableTextBlock(
+                text = snippet,
+                label = label,
+                collapsedMaxLines = collapsedMaxLines,
+                collapseThresholdChars = collapseThresholdChars,
+                collapseThresholdLines = collapseThresholdLines,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                color = color,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    } else if (snippet.isNotBlank()) {
+        CopyableTextBlock(
+            text = snippet,
+            label = label,
+            collapsedMaxLines = collapsedMaxLines,
+            collapseThresholdChars = collapseThresholdChars,
+            collapseThresholdLines = collapseThresholdLines,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = color,
+            modifier = modifier.fillMaxWidth()
+        )
+    } else {
+        CollapsiblePlainText(
+            text = lead.ifBlank { text.trim() },
+            collapsedMaxLines = collapsedMaxLines,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = color,
+            modifier = modifier.fillMaxWidth()
+        )
+    }
 }
 
 /**
@@ -872,7 +1042,7 @@ fun DetailDialog(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            // 母文/分享內文：外框＋一鍵複製＋點擊展開（Prompt 長文專用）
+                            // 母文/分享內文：短訊息純顯示，文字區塊才套灰框＋一鍵複製
                             if (ancestor.body.isBlank()) {
                                 Text(
                                     text = "（無內文）",
@@ -882,7 +1052,7 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             } else {
-                                CopyableTextBlock(
+                                SelectiveTextBlock(
                                     text = ancestor.body,
                                     label = ancestor.label ?: "分享",
                                     fontSize = 14.sp,
@@ -1021,7 +1191,7 @@ fun DetailDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
-                            // 主文內文：外框＋一鍵複製＋點擊展開（Prompt 長文專用）
+                            // 主文內文：短訊息純顯示，文字區塊才套灰框＋一鍵複製
                             if (rawBody.isBlank()) {
                                 Text(
                                     text = "無內文",
@@ -1031,7 +1201,7 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             } else {
-                                CopyableTextBlock(
+                                SelectiveTextBlock(
                                     text = rawBody,
                                     label = mainBlock.label,
                                     fontSize = 14.sp,
@@ -1210,8 +1380,8 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                // 留言內文：外框＋一鍵複製＋點擊展開
-                                CopyableTextBlock(
+                                // 留言內文：一般短訊息純顯示，只有文字區塊才套灰框＋一鍵複製
+                                SelectiveTextBlock(
                                     text = displayCommentText,
                                     fontSize = 13.sp,
                                     lineHeight = 19.sp,
