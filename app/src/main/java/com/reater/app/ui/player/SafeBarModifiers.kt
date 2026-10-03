@@ -34,12 +34,12 @@ internal fun fullscreenTopBarModifier(isLandscape: Boolean): Modifier {
     val leftInset = safe.calculateLeftPadding(layoutDirection)
     val rightInset = safe.calculateRightPadding(layoutDirection)
     return if (isLandscape) {
-        val top = maxOf(topInset + 8.dp, 28.dp)
+        val top = maxOf(topInset, 36.dp)
         val left = maxOf(leftInset + 4.dp, 8.dp)
-        val right = maxOf(rightInset + 12.dp, 24.dp)
+        val right = maxOf(rightInset, 24.dp)
         Modifier.padding(top = top, bottom = 8.dp, start = left, end = right)
     } else {
-        val top = maxOf(topInset + 8.dp, 36.dp)
+        val top = maxOf(topInset, 36.dp)
         val left = maxOf(leftInset + 12.dp, 12.dp)
         val right = maxOf(rightInset + 12.dp, 12.dp)
         Modifier.padding(top = top, bottom = 8.dp, start = left, end = right)
@@ -69,12 +69,12 @@ internal fun fullscreenBottomBarModifier(isLandscape: Boolean): Modifier {
     val leftInset = safe.calculateLeftPadding(layoutDirection)
     val rightInset = safe.calculateRightPadding(layoutDirection)
     return if (isLandscape) {
-        val bottom = maxOf(bottomInset + 16.dp, 32.dp)
-        val left = maxOf(leftInset + 8.dp, 8.dp)
-        val right = maxOf(rightInset + 16.dp, 24.dp)
+        val bottom = maxOf(bottomInset, 32.dp)
+        val left = maxOf(leftInset, 8.dp)
+        val right = maxOf(rightInset, 24.dp)
         Modifier.padding(start = left, end = right, top = 4.dp, bottom = bottom)
     } else {
-        val bottom = maxOf(bottomInset + 12.dp, 48.dp)
+        val bottom = maxOf(bottomInset + 36.dp, 48.dp)
         val left = maxOf(leftInset + 12.dp, 12.dp)
         val right = maxOf(rightInset + 12.dp, 12.dp)
         Modifier.padding(start = left, end = right, top = 4.dp, bottom = bottom)
