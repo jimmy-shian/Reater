@@ -170,10 +170,6 @@ class ThreadsGraphQLClient @Inject constructor(
 
             val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
             val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
-            // 圖1 數字修正：伺服器宣告總數優先（like/reply/repost），
-            // reply 取 max(伺服器總數, 已抓留言數)——抓不全時仍顯示真實總數而非 23 這種局部數
-            val serverReply = parsed.replyCount
-            val serverRepost = parsed.repostCount
 
             if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty()) {
                 Result.success(
@@ -186,8 +182,8 @@ class ThreadsGraphQLClient @Inject constructor(
                         postedAt = if (postedAtMs > 0) postedAtMs else System.currentTimeMillis(),
                         bodyText = bodyText,
                         likeCount = likeCount,
-                        replyCount = maxOf(serverReply, commentsWithMedia.size),
-                        repostCount = serverRepost,
+                        replyCount = commentsWithMedia.size,
+                        repostCount = 0,
                         comments = commentsWithMedia,
                         media = downloadedMediaList,
                         rawJsonMin = """{"code":"$extractedShortcode"}""",
@@ -227,41 +223,29 @@ class ThreadsGraphQLClient @Inject constructor(
         }
     }
 
-    /** 兩份留言清單合併：key = author + 結構標記還原後空白正規化文字；結構化版本優先保留 */
+    /** 兩份留言清單合併：key = author + 空白正規化後的文字；帶 media 或讚數更高者勝出 */
     private fun mergeCommentsLists(
         base: List<FetchedComment>,
         extra: List<FetchedComment>
     ): List<FetchedComment> {
         val map = LinkedHashMap<String, FetchedComment>()
-        fun norm(t: String) =
-            com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(t)
-                .replace(Regex("\\s+"), " ").trim()
+        fun norm(t: String) = t.replace(Regex("\\s+"), " ").trim()
         for (c in (base + extra)) {
             val key = c.author.trim().lowercase() + "\u0000" + norm(c.text).lowercase()
             if (key.isBlank() || key.endsWith("\u0000")) continue
             val prev = map[key]
-            val prevStructured =
-                com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(prev?.text.orEmpty())
-            val curStructured =
-                com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(c.text)
             if (prev == null ||
                 (prev.media.isEmpty() && c.media.isNotEmpty()) ||
-                (c.likeCount > prev.likeCount) ||
-                (!prevStructured && curStructured)
+                (c.likeCount > prev.likeCount)
             ) {
-                // 保留較多資訊者：media 併集 + 較高讚數（同內容多變體只留一份）；
-                // 結構化（帶文字區塊標記）版本優先，避免 DOM 純文字版蓋掉 SJS 結構版
-                val textHolder: FetchedComment =
-                    if (prev != null && prevStructured && !curStructured) prev else c
+                // 保留較多資訊者：media 併集 + 較高讚數（同內容多變體只留一份）
                 val merged = if (prev != null && prev.media.isNotEmpty() && c.media.isNotEmpty()) {
-                    textHolder.copy(
+                    c.copy(
                         media = MediaDedup.distinctFetched(prev.media + c.media),
                         likeCount = maxOf(prev.likeCount, c.likeCount)
                     )
                 } else if (prev != null && prev.media.isNotEmpty() && c.media.isEmpty()) {
-                    textHolder.copy(media = prev.media, likeCount = maxOf(prev.likeCount, c.likeCount))
-                } else if (prev != null) {
-                    textHolder.copy(likeCount = maxOf(prev.likeCount, c.likeCount))
+                    c.copy(media = prev.media, likeCount = maxOf(prev.likeCount, c.likeCount))
                 } else {
                     c
                 }
@@ -357,12 +341,7 @@ class ThreadsGraphQLClient @Inject constructor(
                 )
             }
             if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
-                // 主文排除：結構標記還原＋空白正規化後比對，避免 SJS 結構版與 DOM 純文字版比對失手造成主文重複成留言
-                fun normBody(t: String) =
-                    com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(t)
-                        .replace(Regex("\\s+"), " ").trim()
-                val sjsBodyNorm = normBody(sjs.bodyText)
-                val domClean = domFetched.filter { normBody(it.text) != sjsBodyNorm }.take(50)
+                val domClean = domFetched.filter { it.text != sjs.bodyText }.take(50)
                 // SSR 留言 + DOM 留言合併：同一則（author+文字）優先取帶 media 的版本，
                 // DOM 補 SSR 沒帶圖的留言，SSR 補 DOM 沒渲染出來的
                 val mergedComments = if (sjs.comments.isNotEmpty()) {
@@ -391,8 +370,8 @@ class ThreadsGraphQLClient @Inject constructor(
                     postedAt = if (sjs.postedAtMs > 0) sjs.postedAtMs else System.currentTimeMillis(),
                     bodyText = sjs.bodyText,
                     likeCount = sjs.likeCount,
-                    replyCount = maxOf(sjs.replyCount, commentsWithMedia.size),
-                    repostCount = sjs.repostCount,
+                    replyCount = commentsWithMedia.size,
+                    repostCount = 0,
                     comments = commentsWithMedia,
                     media = downloadedMedia,
                     rawJsonMin = "{\"code\":\"$shortcode\"}",
@@ -447,8 +426,8 @@ class ThreadsGraphQLClient @Inject constructor(
                             postedAt = if (fromHtml.postedAtMs > 0) fromHtml.postedAtMs else System.currentTimeMillis(),
                             bodyText = fromHtml.bodyText,
                             likeCount = fromHtml.likeCount,
-                            replyCount = maxOf(fromHtml.replyCount, fromHtml.comments.size),
-                            repostCount = fromHtml.repostCount,
+                            replyCount = fromHtml.comments.size,
+                            repostCount = 0,
                             comments = fromHtml.comments,
                             media = downloadedMedia2,
                             rawJsonMin = "{\"code\":\"$shortcode\"}",
@@ -475,16 +454,6 @@ class ThreadsGraphQLClient @Inject constructor(
                         ?: sjs?.authorHandle?.takeIf { it.isNotBlank() }
                         ?: domFetched.firstOrNull()?.author ?: "threads_user"
                 }
-                // 主文 DOM（與 bodyGuess 同文者）的讚數即主文讚數；SJS 缺失時用它補 likeCount，
-                // 否則主文會永遠顯示無數字、看起來像「解析不確」
-                val mainDomLike = domFetched.firstOrNull { it.text == bodyGuess }?.likeCount
-                    ?: domFetched.firstOrNull()?.takeIf { bodyGuess.isBlank() }?.likeCount
-                    ?: 0
-                val mainLike = sjs?.likeCount?.takeIf { it > 0 }
-                    ?: refetch?.likeCount?.takeIf { it > 0 }
-                    ?: mainDomLike
-                val serverReplyDom = sjs?.replyCount ?: refetch?.replyCount ?: 0
-                val serverRepostDom = sjs?.repostCount ?: refetch?.repostCount ?: 0
                 val filtered = domFetched.filter { it.text != bodyGuess }.take(50)
                 if (bodyGuess.isNotBlank() || filtered.isNotEmpty()) {
                     return@withContext Result.success(
@@ -496,9 +465,9 @@ class ThreadsGraphQLClient @Inject constructor(
                             authorVerified = sjs?.authorVerified ?: false,
                             postedAt = System.currentTimeMillis(),
                             bodyText = bodyGuess,
-                            likeCount = mainLike,
-                            replyCount = maxOf(serverReplyDom, filtered.size),
-                            repostCount = serverRepostDom,
+                            likeCount = sjs?.likeCount ?: 0,
+                            replyCount = filtered.size,
+                            repostCount = 0,
                             comments = downloadCommentMedia(filtered, shortcode),
                             media = sjs?.media?.mapIndexed { index, m ->
                                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
@@ -548,26 +517,12 @@ class ThreadsGraphQLClient @Inject constructor(
         }
     }
     private fun cleanDomBody(renderedText: String): String {
-        // 圖1 文字渲染修正：同步 ThreadsWebResolver 的清洗規則——
-        // 動作詞（中英）、時間行、純數字列一律剔除，避免「8小時」「3K」「23」混入正文造成跑版
-        val countLike = Regex("""^[\d,，\s]+(\.\d+)?\s*[KkMm萬千]?$""")
-        val timeLike = Regex(
-            """^(\d+\s*[秒分鐘小时時天週周月年]+|\d+\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|week|weeks|mo|yr)\.?|昨天|前天|Yesterday|\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[月/\-]\d{1,2}日?)$""",
-            RegexOption.IGNORE_CASE
-        )
-        val actions = setOf(
-            "like", "likes", "reply", "replies", "repost", "reposts",
-            "share", "shares", "send",
-            "讚", "喜歡", "愛心", "回覆", "回應", "留言",
-            "轉發", "轉po", "轉帖", "分享", "傳送"
-        )
         return renderedText.lines()
             .map { it.trim() }
             .filter { it.length > 2 && !it.startsWith("http") }
             .filterNot {
                 it.startsWith("Threads") || it.startsWith("Log in") || it.startsWith("Sign up") ||
-                    it.startsWith("登入") || actions.contains(it.lowercase()) ||
-                    countLike.matches(it) || timeLike.matches(it)
+                    it.startsWith("登入") || it == "Like" || it == "Reply" || it == "Repost" || it == "Share"
             }
             .joinToString("\n").trim().take(2000)
     }
