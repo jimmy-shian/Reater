@@ -15,13 +15,18 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -522,9 +527,14 @@ private fun FullscreenVideoViewer(
         onClose(position, isPlaying, isMuted)
     }
 
-    // 系統安全邊界：直向 / 橫向拆開，改用獨立邊距設定（見 SafeBarModifiers.kt）。
-    // 頂列走 fullscreenTopBarModifier(isLandscape)，底列走 fullscreenBottomBarModifier(isLandscape)，
-    // 不再使用寫死的通用 16.dp。
+    // 系統安全邊界：Compose 狀態化 insets（Dialog attach 後自動重算，不是一次性讀取）。
+    // 真實轉向後系統 insets 即為當前方向的正確值，只需通用保底即可。
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val safeTop = maxOf(statusTop + 4.dp, 10.dp)
+    val safeBottom = maxOf(navBottom + 16.dp, 28.dp)
+
+    val safeSidePadding = PaddingValues(start = 16.dp, end = 16.dp)
 
     Box(
         modifier = Modifier
@@ -641,7 +651,9 @@ private fun FullscreenVideoViewer(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .then(fullscreenTopBarModifier(isLandscape)),
+                        .padding(top = safeTop)
+                        .padding(safeSidePadding)
+                        .padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -770,7 +782,8 @@ private fun FullscreenVideoViewer(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .then(fullscreenBottomBarModifier(isLandscape))
+                        .padding(safeSidePadding)
+                        .padding(bottom = safeBottom)
                 ) {
                     // 拖曳中時間預覽懸浮提示
                     if (scrubbing) {
