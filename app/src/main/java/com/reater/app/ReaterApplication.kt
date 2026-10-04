@@ -33,6 +33,12 @@ class ReaterApplication : Application() {
         }
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
+                // 舊版 pro_unlocked=true 的啟用碼用戶：補寫新旗標，之後 Play 對帳不再覆蓋
+                settingsRepository.migrateLegacyProIfNeeded()
+            }
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
                 NotifyCenter.rescheduleReviewDigest(
                     this@ReaterApplication,
                     settingsRepository.reviewDigestEnabled.first(),
