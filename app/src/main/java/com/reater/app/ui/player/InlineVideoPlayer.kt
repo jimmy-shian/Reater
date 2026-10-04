@@ -1,6 +1,7 @@
 package com.reater.app.ui.player
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.media.MediaPlayer
 import android.net.Uri
@@ -12,21 +13,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +39,7 @@ import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -70,7 +68,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -388,6 +388,7 @@ fun InlineVideoPlayer(
  * - 直向 / 橫向影片皆可正常填滿，不再用假旋轉（graphicsLayer）避免裁切與觸控錯位
  * - 底部控制列保證位於系統導覽列之上，完全避開遮擋
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FullscreenVideoViewer(
     remoteUrl: String,
@@ -400,6 +401,7 @@ private fun FullscreenVideoViewer(
     val view = LocalView.current
 
     val context = LocalContext.current
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
     val fullscreenPlayerId = remember { java.util.UUID.randomUUID().toString() }
@@ -421,9 +423,13 @@ private fun FullscreenVideoViewer(
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
+    // 向下滑動關閉：跟隨手指的垂直位移（放開超過閾值即關閉回到文章）
+    var dismissOffsetY by remember { mutableFloatStateOf(0f) }
+    val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
 
-    // 真實轉向：切換 Activity.requestedOrientation（Manifest 有 configChanges，不會重建）
-    val activity = context as? android.app.Activity
+    // Dialog 內的 LocalContext 是 ContextWrapper 包裝，必須逐層拆包才能拿到 Activity；
+    // 先前直接 as? Activity 永遠為 null，導致 requestedOrientation 從未生效（轉向失敗主因）。
+    val activity = remember(context) { findFullscreenActivity(context) }
     LaunchedEffect(isLandscape) {
         runCatching {
             activity?.requestedOrientation = if (isLandscape) {
@@ -486,20 +492,23 @@ private fun FullscreenVideoViewer(
         }
     }
 
-    // 播放計時器更新
-    LaunchedEffect(isPlaying, isPrepared) {
-        while (isPlaying && isPrepared) {
+    // 播放計時器更新：只要已 prepared 就持續輪詢（與 isPlaying 脫鉤），
+    // 避免「全螢幕開啟時 inline 已先暫停 → startPlaying 永遠 false」、
+    // 「使用者在 onPrepared 前先按播放 → 狀態與 VideoView 脫鉤」導致首次時間不跟隨，
+    // 必須再暫停/播放一次才恢復的老問題。暫停時也更新 duration，避免 0:00 閃爍。
+    LaunchedEffect(isPrepared) {
+        while (isPrepared) {
             val vv = vvRef
             if (vv != null && !scrubbing) {
-                val d = vv.duration
-                val p = vv.currentPosition
+                val d = runCatching { vv.duration }.getOrDefault(0)
+                val p = runCatching { vv.currentPosition }.getOrDefault(0)
                 if (d > 0) {
                     duration = d
-                    position = p
-                    progress = p.toFloat() / d
+                    position = p.coerceIn(0, d)
+                    progress = (p.toFloat() / d).coerceIn(0f, 1f)
                 }
             }
-            delay(300)
+            delay(250)
         }
     }
 
@@ -527,19 +536,43 @@ private fun FullscreenVideoViewer(
         onClose(position, isPlaying, isMuted)
     }
 
-    // 系統安全邊界：Compose 狀態化 insets（Dialog attach 後自動重算，不是一次性讀取）。
-    // 真實轉向後系統 insets 即為當前方向的正確值，只需通用保底即可。
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val safeTop = maxOf(statusTop + 4.dp, 10.dp)
-    val safeBottom = maxOf(navBottom + 16.dp, 28.dp)
+    // 系統安全邊界：直向 / 橫向拆開撰寫（見 SafeBarModifiers.kt）。
+    // 影片本體 fillMaxSize 直接畫到系統列下方（沉浸式），只有「控制列」吃安全邊界：
+    // - 直向頂列：左右均衡，頂部保證在狀態列之下；
+    //   直向底列：bottom = max(實際 inset + 12dp, 48dp)，保證在三鍵列/手勢列之上，
+    //   修復進度條掉進手機導覽列返回區塊無法使用的問題。
+    // - 橫向頂列：左側可貼邊、右側空出導覽列返回鍵；
+    //   橫向底列：bottom 上抬、右側空出返回鍵，避免進度條右端被裁、底部純粹過低。
+    // 中央控制組：不吃 insets，永遠置中於影片。
 
-    val safeSidePadding = PaddingValues(start = 16.dp, end = 16.dp)
+    // 向下滑動關閉手勢（含放開回彈/超過閾值關閉）；Slider 是橫向拖曳，不會誤觸。
+    val dismissDragModifier = Modifier.pointerInput(dismissThresholdPx) {
+        detectVerticalDragGestures(
+            onDragCancel = { dismissOffsetY = 0f },
+            onDragEnd = {
+                if (dismissOffsetY > dismissThresholdPx) {
+                    dismissOffsetY = 0f
+                    handleClose()
+                } else {
+                    dismissOffsetY = 0f
+                }
+            },
+            onVerticalDrag = { _, dragAmount ->
+                if (dragAmount > 0f || dismissOffsetY > 0f) {
+                    dismissOffsetY = (dismissOffsetY + dragAmount).coerceAtLeast(0f)
+                }
+            }
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .graphicsLayer {
+                translationY = dismissOffsetY
+                alpha = (1f - (dismissOffsetY / 1200f).coerceIn(0f, 0.6f))
+            },
         contentAlignment = Alignment.Center
     ) {
         // 影片本體：真實轉向後直接填滿即可，直/橫向影片皆由 VideoView 依比例呈現
@@ -555,7 +588,17 @@ private fun FullscreenVideoViewer(
                     }
                     setOnPreparedListener { mp ->
                         mediaPlayerRef = mp
-                        duration = mp.duration
+                        val d = runCatching { mp.duration }.getOrDefault(0)
+                        if (d > 0) {
+                            duration = d
+                            // 第一次就給正確時間/進度：onPrepared 當下立刻同步，
+                            // 不再等 250ms 輪詢，避免開場 0:00 閃一下才跳對。
+                            val sp = startPosition.coerceIn(0, d)
+                            position = sp
+                            progress = (sp.toFloat() / d).coerceIn(0f, 1f)
+                        } else {
+                            duration = d
+                        }
                         isPrepared = true
                         isBuffering = false
                         runCatching {
@@ -595,13 +638,26 @@ private fun FullscreenVideoViewer(
                     vvRef = this
                 }
             },
+            update = { vv ->
+                // 補上「先按播放、後才 prepared」的競爭缺口：
+                // factory 閉包只記得舊 startPlaying，若使用者在緩衝完成前已按播放，
+                // isPlaying=true 但 VideoView 仍停著 → 時間永遠不走，需再暫停/播放。
+                // 此處每次重組都對齊一次，保證第一次播放就能跟隨。
+                if (isPrepared) {
+                    runCatching {
+                        if (isPlaying && !vv.isPlaying) vv.start()
+                        else if (!isPlaying && vv.isPlaying) vv.pause()
+                    }
+                }
+            },
             modifier = Modifier.fillMaxSize()
         )
 
-        // 觸控手勢感應層（單擊切換控制列，左/右雙擊快退/快進 10 秒）
+        // 觸控手勢感應層（單擊切換控制列，左/右雙擊快退/快進 10 秒；向下拖曳關閉回到文章）
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(dismissDragModifier)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { controlsVisible = !controlsVisible },
@@ -632,6 +688,7 @@ private fun FullscreenVideoViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.42f))
+                    .then(dismissDragModifier)
                     // 空白處單擊隱藏控制列（修復：先前此處只設 true，導致點空白關不掉）；
                     // 雙擊維持快退/快進；按鈕本身會消費事件，不會冒泡到此處
                     .pointerInput(Unit) {
@@ -646,14 +703,13 @@ private fun FullscreenVideoViewer(
                         )
                     }
             ) {
-                // 1. 頂部列：關閉按鈕、狀態標題、直橫向旋轉切換
+                // 1. 頂部列：直向 / 橫向拆開（fullscreenTopBarModifier），
+                // 關閉按鈕、狀態標題、直橫向旋轉切換共用同一容器。
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(top = safeTop)
-                        .padding(safeSidePadding)
-                        .padding(vertical = 8.dp),
+                        .then(fullscreenTopBarModifier(isLandscape)),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -777,13 +833,13 @@ private fun FullscreenVideoViewer(
                 }
 
                 // 3. 底部 YouTube 風格進度條與資訊按鈕列
-                // 直向與橫向皆精準避開導覽列與側邊邊界
+                // 直向 / 橫向拆開（fullscreenBottomBarModifier）：
+                // 直向上抬 48dp 保底避開導覽列返回區塊，橫向上抬並右側留白避開返回鍵。
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(safeSidePadding)
-                        .padding(bottom = safeBottom)
+                        .then(fullscreenBottomBarModifier(isLandscape))
                 ) {
                     // 拖曳中時間預覽懸浮提示
                     if (scrubbing) {
@@ -809,7 +865,9 @@ private fun FullscreenVideoViewer(
                         }
                     }
 
-                    // YouTube 紅色進度拉條
+                    // YouTube 紅色進度拉條：thumbTrackGapSize=0 才能連成一條，
+                    // 預設 8.dp 會在 thumb 左右各留缺口，直向截圖看起來就是
+                    //「紅條—缺口—把手—缺口—灰條」斷成三截。觸控高度維持 26.dp。
                     Slider(
                         value = (if (scrubbing) scrubValue else progress).coerceIn(0f, 1f),
                         onValueChange = {
@@ -834,7 +892,17 @@ private fun FullscreenVideoViewer(
                             thumbColor = Color(0xFFFF2020),
                             activeTrackColor = Color(0xFFFF2020),
                             inactiveTrackColor = Color.White.copy(alpha = 0.28f)
-                        )
+                        ),
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = Color(0xFFFF2020),
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.28f)
+                                ),
+                                thumbTrackGapSize = 0.dp
+                            )
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -1016,4 +1084,20 @@ private fun formatMs(ms: Int): String {
     val m = totalSec / 60
     val s = totalSec % 60
     return "%d:%02d".format(m, s)
+}
+
+/**
+ * 從 Dialog 包裝過的 Context 逐層拆包找出 Activity。
+ * Compose Dialog 的 LocalContext 通常是 ContextThemeWrapper，直接 as? Activity 必為 null，
+ * 這就是先前橫/直向切換無效的主因。
+ */
+private fun findFullscreenActivity(context: Context): android.app.Activity? {
+    var c: Context? = context
+    var depth = 0
+    while (c != null && depth < 20) {
+        if (c is android.app.Activity) return c
+        c = (c as? ContextWrapper)?.baseContext
+        depth++
+    }
+    return null
 }
