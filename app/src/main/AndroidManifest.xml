@@ -6,6 +6,7 @@
     <application
         android:name=".ReaterApplication"
         android:allowBackup="true"
+        android:hasFragileUserData="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -17,12 +18,26 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Reater">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Pro 一鍵開通：reater://pro-unlock?email=..&code=PRO-XXXX-XXXX-XXXX
+                 點連結即開 App 自動解鎖（見 MainActivity.parseProUnlock）。
+                 注意：不配 https://reater.app 備用——該網域不存在，
+                 Gmail/Chrome 點 https 會先報「沒有該網域」，根本到不了 App。
+                 解鎖方式：信內複製 reater:// 連結 → App「解鎖→貼上開通連結」，
+                 或手動輸入 Email + 啟用碼。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="reater" android:host="pro-unlock" />
             </intent-filter>
         </activity>
 
@@ -30,6 +45,7 @@
         <activity
             android:name=".ui.share.ShareSaveActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Reater.Dialog">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
