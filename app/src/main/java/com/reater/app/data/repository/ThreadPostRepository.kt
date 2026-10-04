@@ -22,6 +22,7 @@ import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
+import com.reater.app.data.remote.threads.TopicTags
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +51,22 @@ class ThreadPostRepository @Inject constructor(
         return itemDao.searchItemDetailsFts(quoted)
     }
     fun observePostDetail(id: Long): Flow<ItemDetail?> = itemDao.observeItemDetailById(id)
+
+    /**
+     * 儲存畫面分類預選：同主題優先、同作者其次。
+     * 各自取過往「最常用」分類（次數相同取最近使用）；都無紀錄回 null（呼叫方沿用全域上次選擇）。
+     */
+    suspend fun suggestCategoryId(authorHandle: String, topicTag: String): Long? {
+        val topic = topicTag.trim()
+        if (topic.isNotBlank()) {
+            itemDao.getMostFrequentCategoryByTopic(topic)?.let { return it.categoryId }
+        }
+        val author = authorHandle.trim()
+        if (author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
+            itemDao.getMostFrequentCategoryByAuthor(author)?.let { return it.categoryId }
+        }
+        return null
+    }
 
     suspend fun savePost(
         canonicalUrl: String,
@@ -116,12 +133,16 @@ class ThreadPostRepository @Inject constructor(
         } else {
             fetchedResult?.rawJsonMin.orEmpty()
         }
-        // Upsert ItemEntity
-        val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
-        val itemId = if (existing != null) {
-            val updated = existing.copy(
-                shortcode = shortcode,
-                authorHandle = authorHandle.ifBlank { existing.authorHandle },
+          // Upsert ItemEntity
+          val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
+          // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
+          val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
+              .ifBlank { TopicTags.firstHashtag(combinedBody) }
+          val itemId = if (existing != null) {
+              val updated = existing.copy(
+                  shortcode = shortcode,
+                  authorHandle = authorHandle.ifBlank { existing.authorHandle },
+                  topicTag = resolvedTopic.ifBlank { existing.topicTag },
                 authorDisplayName = fetchedResult?.authorDisplayName ?: existing.authorDisplayName,
                 authorProfileUrl = fetchedResult?.authorProfileUrl ?: existing.authorProfileUrl,
                 authorVerified = fetchedResult?.authorVerified ?: existing.authorVerified,
@@ -134,16 +155,20 @@ class ThreadPostRepository @Inject constructor(
                 rawJsonMin = resolvedRawJson.ifBlank { existing.rawJsonMin },
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
-                lastFetchAt = System.currentTimeMillis()
+                lastFetchAt = System.currentTimeMillis(),
+                // 覆蓋 / 垃圾桶復原並更新時一併清除刪除旗標，否則會「默認無作用」
+                isDeleted = false,
+                deletedAt = null
             )
             itemDao.updateItem(updated)
             existing.id
         } else {
-            val newItem = ItemEntity(
-                canonicalUrl = canonicalUrl,
-                shortcode = shortcode,
-                authorHandle = authorHandle,
-                authorDisplayName = fetchedResult?.authorDisplayName ?: authorHandle,
+              val newItem = ItemEntity(
+                  canonicalUrl = canonicalUrl,
+                  shortcode = shortcode,
+                  authorHandle = authorHandle,
+                  topicTag = resolvedTopic,
+                  authorDisplayName = fetchedResult?.authorDisplayName ?: authorHandle,
                 authorProfileUrl = fetchedResult?.authorProfileUrl.orEmpty(),
                 authorVerified = fetchedResult?.authorVerified ?: false,
                 postedAt = fetchedResult?.postedAt ?: System.currentTimeMillis(),
@@ -386,6 +411,27 @@ class ThreadPostRepository @Inject constructor(
 
     suspend fun countUnreadSince(since: Long): Int = itemDao.countUnreadSince(since)
 
+    /**
+     * 儲存前重複偵測（含垃圾桶）：
+     * 先查 canonicalUrl；短碼為真實短碼時再查 shortcode，
+     * 避免 /t/CODE 與 /@handle/post/CODE 視為不同篇。
+     */
+    suspend fun findExisting(canonicalUrl: String, shortcode: String): ItemEntity? {
+        if (canonicalUrl.isNotBlank()) {
+            itemDao.getItemByCanonicalUrl(canonicalUrl)?.let { return it }
+        }
+        val realCode = shortcode.trim()
+        if (realCode.isNotBlank() && !realCode.startsWith("share_") && !realCode.startsWith("sc_")) {
+            itemDao.getItemByShortcode(realCode)?.let { return it }
+        }
+        return null
+    }
+
+    /** 垃圾桶「僅復原」：不更新內容，只清除刪除旗標 */
+    suspend fun restoreOnly(itemId: Long) {
+        itemDao.restoreFromTrash(itemId)
+    }
+
     fun observeTrashPosts(): Flow<List<ItemDetail>> = itemDao.observeTrashItemDetails()
 
     suspend fun moveToTrash(itemId: Long) {
@@ -455,9 +501,10 @@ class ThreadPostRepository @Inject constructor(
         val detail = itemDao.getItemDetailById(itemId) ?: return
         val tags = detail.tags.joinToString(" ") { it.name }
         val comments = detail.comments.joinToString(" ") { it.text }
-        val searchable = listOf(
-            detail.item.bodyText,
-            detail.item.commentsText,
+          val searchable = listOf(
+              detail.item.bodyText,
+              detail.item.topicTag,
+              detail.item.commentsText,
             detail.userEdit?.userBodyOverride.orEmpty(),
             detail.manualNote,
             detail.manualSummary,
