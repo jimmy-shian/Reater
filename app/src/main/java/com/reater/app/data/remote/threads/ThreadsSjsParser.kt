@@ -148,7 +148,13 @@ object ThreadsSjsParser {
             val rootPost = chain.firstOrNull()?.let { root ->
                 allPosts.find { it.optString("code") == root.shortcode }
             }
-            effectiveMain = rootPost ?: main
+            // 12 self-thread 不回溯：主本身 is_reply 時，若 root 作者等於作者
+            // 或 reply_to 等於作者，判為自串，不回溯 root。
+            val rootAuthor = chain.firstOrNull()?.authorHandle.orEmpty()
+            val replyToUser = mainTpa?.optJSONObject("reply_to_author")?.optString("username").orEmpty()
+            val isSelfThread = (rootAuthor.isNotBlank() && rootAuthor.equals(authorHandle, ignoreCase = true)) ||
+                (replyToUser.isNotBlank() && replyToUser.equals(authorHandle, ignoreCase = true))
+            effectiveMain = if (isSelfThread) main else (rootPost ?: main)
         } else {
             effectiveMain = main
         }
@@ -194,8 +200,40 @@ object ThreadsSjsParser {
         val seen = HashSet<String>()
         var idx = 0
 
+        // 12 延續置頂：頂層串文自回覆（同作者回自己、主文後 1 小時內、有文或圖）
+        // 按 taken_at 升序置頂，其餘保原邊序。
+        val orderedReplies: List<JSONObject> = if (!mainIsReply && mainTakenAt > 0 && effAuthorHandle.isNotBlank()) {
+            val pinnedPks = HashSet<String>()
+            val pinned = attributedReplies.filter { p ->
+                val pauthor = resolveReplyAuthor(p)
+                if (!pauthor.equals(effAuthorHandle, ignoreCase = true)) return@filter false
+                val ptpa = p.optJSONObject("text_post_app_info") ?: return@filter false
+                val replyTo = ptpa.optJSONObject("reply_to_author")?.optString("username").orEmpty()
+                if (!replyTo.equals(effAuthorHandle, ignoreCase = true)) return@filter false
+                val ptaken = p.optLong("taken_at", 0L)
+                if (ptaken <= mainTakenAt || ptaken - mainTakenAt > 3600) return@filter false
+                val ptext = postText(p)
+                val hasMedia = try {
+                    postMedia(p).isNotEmpty()
+                } catch (_: Exception) {
+                    false
+                }
+                if (ptext.isBlank() && !hasMedia) return@filter false
+                val pk = p.optString("pk").ifBlank { p.optString("id") }
+                if (pk.isNotBlank()) pinnedPks.add(pk)
+                true
+            }.sortedBy { it.optLong("taken_at", 0L) }
+            if (pinned.isEmpty()) attributedReplies
+            else pinned + attributedReplies.filter { p ->
+                val pk = p.optString("pk").ifBlank { p.optString("id") }
+                pk.isBlank() || !pinnedPks.contains(pk)
+            }
+        } else {
+            attributedReplies
+        }
+
         // 新 shape：direct_replies 留言（結構上已保證屬於本串，直接收，含留言媒體）
-        for (p in attributedReplies) {
+        for (p in orderedReplies) {
             if (comments.size >= MAX_COMMENTS) break
             val text = postText(p)
             val pMedia = postMedia(p)
