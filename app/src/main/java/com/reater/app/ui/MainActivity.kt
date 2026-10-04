@@ -330,11 +330,19 @@ class MainViewModel @Inject constructor(
     private val _createCategoryPrefill = MutableStateFlow("")
     val createCategoryPrefill: StateFlow<String> = _createCategoryPrefill
 
+    // 從詳細頁/列表下拉點「新增」進入：建完要自動歸到該貼文
+    private val _createCategoryAssignItemId = MutableStateFlow<Long?>(null)
+
     private val _showProLimitNotice = MutableStateFlow(false)
     val showProLimitNotice: StateFlow<Boolean> = _showProLimitNotice
 
-    fun setShowCreateCategoryDialog(show: Boolean, prefill: String = "") {
-        if (show) _createCategoryPrefill.value = prefill
+    fun setShowCreateCategoryDialog(show: Boolean, prefill: String = "", assignItemId: Long? = null) {
+        if (show) {
+            _createCategoryPrefill.value = prefill
+            _createCategoryAssignItemId.value = assignItemId
+        } else {
+            _createCategoryAssignItemId.value = null
+        }
         _showCreateCategoryDialog.value = show
     }
 
@@ -347,17 +355,24 @@ class MainViewModel @Inject constructor(
         val customCount = categories.value.count { !it.isDefault }
         if (!isProUnlocked.value && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
             _showCreateCategoryDialog.value = false
+            _createCategoryAssignItemId.value = null
             _showProLimitNotice.value = true
             return
         }
         viewModelScope.launch {
-            categoryDao.insertCategory(
+            val newId = categoryDao.insertCategory(
                 CategoryEntity(
                     name = name.trim(),
                     colorArgb = 0xFF5C6BC0.toInt(),
                     avatarIcon = avatarIcon.ifBlank { "life" }
                 )
             )
+            val assignTo = _createCategoryAssignItemId.value
+            _createCategoryAssignItemId.value = null
+            // 從下拉「+ 新增」進來：建立後直接把這篇文章歸到新分類，免再選一次
+            if (assignTo != null) {
+                repository.updateCategory(assignTo, newId)
+            }
             _showCreateCategoryDialog.value = false
         }
     }
@@ -698,6 +713,9 @@ fun MainScreen(
                 viewModel.moveToTrash(liveDetail)
                 selectedItemForDetail = null
                 Toast.makeText(context, "已移至垃圾桶", Toast.LENGTH_SHORT).show()
+            },
+            onRequestCreateCategory = { prefill ->
+                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = liveDetail.item.id)
             }
         )
     }
@@ -1142,7 +1160,13 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it }
+                            onDelete = { itemToDelete = it },
+                            onUpdateCategory = { detail, catId ->
+                                viewModel.updateCategory(detail.item.id, catId)
+                            },
+                            onRequestCreateCategory = { prefill, itemId ->
+                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
+                            }
                         )
                     }
                     1 -> {
@@ -1175,7 +1199,13 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it }
+                            onDelete = { itemToDelete = it },
+                            onUpdateCategory = { detail, catId ->
+                                viewModel.updateCategory(detail.item.id, catId)
+                            },
+                            onRequestCreateCategory = { prefill, itemId ->
+                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
+                            }
                         )
                     }
                     2 -> {
@@ -1208,7 +1238,13 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it }
+                            onDelete = { itemToDelete = it },
+                            onUpdateCategory = { detail, catId ->
+                                viewModel.updateCategory(detail.item.id, catId)
+                            },
+                            onRequestCreateCategory = { prefill, itemId ->
+                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
+                            }
                         )
                     }
                     3 -> {
@@ -1289,7 +1325,9 @@ private fun PostListTab(
     onSelectDetail: (ItemDetail) -> Unit,
     onToggleRead: (ItemDetail) -> Unit,
     onToggleFavorite: (ItemDetail) -> Unit,
-    onDelete: (ItemDetail) -> Unit
+    onDelete: (ItemDetail) -> Unit,
+    onUpdateCategory: (ItemDetail, Long?) -> Unit = { _, _ -> },
+    onRequestCreateCategory: (prefill: String, itemId: Long) -> Unit = { _, _ -> }
 ) {
     if (posts.isEmpty()) {
         Box(
@@ -1319,7 +1357,9 @@ private fun PostListTab(
                     onClick = { onSelectDetail(itemDetail) },
                     onToggleRead = { onToggleRead(itemDetail) },
                     onToggleFavorite = { onToggleFavorite(itemDetail) },
-                    onDelete = { onDelete(itemDetail) }
+                    onDelete = { onDelete(itemDetail) },
+                    onUpdateCategory = { catId -> onUpdateCategory(itemDetail, catId) },
+                    onRequestCreateCategory = onRequestCreateCategory
                 )
             }
         }
