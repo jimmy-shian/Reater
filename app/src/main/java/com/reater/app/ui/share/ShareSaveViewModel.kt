@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -36,6 +37,8 @@ data class ShareSaveUiState(
     val commentsText: String = "",
     val manualNote: String = "",
     val selectedCategoryId: Long? = null,
+    /** 自動預選依據：""＝無，"topic"＝同主題紀錄，"author"＝同作者紀錄（供 UI 提示用） */
+    val suggestedBasis: String = "",
     val isFavorite: Boolean = false,
     /** 分享文字扣除 URL 後的草稿（抓取失敗時的內文兜底；抓到正文時會被取代） */
     val bodyDraft: String = "",
@@ -72,6 +75,9 @@ class ShareSaveViewModel @Inject constructor(
     private var httpDone = false
     private var webDone = false
     private var lastAppliedComments = ""
+    /** 使用者是否已手動選過分類（手動選擇後，歷史預選不再覆蓋） */
+    private var userPickedCategory = false
+    private var suggestionJob: Job? = null
 
     val categories: StateFlow<List<CategoryEntity>> = categoryDao.observeAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -124,6 +130,9 @@ class ShareSaveViewModel @Inject constructor(
         httpDone = false
         webDone = false
         lastAppliedComments = ""
+        userPickedCategory = false
+        suggestionJob?.cancel()
+        suggestionJob = null
 
         _uiState.update {
             it.copy(
@@ -143,7 +152,38 @@ class ShareSaveViewModel @Inject constructor(
             )
         }
 
+        // 連結本身已帶作者時先做一次同作者預選；抓取完成後再以主題＋作者重算
+        refreshCategorySuggestion()
+
         fetchRemoteData(fetchUrl, shortcode)
+    }
+
+    /**
+     * 依過往儲存紀錄預選分類：同主題（topicTag）優先、同作者其次；
+     * 各自取最常用分類（次數相同取最近使用，見 ItemDao）。
+     * 僅在使用者尚未手動選擇時套用，且套用前再次確認作者/主題未變（避免競態）。
+     */
+    private fun refreshCategorySuggestion() {
+        if (userPickedCategory) return
+        val author = _uiState.value.authorHandle.trim()
+        val topic = _uiState.value.fetchedResult?.topicTag?.trim().orEmpty()
+        if (author.isBlank() && topic.isBlank()) return
+        suggestionJob?.cancel()
+        suggestionJob = viewModelScope.launch {
+            val suggested = runCatching {
+                repository.suggestCategoryId(author, topic)
+            }.getOrNull() ?: return@launch
+            if (userPickedCategory) return@launch
+            val current = _uiState.value
+            if (current.authorHandle.trim() != author) return@launch
+            if (current.fetchedResult?.topicTag?.trim().orEmpty() != topic) return@launch
+            _uiState.update {
+                it.copy(
+                    selectedCategoryId = suggested,
+                    suggestedBasis = if (topic.isNotBlank()) "topic" else "author"
+                )
+            }
+        }
     }
 
     private fun fetchRemoteData(urlOrTarget: String, shortcode: String) {
@@ -228,6 +268,10 @@ class ShareSaveViewModel @Inject constructor(
                     fetchedResult = merged
                 )
             }
+        }
+        // 抓取帶來作者/主題資訊：以過往同主題（優先）/同作者紀錄重算預選分類
+        if (merged != null) {
+            refreshCategorySuggestion()
         }
     }
 
@@ -384,7 +428,9 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     fun onCategorySelected(categoryId: Long?) {
-        _uiState.update { it.copy(selectedCategoryId = categoryId) }
+        userPickedCategory = true
+        suggestionJob?.cancel()
+        _uiState.update { it.copy(selectedCategoryId = categoryId, suggestedBasis = "") }
         viewModelScope.launch {
             settingsRepository.setLastSelectedCategoryId(categoryId)
         }
@@ -422,9 +468,12 @@ class ShareSaveViewModel @Inject constructor(
             )
             val newId = categoryDao.insertCategory(newCat)
             settingsRepository.setLastSelectedCategoryId(newId)
+            userPickedCategory = true
+            suggestionJob?.cancel()
             _uiState.update {
                 it.copy(
                     selectedCategoryId = newId,
+                    suggestedBasis = "",
                     showCreateCategoryDialog = false
                 )
             }

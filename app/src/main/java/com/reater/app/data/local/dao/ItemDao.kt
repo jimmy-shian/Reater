@@ -201,7 +201,46 @@ interface ItemDao {
           AND items.sourceFetchedAt >= :since
     """)
     suspend fun countUnreadSince(since: Long): Int
+
+    /**
+     * 同作者最常用的分類（用於儲存時預選）：
+     * 次數最多者勝；次數相同取最近使用（符合「上次給的」語意）。
+     */
+    @Query("""
+        SELECT user_edits.categoryId AS categoryId, COUNT(*) AS cnt
+        FROM items
+        INNER JOIN user_edits ON items.id = user_edits.itemId
+        WHERE items.isDeleted = 0
+          AND items.authorHandle = :authorHandle
+          AND user_edits.categoryId IS NOT NULL
+        GROUP BY user_edits.categoryId
+        ORDER BY cnt DESC, MAX(user_edits.editedAt) DESC
+        LIMIT 1
+    """)
+    suspend fun getMostFrequentCategoryByAuthor(authorHandle: String): CategoryCount?
+
+    /**
+     * 同主題最常用的分類（用於儲存時預選，優先於同作者）：
+     * 次數最多者勝；次數相同取最近使用。
+     */
+    @Query("""
+        SELECT user_edits.categoryId AS categoryId, COUNT(*) AS cnt
+        FROM items
+        INNER JOIN user_edits ON items.id = user_edits.itemId
+        WHERE items.isDeleted = 0
+          AND items.topicTag COLLATE NOCASE = :topicTag
+          AND user_edits.categoryId IS NOT NULL
+        GROUP BY user_edits.categoryId
+        ORDER BY cnt DESC, MAX(user_edits.editedAt) DESC
+        LIMIT 1
+    """)
+    suspend fun getMostFrequentCategoryByTopic(topicTag: String): CategoryCount?
 }
+
+data class CategoryCount(
+    val categoryId: Long,
+    val cnt: Int
+)
 
 data class DayCount(
     val day: String,

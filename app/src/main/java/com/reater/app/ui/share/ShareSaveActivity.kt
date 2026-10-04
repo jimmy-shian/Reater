@@ -530,6 +530,15 @@ fun ShareSaveScreen(
                         viewModel.setShowCreateCategoryDialog(true)
                     }
                 )
+                // 歷史預選提示：同主題/同作者過往最常用分類（手動更改後消失）
+                AnimatedVisibility(visible = state.suggestedBasis.isNotBlank()) {
+                    Text(
+                        text = if (state.suggestedBasis == "topic") "已依過往同主題紀錄預選分類" else "已依過往同作者紀錄預選分類",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 

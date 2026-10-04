@@ -52,6 +52,22 @@ class ThreadPostRepository @Inject constructor(
     }
     fun observePostDetail(id: Long): Flow<ItemDetail?> = itemDao.observeItemDetailById(id)
 
+    /**
+     * 儲存畫面分類預選：同主題優先、同作者其次。
+     * 各自取過往「最常用」分類（次數相同取最近使用）；都無紀錄回 null（呼叫方沿用全域上次選擇）。
+     */
+    suspend fun suggestCategoryId(authorHandle: String, topicTag: String): Long? {
+        val topic = topicTag.trim()
+        if (topic.isNotBlank()) {
+            itemDao.getMostFrequentCategoryByTopic(topic)?.let { return it.categoryId }
+        }
+        val author = authorHandle.trim()
+        if (author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
+            itemDao.getMostFrequentCategoryByAuthor(author)?.let { return it.categoryId }
+        }
+        return null
+    }
+
     suspend fun savePost(
         canonicalUrl: String,
         shortcode: String,
