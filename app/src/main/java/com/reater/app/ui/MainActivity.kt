@@ -1664,6 +1664,7 @@ private fun ProCategoryTabContent(
                     Color(0xFFAB47BC),
                     Color(0xFF5C6BC0),
                     Color(0xFF26A69A)
+                )
                 val dotColor = dotPalette[(col.sortOrder % dotPalette.size + dotPalette.size) % dotPalette.size]
                 Card(
                     modifier = Modifier.fillMaxWidth(),
