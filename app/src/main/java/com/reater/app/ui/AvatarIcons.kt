@@ -50,17 +50,4 @@ object AvatarIcons {
     fun getIconItem(id: String?): AvatarIconItem {
         return ALL.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: FREE[0]
     }
-
-    /** 預設種子分類圖示 */
-    fun iconForSeedCategory(name: String): String = when (name) {
-        "科技與開發" -> "tech"
-        "生活與日常" -> "life"
-        "財經與投資" -> "finance"
-        "動漫與影視" -> "palette"
-        "職場與職涯" -> "trophy"
-        "讀書與學習" -> "study"
-        "美食與旅遊" -> "travel"
-        "時事與觀點" -> "globe"
-        else -> "life"
-    }
 }

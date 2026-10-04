@@ -228,12 +228,73 @@ class MainViewModel @Inject constructor(
     val customAvatarUri: StateFlow<String?> = settingsRepository.customAvatarUri
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val customAvatarHistory: StateFlow<List<String>> = settingsRepository.customAvatarHistory
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customAvatarOriginal: StateFlow<String?> = settingsRepository.customAvatarOriginal
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     fun setCustomAvatarId(id: String) {
         viewModelScope.launch { settingsRepository.setCustomAvatarId(id) }
     }
 
     fun setCustomAvatarUri(uri: String?) {
         viewModelScope.launch { settingsRepository.setCustomAvatarUri(uri) }
+    }
+
+    fun selectAvatarHistory(path: String) {
+        viewModelScope.launch { settingsRepository.selectCustomAvatar(path) }
+    }
+
+    fun deleteAvatarHistory(path: String) {
+        viewModelScope.launch { settingsRepository.deleteCustomAvatar(path) }
+    }
+
+    /** 相簿選圖 -> 拷貝成新的時間戳內部檔後持久保存；回傳是否成功 */
+    fun importCustomAvatar(source: android.net.Uri, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val saved = settingsRepository.importCustomAvatar(source)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    /** 裁切編輯器產出的正方形圖 -> 存成新的時間戳內部檔並設為使用中 */
+    fun saveCroppedAvatar(bitmap: android.graphics.Bitmap, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val saved = settingsRepository.importAvatarBitmap(bitmap)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    /**
+     * 新流程：picker 原圖先存原始檔（全圖保留），裁切結果存同 ts 成品。
+     * 重編一律從原始檔讀取，不裁成品，根治越編越小/模糊。
+     */
+    fun importOriginalThenCropped(
+        source: android.net.Uri,
+        cropped: android.graphics.Bitmap,
+        onDone: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val saved = settingsRepository.importOriginalThenCropped(source, cropped)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    /** 重編儲存：從原始檔重裁（呼叫方需傳入 currentOriginal），無原始檔時退化為一般儲存。 */
+    fun reEditSaveCropped(
+        cropped: android.graphics.Bitmap,
+        oldOriginalPath: String?,
+        onDone: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val saved = settingsRepository.reEditSaveCropped(cropped, oldOriginalPath)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
+        }
+    }
+
+    fun clearCustomAvatar() {
+        viewModelScope.launch { settingsRepository.setCustomAvatarUri(null) }
     }
 
     val billingUiState: StateFlow<BillingUiState> = billingManager.uiState
@@ -285,6 +346,8 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             smartCollectionEngine.seedDefaultProCollectionsIfEmpty()
             repository.purgeExpiredTrash()
+            // 舊版 content:// 暫存 URI 重開即失效，自動清除退回內建圖示
+            runCatching { settingsRepository.validateCustomAvatar() }
         }
     }
 
@@ -575,6 +638,8 @@ fun MainScreen(
 
     val customAvatarId by viewModel.customAvatarId.collectAsState()
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
+    val customAvatarHistory by viewModel.customAvatarHistory.collectAsState()
+    val customAvatarOriginal by viewModel.customAvatarOriginal.collectAsState()
     var showIconGallery by remember { mutableStateOf(false) }
 
     val reaterExportLauncher = rememberLauncherForActivityResult(
@@ -720,14 +785,69 @@ fun MainScreen(
         IconGalleryDialog(
             isPro = isPro,
             currentAvatarId = customAvatarId,
+            currentAvatarUri = customAvatarUri,
+            currentAvatarOriginal = customAvatarOriginal,
             onSelectAvatar = { id ->
+                // 留在圖示總覽不關閉：圓形勾選可再點一下取消，回到相片或上一個圖示
                 viewModel.setCustomAvatarId(id)
-                Toast.makeText(context, "已成功更換個人頭貼", Toast.LENGTH_SHORT).show()
-                showIconGallery = false
+                Toast.makeText(context, "已套用，再點一次圓形勾選可取消", Toast.LENGTH_SHORT).show()
             },
             onOpenUnlock = {
                 showIconGallery = false
                 showUnlockDialog = true
+            },
+            onImportPhoto = { uri ->
+                // 解碼失敗的退路：直接拷貝成時間戳新檔（同樣即時同步）
+                viewModel.importCustomAvatar(uri) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已成功套用自訂頭像照片" else "讀取照片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onClearPhoto = {
+                viewModel.clearCustomAvatar()
+                Toast.makeText(context, "已刪除自訂照片，退回圖示頭貼", Toast.LENGTH_SHORT).show()
+            },
+            avatarHistory = customAvatarHistory,
+            onSelectHistory = { path ->
+                viewModel.selectAvatarHistory(path)
+                Toast.makeText(context, "已切換為選擇的過往圖片", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteHistory = { path ->
+                viewModel.deleteAvatarHistory(path)
+                Toast.makeText(context, "已刪除該張過往圖片", Toast.LENGTH_SHORT).show()
+            },
+            onSaveCropped = { bitmap ->
+                // 舊流程退路（無原始檔）：存成新的時間戳內部檔，留在圖示總覽不關閉方便預覽
+                viewModel.saveCroppedAvatar(bitmap) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onSaveCroppedWithSource = { bitmap, sourceUri ->
+                // 新流程：原始檔完整保留＋成品同 ts 配對
+                viewModel.importOriginalThenCropped(sourceUri, bitmap) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onSaveReEdit = { bitmap, oldOriginal ->
+                // 重編：從原始檔重裁，不裁成品避免畫質遞減
+                viewModel.reEditSaveCropped(bitmap, oldOriginal) { success ->
+                    Toast.makeText(
+                        context,
+                        if (success) "已更新頭像位置（原圖保留）" else "儲存裁切圖片失敗，請重試",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             },
             onDismiss = { showIconGallery = false }
         )
@@ -978,21 +1098,37 @@ fun MainScreen(
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
-                    if (isPro) {
-                        IconButton(onClick = { showIconGallery = true }) {
+                    // 個人頭像：未解鎖也顯示頭像本體（不再是鎖圖示）。
+                    // 未解鎖點擊 → Pro 開通 UI；已解鎖點擊 → 同 Reater 標題的 15 頭像設定頁。
+                    IconButton(
+                        onClick = {
+                            if (isPro) showIconGallery = true
+                            else showUnlockDialog = true
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
                             UserAvatarView(
                                 avatarId = customAvatarId,
                                 avatarUri = customAvatarUri,
                                 size = 32.dp
                             )
-                        }
-                    } else {
-                        IconButton(onClick = { showUnlockDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "解鎖 Pro",
-                                tint = MaterialTheme.colorScheme.outline
-                            )
+                            if (!isPro) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(14.dp)
+                                        .background(Color(0xFFFFB300), CircleShape)
+                                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(9.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                     IconButton(onClick = { showSettingsDialog = true }) {

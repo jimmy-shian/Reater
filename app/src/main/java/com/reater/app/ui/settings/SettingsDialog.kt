@@ -79,7 +79,12 @@ import com.reater.app.ui.components.dismissFocusOnTap
 
 import androidx.compose.material.icons.filled.Lock
 import com.reater.app.ui.AvatarIcons
+import com.reater.app.ui.AvatarStorage
+import com.reater.app.ui.components.AvatarCropDialog
 import com.reater.app.ui.components.UserAvatarView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsDialog(
@@ -105,10 +110,28 @@ fun SettingsDialog(
     val digestEnabled by viewModel.reviewDigestEnabled.collectAsState()
     val digestHour by viewModel.reviewDigestHour.collectAsState()
 
+    val settingsScope = androidx.compose.runtime.rememberCoroutineScope()
+    var settingsCropSource by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var settingsCropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            viewModel.setCustomAvatarUri(uri.toString())
-            Toast.makeText(context, "已成功套用自訂頭像照片", Toast.LENGTH_SHORT).show()
+            // 原圖保留＋裁切配對：先解碼預覽，確認後原始檔與成品同 ts 存放
+            settingsScope.launch(Dispatchers.IO) {
+                val bmp = AvatarStorage.decodeForEdit(context, uri)
+                withContext(Dispatchers.Main) {
+                    if (bmp != null) {
+                        settingsCropSource = bmp
+                        settingsCropSourceUri = uri
+                    } else viewModel.importCustomAvatar(uri) { success ->
+                        Toast.makeText(
+                            context,
+                            if (success) "已成功套用自訂頭像照片" else "讀取照片失敗，請重試",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
         }
     }
 
@@ -260,7 +283,7 @@ fun SettingsDialog(
                                         }
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = if (customAvatarUri != null) "已從本機相簿匯入自訂個人照片" else iconItem.desc,
+                                            text = if (customAvatarUri != null) "已複製到 App 內部儲存・刪原圖不影響" else iconItem.desc,
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.outline,
                                             maxLines = 1,
@@ -767,6 +790,39 @@ fun SettingsDialog(
                 }
             }
         }
+    }
+
+    // 設定頁上傳同樣先裁切再存檔（原圖保留＋成品配對，設定/總覽/主畫面同步刷新）
+    if (settingsCropSource != null) {
+        AvatarCropDialog(
+            source = settingsCropSource!!,
+            onConfirm = { cropped ->
+                val srcUri = settingsCropSourceUri
+                settingsCropSource = null
+                settingsCropSourceUri = null
+                if (srcUri != null) {
+                    viewModel.importOriginalThenCropped(srcUri, cropped) { success ->
+                        Toast.makeText(
+                            context,
+                            if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else {
+                    viewModel.saveCroppedAvatar(cropped) { success ->
+                        Toast.makeText(
+                            context,
+                            if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
+            onDismiss = {
+                settingsCropSource = null
+                settingsCropSourceUri = null
+            }
+        )
     }
 }
 
