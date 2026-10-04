@@ -509,12 +509,26 @@ class ThreadsGraphQLClient @Inject constructor(
         }
     }
     private fun cleanDomBody(renderedText: String): String {
+        // 圖1 文字渲染修正：同步 ThreadsWebResolver 的清洗規則——
+        // 動作詞（中英）、時間行、純數字列一律剔除，避免「8小時」「3K」「23」混入正文造成跑版
+        val countLike = Regex("""^[\d,，\s]+(\.\d+)?\s*[KkMm萬千]?$""")
+        val timeLike = Regex(
+            """^(\d+\s*[秒分鐘小时時天週周月年]+|\d+\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|week|weeks|mo|yr)\.?|昨天|前天|Yesterday|\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[月/\-]\d{1,2}日?)$""",
+            RegexOption.IGNORE_CASE
+        )
+        val actions = setOf(
+            "like", "likes", "reply", "replies", "repost", "reposts",
+            "share", "shares", "send",
+            "讚", "喜歡", "愛心", "回覆", "回應", "留言",
+            "轉發", "轉po", "轉帖", "分享", "傳送"
+        )
         return renderedText.lines()
             .map { it.trim() }
             .filter { it.length > 2 && !it.startsWith("http") }
             .filterNot {
                 it.startsWith("Threads") || it.startsWith("Log in") || it.startsWith("Sign up") ||
-                    it.startsWith("登入") || it == "Like" || it == "Reply" || it == "Repost" || it == "Share"
+                    it.startsWith("登入") || actions.contains(it.lowercase()) ||
+                    countLike.matches(it) || timeLike.matches(it)
             }
             .joinToString("\n").trim().take(2000)
     }

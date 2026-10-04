@@ -27,10 +27,14 @@ object ThreadsHtmlParser {
         val authorVerified: Boolean,
         val postedAtMs: Long,
         val likeCount: Int,
+        val replyCount: Int = 0,
+        val repostCount: Int = 0,
         val media: List<FetchedMedia>,
         val comments: List<FetchedComment>,
         /** 是否命中 SJS 精確解析（短碼匹配成功） */
         val fromSjs: Boolean,
+        /** Threads 主題標籤（SJS 直取；非 SJS 路徑退取內文首個 hashtag） */
+        val topicTag: String = "",
         /** /share/ 留言鏈母文（SJS 回溯；頂層串文為 null） */
         val parent: ThreadsSjsParser.ParentPost? = null,
         /** 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層） */
@@ -38,12 +42,20 @@ object ThreadsHtmlParser {
     )
 
     fun parse(html: String, shortcode: String): ParsedPage {
-        if (html.isBlank()) return ParsedPage("", "", "", "", false, 0L, 0, emptyList(), emptyList(), false)
+        if (html.isBlank()) return ParsedPage(
+            bodyText = "", authorDisplayName = "", authorHandleFromTitle = "",
+            authorProfileUrl = "", authorVerified = false, postedAtMs = 0L,
+            likeCount = 0, media = emptyList(), comments = emptyList(), fromSjs = false
+        )
         // /share/ 未解析時（shortcode 為 share_TOKEN 佔位符）：HTML 裡沒有本篇資料，
         // 所有 caption/og 猜測都會抓到別篇或殼內容 → 直接回空，交給分享文字草稿兜底。
         // 否則會出現「7 則留言顯示 12 則、@threads_reply 配不相關內文」的污染。
         if (shortcode.startsWith("share_")) {
-            return ParsedPage("", "", "", "", false, 0L, 0, emptyList(), emptyList(), false)
+            return ParsedPage(
+                bodyText = "", authorDisplayName = "", authorHandleFromTitle = "",
+                authorProfileUrl = "", authorVerified = false, postedAtMs = 0L,
+                likeCount = 0, media = emptyList(), comments = emptyList(), fromSjs = false
+            )
         }
 
         // 第一順位：SJS 內嵌 JSON（短碼精確匹配，最準；含留言鏈、輪播、GIF、計數）
@@ -61,11 +73,14 @@ object ThreadsHtmlParser {
                 authorVerified = sjs.authorVerified,
                 postedAtMs = sjs.postedAtMs,
                 likeCount = sjs.likeCount,
+                replyCount = sjs.replyCount,
+                repostCount = sjs.repostCount,
                 media = sjs.media,
                 comments = sjs.comments,
                 fromSjs = true,
                 parent = sjs.parent,
-                parentChain = sjs.parentChain
+                parentChain = sjs.parentChain,
+                topicTag = sjs.topicTag
             )
         }
         // SJS 有命中但主貼文無內文無媒體（如純轉發）：仍沿用其留言/作者
@@ -103,6 +118,7 @@ object ThreadsHtmlParser {
             parseCaptionCommentsFallback(html, body)
         }
 
+        val topic = TopicTags.firstHashtag(body)
         return ParsedPage(
             bodyText = body.trim(),
             authorDisplayName = displayName.trim(),
@@ -113,7 +129,8 @@ object ThreadsHtmlParser {
             likeCount = 0,
             media = media,
             comments = comments,
-            fromSjs = false
+            fromSjs = false,
+            topicTag = topic
         )
     }
 
