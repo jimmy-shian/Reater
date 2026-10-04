@@ -61,8 +61,8 @@ import coil.compose.AsyncImage
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.ItemDetail
 import com.reater.app.ui.AvatarIcons
-import com.reater.app.ui.components.CategoryBadge
-import com.reater.app.ui.components.CategoryDropdown
+ import com.reater.app.ui.components.CategoryBadge
+ import com.reater.app.ui.components.CategoryDropdown
 import com.reater.app.ui.components.LinkifiedText
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.player.InlineVideoPlayer
@@ -71,13 +71,13 @@ import java.io.File
 
 /**
  * 格式化單一貼文分享文字：
- * "網址: 我的說明摘要 or AI摘要 or 空著"
+ * "摘要\n乾淨網址"（摘要有值＝ AI摘要 or 筆記；無摘要時只輸出網址）
  * 網址一律去除 ?xmt= / ?slof= 等追蹤參數後再輸出。
  */
 fun formatPostShareText(itemDetail: ItemDetail): String {
     val url = com.reater.app.domain.UrlParser.stripTrackingParams(itemDetail.item.canonicalUrl)
     val summary = itemDetail.manualSummary.ifBlank { itemDetail.manualNote }.trim()
-    return if (summary.isNotBlank()) "$url: $summary" else "$url: "
+    return if (summary.isNotBlank()) "$summary\n$url" else url
 }
 
 @Composable
@@ -323,7 +323,7 @@ fun PostCard(
             // Body Text — 點內文即展開詳情（像 Threads）；URL 仍可點擊外部跳轉
             LinkifiedText(
                 text = remember(itemDetail.displayBody) {
-                    itemDetail.displayBody.trim()
+                    com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(itemDetail.displayBody).trim()
                         .replace(Regex("\n{3,}"), "\n\n")
                         .ifBlank { "無內文" }
                 },

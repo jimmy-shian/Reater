@@ -1044,7 +1044,7 @@ fun MainScreen(
                         // PRO 分類頁為純管理頁（無貼文列表），分享一律以目前搜尋/列表為準
                         val activePosts = posts
                         if (activePosts.isNotEmpty()) {
-                            val shareText = activePosts.joinToString("\n") { detail ->
+                            val shareText = activePosts.joinToString("\n\n") { detail ->
                                 formatPostShareText(detail)
                             }
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1483,7 +1483,7 @@ private fun PostListTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(posts, key = { it.item.id }) { itemDetail ->
+            items(posts, key = { "post-${it.item.id}" }) { itemDetail ->
                 PostCard(
                     itemDetail = itemDetail,
                     categories = categories,
@@ -1664,7 +1664,6 @@ private fun ProCategoryTabContent(
                     Color(0xFFAB47BC),
                     Color(0xFF5C6BC0),
                     Color(0xFF26A69A)
-                )
                 val dotColor = dotPalette[(col.sortOrder % dotPalette.size + dotPalette.size) % dotPalette.size]
                 Card(
                     modifier = Modifier.fillMaxWidth(),
