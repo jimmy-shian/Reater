@@ -22,6 +22,7 @@ import com.reater.app.ui.components.IconGalleryDialog
 import com.reater.app.ui.components.UserAvatarView
 import com.reater.app.ui.analytics.AnalyticsScreen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -378,6 +379,11 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun setCollectionEnabled(id: Long, enabled: Boolean) {
+        viewModelScope.launch {
+            proDao.setCollectionEnabled(id, enabled)
+        }
+    }
     fun createCategory(name: String, avatarIcon: String) {
         if (name.isBlank()) return
         val customCount = categories.value.count { !it.isDefault }
@@ -604,12 +610,13 @@ fun MainScreen(
     val collections by viewModel.smartCollections.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val proCategoryFilter by viewModel.proCategoryFilter.collectAsState()
-    val proFilteredPosts = remember(posts, proCategoryFilter, searchQuery, allPosts) {
-        val base = if (searchQuery.isNotBlank()) posts else allPosts
-        when (proCategoryFilter) {
-            null -> base
-            -1L -> base.filter { it.userEdit?.categoryId == null }
-            else -> base.filter { it.userEdit?.categoryId == proCategoryFilter }
+    // 各分類項目數（供 PRO 分類管理列顯示「N 個項目」）
+    val categoryCounts = remember(allPosts) {
+        buildMap<Long, Int> {
+            allPosts.forEach { detail ->
+                val cid = detail.userEdit?.categoryId ?: return@forEach
+                put(cid, (get(cid) ?: 0) + 1)
+            }
         }
     }
     val context = LocalContext.current
@@ -914,7 +921,8 @@ fun MainScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        val activePosts = if (currentTab == 3) proFilteredPosts else posts
+                        // PRO 分類頁為純管理頁（無貼文列表），分享一律以目前搜尋/列表為準
+                        val activePosts = posts
                         if (activePosts.isNotEmpty()) {
                             val shareText = activePosts.joinToString("\n") { detail ->
                                 formatPostShareText(detail)
@@ -1256,8 +1264,6 @@ fun MainScreen(
                         ProCategoryTabContent(
                             categories = categories,
                             isPro = isPro,
-                            proCategoryFilter = proCategoryFilter,
-                            onSelectCategoryFilter = { viewModel.setProCategoryFilter(it) },
                             onAddCategoryClick = {
                                 val customCount = categories.count { !it.isDefault }
                                 if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
@@ -1267,33 +1273,10 @@ fun MainScreen(
                                 }
                             },
                             collections = collections,
-                            posts = proFilteredPosts,
-                            onSelectDetail = { detail ->
-                                selectedItemForDetail = detail
-                                viewModel.markAsRead(detail)
-                                viewModel.recordOpen(detail)
-                            },
-                            onToggleRead = { detail ->
-                                val willBeRead = !detail.isRead
-                                viewModel.toggleRead(detail)
-                                Toast.makeText(
-                                    context,
-                                    if (willBeRead) "已標為已讀（不再顯示於未讀）" else "已標為未讀",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            },
-                            onToggleFavorite = { detail ->
-                                val willFav = !detail.isFavorite
-                                viewModel.toggleFavorite(detail)
-                                Toast.makeText(
-                                    context,
-                                    if (willFav) "已加入收藏" else "已取消收藏",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            },
-                            onDelete = { itemToDelete = it },
+                            categoryCounts = categoryCounts,
                             onOpenUnlock = { showUnlockDialog = true },
-                            onEditCategory = { viewModel.setEditingCategory(it) }
+                            onEditCategory = { viewModel.setEditingCategory(it) },
+                            onToggleCollection = { id, enabled -> viewModel.setCollectionEnabled(id, enabled) }
                         )
                     }
                     4 -> {
@@ -1384,17 +1367,12 @@ private fun PostListTab(
 private fun ProCategoryTabContent(
     categories: List<CategoryEntity>,
     isPro: Boolean,
-    proCategoryFilter: Long?,
-    onSelectCategoryFilter: (Long?) -> Unit,
     onAddCategoryClick: () -> Unit,
     collections: List<SavedCollectionEntity>,
-    posts: List<ItemDetail>,
-    onSelectDetail: (ItemDetail) -> Unit,
-    onToggleRead: (ItemDetail) -> Unit,
-    onToggleFavorite: (ItemDetail) -> Unit,
-    onDelete: (ItemDetail) -> Unit,
+    categoryCounts: Map<Long, Int> = emptyMap(),
     onOpenUnlock: () -> Unit,
-    onEditCategory: (CategoryEntity) -> Unit = {}
+    onEditCategory: (CategoryEntity) -> Unit = {},
+    onToggleCollection: (Long, Boolean) -> Unit = { _, _ -> }
 ) {
     val customCount = categories.count { !it.isDefault }
     val quotaText = if (isPro) "分類無上限・共 ${categories.size} 個"
@@ -1405,6 +1383,7 @@ private fun ProCategoryTabContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // ---- 我的分類：純標籤管理，不做貼文篩選/過濾 ----
         item {
             Text(
                 text = "我的分類",
@@ -1425,12 +1404,6 @@ private fun ProCategoryTabContent(
                     color = MaterialTheme.colorScheme.outline,
                     lineHeight = 19.sp
                 )
-            } else {
-                com.reater.app.ui.components.ProCategoryFilterRow(
-                    categories = categories,
-                    selectedId = proCategoryFilter,
-                    onSelect = onSelectCategoryFilter
-                )
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
@@ -1441,13 +1414,22 @@ private fun ProCategoryTabContent(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
-                        "+ 新增分類（升級 Pro 無上限）"
-                    else "+ 新增分類"
+                        "新增分類（升級 Pro 無上限）"
+                    else "新增分類"
                 )
             }
         }
-        // 自訂分類列：圖示 + 名稱 + ✎，進入編輯框改名換圖刪除
+        // 分類管理：重新命名 / 更換圖示 / 刪除，前三頁第二列下拉會同步使用。
+        // 左側顯示該分類的真實圖示，下方顯示該分類項目數。
         if (categories.isNotEmpty()) {
+            item {
+                Text(
+                    text = "管理分類（點 ✎ 編輯分類標籤）",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                )
+            }
             items(categories, key = { "cat-${it.id}" }) { cat ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1462,7 +1444,7 @@ private fun ProCategoryTabContent(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        androidx.compose.foundation.Image(
+                        Image(
                             painter = painterResource(
                                 id = com.reater.app.ui.AvatarIcons.getDrawableRes(cat.avatarIcon)
                             ),
@@ -1470,26 +1452,34 @@ private fun ProCategoryTabContent(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = cat.name,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            if (cat.isDefault) {
-                                Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "內建",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.outline
+                                    text = cat.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
+                                if (cat.isDefault) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "內建",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            val itemCount = categoryCounts[cat.id] ?: 0
+                            Text(
+                                text = "$itemCount 個項目",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                         IconButton(
                             onClick = { onEditCategory(cat) },
@@ -1506,77 +1496,101 @@ private fun ProCategoryTabContent(
                 }
             }
         }
-        if (isPro && collections.isNotEmpty()) {
+        // ---- 智慧篩選條件：顯示規則 + 可開關，不用 icon drawable ----
+        if (collections.isNotEmpty()) {
             item {
                 Text(
-                    text = "您的智慧篩選條件",
+                    text = "智慧篩選條件",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+                    modifier = Modifier.padding(top = 8.dp)
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (isPro) "開關決定是否套用，關閉後該條件不再生效。"
+                    else "Pro 可自由開關套用；以下為預設三組規則預覽。",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                    lineHeight = 17.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
             }
-            items(collections, key = { it.id }) { col ->
+            items(collections, key = { "col-${it.id}" }) { col ->
+                val ruleText = remember(col.rulesJson, categories) {
+                    com.reater.app.domain.SmartCollectionEngine.describeRules(col.rulesJson) { cid ->
+                        categories.firstOrNull { it.id == cid }?.name
+                    }
+                }
+                // 固定色盤圓點（依 sortOrder 取色），取代原本 icon drawable
+                val dotPalette = listOf(
+                    Color(0xFFEF5350),
+                    Color(0xFFFFB300),
+                    Color(0xFFAB47BC),
+                    Color(0xFF5C6BC0),
+                    Color(0xFF26A69A)
+                )
+                val dotColor = dotPalette[(col.sortOrder % dotPalette.size + dotPalette.size) % dotPalette.size]
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        containerColor = if (col.isEnabled)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = col.name,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(
+                                    if (col.isEnabled) dotColor
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                    CircleShape
+                                )
                         )
-                        Text(
-                            text = "規則生效中",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            // 名稱前的 emoji 裝飾不顯示，只留純文字
+                            val displayName = remember(col.name) {
+                                col.name.replace(Regex("^[^\\p{L}\\p{N}]+"), "").trim().ifBlank { col.name }
+                            }
+                            Text(
+                                text = displayName,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = if (col.isEnabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "規則：$ruleText",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline,
+                                lineHeight = 17.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (!isPro) "預覽（升級 Pro 可開關）"
+                                else if (col.isEnabled) "生效中" else "已停用",
+                                fontSize = 12.sp,
+                                color = if (col.isEnabled && isPro) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = col.isEnabled && isPro,
+                            enabled = isPro,
+                            onCheckedChange = { checked -> onToggleCollection(col.id, checked) }
                         )
                     }
                 }
-            }
-        }
-        item {
-            Text(
-                text = "篩選結果（共 ${posts.size} 筆）",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        if (posts.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "此分類目前尚無內容",
-                        color = MaterialTheme.colorScheme.outline,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        } else {
-            items(posts, key = { it.item.id }) { itemDetail ->
-                PostCard(
-                    itemDetail = itemDetail,
-                    categories = categories,
-                    onClick = { onSelectDetail(itemDetail) },
-                    onToggleRead = { onToggleRead(itemDetail) },
-                    onToggleFavorite = { onToggleFavorite(itemDetail) },
-                    onDelete = { onDelete(itemDetail) }
-                )
             }
         }
         if (!isPro) {
