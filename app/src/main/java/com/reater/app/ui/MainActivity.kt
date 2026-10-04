@@ -153,8 +153,41 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pro 一鍵開通 Deep Link：冷啟動時先收下，Compose 端 LaunchedEffect 會自動驗證解鎖
+        parseProUnlock(intent?.data)?.let { proDeepLinkFlow.value = it }
         setContent {
             MainThemedScreen()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTask 熱啟動（App 已在前景）：同樣丟進 Flow，Compose 端會接著處理
+        parseProUnlock(intent.data)?.let { proDeepLinkFlow.value = it }
+    }
+
+    data class ProUnlockDeepLink(val email: String, val code: String)
+
+    companion object {
+        /** 待處理的一鍵開通連結（冷/熱啟動共用，Compose 消費後清 null）。 */
+        val proDeepLinkFlow = MutableStateFlow<ProUnlockDeepLink?>(null)
+
+        /**
+         * 解析 reater://pro-unlock?email=..&code=..（code 也接受 key 別名）
+         * 與 https://reater.app/pro-unlock?email=..&code=.. 備用格式。
+         */
+        fun parseProUnlock(uri: Uri?): ProUnlockDeepLink? {
+            if (uri == null) return null
+            val scheme = uri.scheme?.lowercase() ?: return null
+            val isCustom = scheme == "reater" && uri.host?.lowercase() == "pro-unlock"
+            val isHttps = scheme == "https" && uri.host?.lowercase() == "reater.app" &&
+                (uri.path?.startsWith("/pro-unlock") == true)
+            if (!isCustom && !isHttps) return null
+            val email = uri.getQueryParameter("email")?.trim().orEmpty()
+            val code = (uri.getQueryParameter("code") ?: uri.getQueryParameter("key"))?.trim().orEmpty()
+            if (email.isBlank() || code.isBlank()) return null
+            return ProUnlockDeepLink(email = email, code = code)
         }
     }
 }
@@ -630,6 +663,26 @@ fun MainScreen(
     var showUnlockDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<ItemDetail?>(null) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
+    // Deep Link 帶入的預填值（一鍵開通失敗時讓用戶直接按驗證重試）
+    var unlockPrefillEmail by remember { mutableStateOf("") }
+    var unlockPrefillCode by remember { mutableStateOf("") }
+
+    // Pro 一鍵開通：reater://pro-unlock?email=..&code=.. 點開即自動驗證解鎖
+    val deepLink by MainActivity.proDeepLinkFlow.collectAsState()
+    LaunchedEffect(deepLink) {
+        val pending = deepLink ?: return@LaunchedEffect
+        MainActivity.proDeepLinkFlow.value = null
+        unlockPrefillEmail = pending.email
+        unlockPrefillCode = pending.code
+        val success = viewModel.unlockWithPasscode(pending.code, pending.email)
+        Toast.makeText(
+            context,
+            if (success) "Reater Pro 已成功解鎖！"
+            else "一鍵開通失敗，已帶入啟用碼，請按「驗證並啟用」重試",
+            Toast.LENGTH_LONG
+        ).show()
+        if (!success) showUnlockDialog = true
+    }
 
     if (itemToDelete != null) {
         AlertDialog(
@@ -736,7 +789,9 @@ fun MainScreen(
     if (showUnlockDialog) {
         PasscodeUnlockDialog(
             viewModel = viewModel,
-            onDismiss = { showUnlockDialog = false }
+            onDismiss = { showUnlockDialog = false },
+            initialEmail = unlockPrefillEmail,
+            initialCode = unlockPrefillCode
         )
     }
 
