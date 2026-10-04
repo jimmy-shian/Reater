@@ -6,6 +6,7 @@
     <application
         android:name=".ReaterApplication"
         android:allowBackup="true"
+        android:hasFragileUserData="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -19,7 +20,8 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Reater">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -43,6 +45,7 @@
         <activity
             android:name=".ui.share.ShareSaveActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Reater.Dialog">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
