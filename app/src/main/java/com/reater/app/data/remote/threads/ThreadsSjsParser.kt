@@ -46,6 +46,10 @@ object ThreadsSjsParser {
         val authorVerified: Boolean,
         val postedAtMs: Long,
         val likeCount: Int,
+        /** 伺服器宣告的回覆總數（direct_reply_count 系列；無則 0，呼叫方用 comments.size 兜底） */
+        val replyCount: Int = 0,
+        /** 伺服器宣告的轉發總數（多 key 相容；無則 0） */
+        val repostCount: Int = 0,
         val media: List<FetchedMedia>,
         /** 留言（含每則留言自帶的圖/影媒體），上限 50 */
         val comments: List<FetchedComment>,
@@ -160,6 +164,12 @@ object ThreadsSjsParser {
         val effLikeCount = effectiveMain.optInt("like_count", 0).let { if (it > 0) it else likeCount }
         val effBody = postText(effectiveMain).ifBlank { body }
         val effMedia = postMedia(effectiveMain).ifEmpty { media }
+        // 伺服器宣告的回覆/轉發總數（圖1「數字解析顯示不確」修正：
+        // 舊版 replyCount 一律用 comments.size，抓不全時就會與 Threads 顯示不符；
+        // 此處優先讀 direct_reply_count 系列，多 key 相容，抓不到才由呼叫方用 comments.size 兜底）
+        val effCounts = postCounts(effectiveMain)
+        val effReplyCount = effCounts.first
+        val effRepostCount = effCounts.second
 
         // direct_replies 歸屬過濾：頂層串文（is_reply==false）沿用嚴格 root 檢查；
         // 子串分享（主本身 is_reply==true，如 D-JnnrknO/DzVwcgDJw 實測）root 指向最終祖先而非主，
@@ -297,11 +307,54 @@ object ThreadsSjsParser {
             authorVerified = effAuthorVerified,
             postedAtMs = if (effTakenAtSec > 0) effTakenAtSec * 1000 else 0L,
             likeCount = effLikeCount,
+            replyCount = effReplyCount,
+            repostCount = effRepostCount,
             media = effMedia,
             comments = comments,
             parent = parent,
             parentChain = parentChain
         )
+    }
+
+    /**
+     * 伺服器宣告計數（圖1 修正）：direct_reply_count / reply_count / comment_count
+     * 與 repost / reshare 系列多 key 相容讀取。缺失回 0。
+     */
+    fun postCounts(post: JSONObject): Pair<Int, Int> {
+        fun optPositive(vararg keys: String): Int {
+            for (k in keys) {
+                val v = post.optInt(k, 0)
+                if (v > 0) return v
+            }
+            return 0
+        }
+        val tpa = post.optJSONObject("text_post_app_info")
+        var reply = 0
+        var repost = 0
+        if (tpa != null) {
+            reply = tpa.optInt("direct_reply_count", 0)
+            if (reply <= 0) reply = tpa.optInt("direct_replies_count", 0)
+            if (reply <= 0) reply = tpa.optInt("reply_count", 0)
+            if (reply <= 0) reply = tpa.optInt("comment_count", 0)
+            repost = tpa.optInt("repost_count", 0)
+            if (repost <= 0) repost = tpa.optInt("reposts_count", 0)
+            if (repost <= 0) repost = tpa.optInt("reshare_count", 0)
+            if (repost <= 0) repost = tpa.optInt("quote_count", 0)
+            // 有些 shape 把計數放在第二層 info
+            val inner = tpa.optJSONObject("post_info")
+            if (inner != null) {
+                if (reply <= 0) reply = inner.optInt("direct_reply_count", 0)
+                if (repost <= 0) repost = inner.optInt("repost_count", 0)
+            }
+        }
+        if (reply <= 0) reply = optPositive(
+            "direct_reply_count", "direct_replies_count",
+            "reply_count", "comment_count", "comments_count"
+        )
+        if (repost <= 0) repost = optPositive(
+            "repost_count", "reposts_count", "reshare_count", "quote_count", "quotes_count"
+        )
+        return reply to repost
     }
 
     /**

@@ -20,16 +20,13 @@ import androidx.compose.ui.unit.sp
 import com.reater.app.R
 
 /**
- * Threads 風格數字格式化：1200 → 1.2K，2500000 → 2.5M。
+ * Threads 風格數字格式化（圖1「數字解析顯示不確」修正）：
+ * 一律顯示精確數字（千分位逗號），不再縮寫成 3K / 2.5M，避免 3,012 顯示成 3K 被誤認為解析錯誤。
  * <= 0 回空字串，呼叫端以此判斷是否顯示數字。
  */
 fun formatThreadsCount(count: Int): String {
     if (count <= 0) return ""
-    return when {
-        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0).replace(".0M", "M")
-        count >= 1_000 -> String.format("%.1fK", count / 1_000.0).replace(".0K", "K")
-        else -> count.toString()
-    }
+    return "%,d".format(count)
 }
 
 /**

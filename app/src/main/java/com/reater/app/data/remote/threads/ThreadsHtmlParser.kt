@@ -27,6 +27,8 @@ object ThreadsHtmlParser {
         val authorVerified: Boolean,
         val postedAtMs: Long,
         val likeCount: Int,
+        val replyCount: Int = 0,
+        val repostCount: Int = 0,
         val media: List<FetchedMedia>,
         val comments: List<FetchedComment>,
         /** 是否命中 SJS 精確解析（短碼匹配成功） */
@@ -61,6 +63,8 @@ object ThreadsHtmlParser {
                 authorVerified = sjs.authorVerified,
                 postedAtMs = sjs.postedAtMs,
                 likeCount = sjs.likeCount,
+                replyCount = sjs.replyCount,
+                repostCount = sjs.repostCount,
                 media = sjs.media,
                 comments = sjs.comments,
                 fromSjs = true,
