@@ -20,7 +20,7 @@ import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.AiAnalysisResult
 import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
-import com.reater.app.data.remote.threads.TopicTags
+ import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
 import kotlinx.coroutines.flow.Flow
@@ -155,7 +155,10 @@ class ThreadPostRepository @Inject constructor(
                 rawJsonMin = resolvedRawJson.ifBlank { existing.rawJsonMin },
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
-                lastFetchAt = System.currentTimeMillis()
+                lastFetchAt = System.currentTimeMillis(),
+                // 覆蓋 / 垃圾桶復原並更新時一併清除刪除旗標，否則會「默認無作用」
+                isDeleted = false,
+                deletedAt = null
             )
             itemDao.updateItem(updated)
             existing.id
@@ -407,6 +410,27 @@ class ThreadPostRepository @Inject constructor(
     }
 
     suspend fun countUnreadSince(since: Long): Int = itemDao.countUnreadSince(since)
+
+    /**
+     * 儲存前重複偵測（含垃圾桶）：
+     * 先查 canonicalUrl；短碼為真實短碼時再查 shortcode，
+     * 避免 /t/CODE 與 /@handle/post/CODE 視為不同篇。
+     */
+    suspend fun findExisting(canonicalUrl: String, shortcode: String): ItemEntity? {
+        if (canonicalUrl.isNotBlank()) {
+            itemDao.getItemByCanonicalUrl(canonicalUrl)?.let { return it }
+        }
+        val realCode = shortcode.trim()
+        if (realCode.isNotBlank() && !realCode.startsWith("share_") && !realCode.startsWith("sc_")) {
+            itemDao.getItemByShortcode(realCode)?.let { return it }
+        }
+        return null
+    }
+
+    /** 垃圾桶「僅復原」：不更新內容，只清除刪除旗標 */
+    suspend fun restoreOnly(itemId: Long) {
+        itemDao.restoreFromTrash(itemId)
+    }
 
     fun observeTrashPosts(): Flow<List<ItemDetail>> = itemDao.observeTrashItemDetails()
 

@@ -54,6 +54,12 @@ data class ShareSaveUiState(
     val isSaved: Boolean = false,
     val showCreateCategoryDialog: Boolean = false,
     val showProLimitNotice: Boolean = false,
+    /** 同一篇已存在（正常區）：跳出「覆蓋並更新 / 另存一篇新的」提示 */
+    val showDuplicateDialog: Boolean = false,
+    /** 同一篇在垃圾桶：跳出「復原並更新 / 僅復原」提示 */
+    val showTrashDialog: Boolean = false,
+    /** 偵測到的既有文章 id（供復原/覆蓋用） */
+    val duplicateItemId: Long? = null,
     val fetchedResult: FetchedPostResult? = null
 )
 
@@ -188,7 +194,13 @@ class ShareSaveViewModel @Inject constructor(
 
     private fun fetchRemoteData(urlOrTarget: String, shortcode: String) {
         viewModelScope.launch {
-            val result = graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode)
+            val result = try {
+                graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -328,7 +340,13 @@ class ShareSaveViewModel @Inject constructor(
         domComments: List<com.reater.app.data.remote.threads.ThreadsWebResolver.DomComment> = emptyList()
     ) {
         viewModelScope.launch {
-            val result = graphQLClient.resolveFromRenderedBlocks(sjsBlocks, finalUrl, renderedText, renderedHtml, domComments)
+            val result = try {
+                graphQLClient.resolveFromRenderedBlocks(sjsBlocks, finalUrl, renderedText, renderedHtml, domComments)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
             result.onSuccess { fetched ->
                 webResult = fetched
             }
@@ -412,7 +430,8 @@ class ShareSaveViewModel @Inject constructor(
             parentPostedAt = if (parent.parentPostedAt > 0) parent.parentPostedAt else
                 maxOf(a.parentPostedAt, b.parentPostedAt),
             parentMedia = parentMedia,
-            parentChain = parentChain
+            parentChain = parentChain,
+            topicTag = primary.topicTag.ifBlank { secondary.topicTag }
         )
     }
 
@@ -481,14 +500,119 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     fun savePost() {
-        val state = _uiState.value
+        if (_uiState.value.isSaving) return
         _uiState.update { it.copy(isSaving = true) }
 
         viewModelScope.launch {
             try {
+                // 先做重複偵測（含垃圾桶）：有既有文章就跳提示，不直接默認覆蓋
+                val state = _uiState.value
+                val target = state.targetUrl.ifBlank { "" }
+                val code = state.shortcode.ifBlank { "" }
+                val existing = runCatching {
+                    repository.findExisting(target, code)
+                }.getOrNull()
+                if (existing != null) {
+                    if (existing.isDeleted) {
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                showTrashDialog = true,
+                                showDuplicateDialog = false,
+                                duplicateItemId = existing.id
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                showDuplicateDialog = true,
+                                showTrashDialog = false,
+                                duplicateItemId = existing.id
+                            )
+                        }
+                    }
+                    return@launch
+                }
+                performSaveAsOverwrite()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false) }
+            }
+        }
+    }
+
+    /** 關閉重複/垃圾桶提示（取消儲存，留在編輯畫面） */
+    fun dismissDuplicateDialogs() {
+        _uiState.update {
+            it.copy(
+                showDuplicateDialog = false,
+                showTrashDialog = false,
+                duplicateItemId = null,
+                isSaving = false
+            )
+        }
+    }
+
+    /** 「覆蓋並更新內容（重新抓取）」：用最新抓取結果覆蓋既有文章 */
+    fun confirmOverwrite() {
+        _uiState.update {
+            it.copy(showDuplicateDialog = false, showTrashDialog = false, isSaving = true)
+        }
+        viewModelScope.launch {
+            try {
+                performSaveAsOverwrite()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, duplicateItemId = null) }
+            }
+        }
+    }
+
+    /** 「復原並更新內容（重新抓取）」：垃圾桶文章復原 + 用最新抓取結果更新 */
+    fun confirmRestoreAndUpdate() {
+        // Repository.savePost 已會清除 isDeleted，直接走覆蓋路徑即為復原+更新
+        confirmOverwrite()
+    }
+
+    /** 「僅復原」：不更新內容，只把垃圾桶文章拿回來 */
+    fun confirmRestoreOnly() {
+        val existingId = _uiState.value.duplicateItemId ?: return
+        _uiState.update {
+            it.copy(showTrashDialog = false, showDuplicateDialog = false, isSaving = true)
+        }
+        viewModelScope.launch {
+            try {
+                repository.restoreOnly(existingId)
+                _uiState.update {
+                    it.copy(isSaving = false, isSaved = true, duplicateItemId = null)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, duplicateItemId = null) }
+            }
+        }
+    }
+
+    /** 「另存一篇新的」：產生不衝突的 canonicalUrl/shortcode，獨立新增一列 */
+    fun confirmSaveAsNew() {
+        _uiState.update {
+            it.copy(showDuplicateDialog = false, showTrashDialog = false, isSaving = true)
+        }
+        viewModelScope.launch {
+            try {
+                val state = _uiState.value
+                val stamp = System.currentTimeMillis()
+                val baseTarget = state.targetUrl.ifBlank { "https://www.threads.com/unknown/$stamp" }
+                // unique index 在 canonicalUrl：加 query 區隔，避免 REPLACE 蓋掉舊篇
+                val copyTarget = if (baseTarget.contains("?")) "$baseTarget&reater_copy=$stamp"
+                else "$baseTarget?reater_copy=$stamp"
+                val baseCode = state.shortcode.ifBlank { "sc_$stamp" }
+                val copyCode = if (baseCode.startsWith("share_") || baseCode.startsWith("sc_")) {
+                    baseCode
+                } else {
+                    "${baseCode}_copy$stamp"
+                }
                 val itemId = repository.savePost(
-                    canonicalUrl = state.targetUrl.ifBlank { "https://www.threads.com/unknown/${System.currentTimeMillis()}" },
-                    shortcode = state.shortcode.ifBlank { "sc_${System.currentTimeMillis()}" },
+                    canonicalUrl = copyTarget,
+                    shortcode = copyCode,
                     authorHandle = state.authorHandle.ifBlank { "threads_user" },
                     bodyText = state.bodyText,
                     commentsText = state.commentsText,
@@ -498,7 +622,6 @@ class ShareSaveViewModel @Inject constructor(
                     fetchedResult = state.fetchedResult,
                     isFavorite = state.isFavorite
                 )
-                // 儲存後未讀提醒（設定可調分鐘數 / 開關）
                 runCatching {
                     if (settingsRepository.unreadNudgeEnabled.first()) {
                         NotifyCenter.scheduleUnreadNudge(
@@ -509,10 +632,42 @@ class ShareSaveViewModel @Inject constructor(
                         )
                     }
                 }
-                _uiState.update { it.copy(isSaving = false, isSaved = true) }
+                _uiState.update { it.copy(isSaving = false, isSaved = true, duplicateItemId = null) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false) }
+                _uiState.update { it.copy(isSaving = false, duplicateItemId = null) }
             }
+        }
+    }
+
+    private suspend fun performSaveAsOverwrite() {
+        try {
+            val state = _uiState.value
+            val itemId = repository.savePost(
+                canonicalUrl = state.targetUrl.ifBlank { "https://www.threads.com/unknown/${System.currentTimeMillis()}" },
+                shortcode = state.shortcode.ifBlank { "sc_${System.currentTimeMillis()}" },
+                authorHandle = state.authorHandle.ifBlank { "threads_user" },
+                bodyText = state.bodyText,
+                commentsText = state.commentsText,
+                manualNote = state.manualNote,
+                manualSummary = "",
+                categoryId = state.selectedCategoryId,
+                fetchedResult = state.fetchedResult,
+                isFavorite = state.isFavorite
+            )
+            // 儲存後未讀提醒（設定可調分鐘數 / 開關）
+            runCatching {
+                if (settingsRepository.unreadNudgeEnabled.first()) {
+                    NotifyCenter.scheduleUnreadNudge(
+                        appContext,
+                        itemId,
+                        state.bodyText.take(60).ifBlank { "@${state.authorHandle}" },
+                        settingsRepository.unreadNudgeDelayMin.first()
+                    )
+                }
+            }
+            _uiState.update { it.copy(isSaving = false, isSaved = true, duplicateItemId = null) }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(isSaving = false, duplicateItemId = null) }
         }
     }
 }
