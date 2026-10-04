@@ -118,6 +118,7 @@ object ThreadsHtmlParser {
             parseCaptionCommentsFallback(html, body)
         }
 
+        val topic = TopicTags.firstHashtag(body)
         return ParsedPage(
             bodyText = body.trim(),
             authorDisplayName = displayName.trim(),
