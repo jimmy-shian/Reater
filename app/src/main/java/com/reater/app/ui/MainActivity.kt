@@ -1021,7 +1021,10 @@ fun MainScreen(
                 }
             }
 
-            // Tab 標籤列：點擊切換；左右滑動切換由下方 HorizontalPager 跟手處理
+            // Tab 標籤列：全部 / 未讀(數字) / 收藏 / PRO分類 / 垃圾桶 / 分析
+            // 垃圾桶、分析固定最右；分類改由下方第二列下拉選單篩選。
+            val unreadCount = unreadPosts.size
+            val favCount = favoritePosts.size
             ScrollableTabRow(
                 selectedTabIndex = pagerState.currentPage,
                 edgePadding = 16.dp
@@ -1029,17 +1032,27 @@ fun MainScreen(
                 Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } },
-                    text = { Text(stringResource(R.string.tab_all)) }
+                    text = {
+                        Text(
+                            if (unreadCount > 0) "${stringResource(R.string.tab_all)} (${unreadCount}未讀)"
+                            else stringResource(R.string.tab_all)
+                        )
+                    }
                 )
                 Tab(
                     selected = pagerState.currentPage == 1,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(1) } },
-                    text = { Text(stringResource(R.string.tab_unread)) }
+                    text = { Text("${stringResource(R.string.tab_unread)} (${unreadCount})") }
                 )
                 Tab(
                     selected = pagerState.currentPage == 2,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(2) } },
-                    text = { Text(stringResource(R.string.tab_favorite)) }
+                    text = {
+                        Text(
+                            if (favCount > 0) "${stringResource(R.string.tab_favorite)} (${favCount})"
+                            else stringResource(R.string.tab_favorite)
+                        )
+                    }
                 )
                 Tab(
                     selected = pagerState.currentPage == 3,
@@ -1058,6 +1071,35 @@ fun MainScreen(
                 )
             }
 
+            // 第二列：前三頁（全部/未讀/收藏）共用分類下拉篩選，帶展開過度動畫
+            androidx.compose.animation.AnimatedVisibility(
+                visible = pagerState.currentPage in 0..2,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+            ) {
+                val filterBase: List<ItemDetail> = when (pagerState.currentPage) {
+                    1 -> if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
+                    2 -> if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
+                    else -> if (searchQuery.isNotBlank()) posts else allPosts
+                }
+                val barCounts = remember(filterBase, categories) {
+                    buildMap<Long?, Int> {
+                        put(-1L, filterBase.count { it.userEdit?.categoryId == null })
+                        categories.forEach { cat ->
+                            put(cat.id, filterBase.count { it.userEdit?.categoryId == cat.id })
+                        }
+                    }
+                }
+                com.reater.app.ui.components.CategoryFilterBar(
+                    categories = categories,
+                    selectedId = proCategoryFilter,
+                    counts = barCounts,
+                    totalCount = filterBase.size,
+                    onSelect = { viewModel.setProCategoryFilter(it) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
             // 支援主畫面內容左右滑動切換頁面
             androidx.compose.foundation.pager.HorizontalPager(
                 state = pagerState,
@@ -1067,12 +1109,21 @@ fun MainScreen(
             ) { page ->
                 when (page) {
                     0 -> {
-                        val displayList = if (searchQuery.isNotBlank()) posts else allPosts
+                        val baseList = if (searchQuery.isNotBlank()) posts else allPosts
+                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
+                        val filterSuffix = when (proCategoryFilter) {
+                            null -> ""
+                            -1L -> "\n（目前篩選：未分類）"
+                            else -> {
+                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
+                                if (n != null) "\n（目前篩選：$n）" else ""
+                            }
+                        }
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容"
-                            else "目前尚無內容\n在 Threads 中點擊分享至 Reater 即可保存！",
+                            emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容$filterSuffix"
+                            else "目前尚無內容\n在 Threads 中點擊分享至 Reater 即可保存！$filterSuffix",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1106,12 +1157,21 @@ fun MainScreen(
                         )
                     }
                     1 -> {
-                        val displayList = if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
+                        val baseList = if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
+                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
+                        val filterSuffix = when (proCategoryFilter) {
+                            null -> ""
+                            -1L -> "\n（目前篩選：未分類）"
+                            else -> {
+                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
+                                if (n != null) "\n（目前篩選：$n）" else ""
+                            }
+                        }
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容"
-                            else "太棒了！所有貼文皆已閱讀完畢",
+                            emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容$filterSuffix"
+                            else "太棒了！所有貼文皆已閱讀完畢$filterSuffix",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1145,12 +1205,21 @@ fun MainScreen(
                         )
                     }
                     2 -> {
-                        val displayList = if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
+                        val baseList = if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
+                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
+                        val filterSuffix = when (proCategoryFilter) {
+                            null -> ""
+                            -1L -> "\n（目前篩選：未分類）"
+                            else -> {
+                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
+                                if (n != null) "\n（目前篩選：$n）" else ""
+                            }
+                        }
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容"
-                            else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！",
+                            emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容$filterSuffix"
+                            else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！$filterSuffix",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1253,6 +1322,14 @@ fun MainScreen(
         }
     }
 }
+
+/** 第二列分類篩選共用：null=全部，-1L=未分類，其餘=分類 id */
+private fun applyCategoryFilter(list: List<ItemDetail>, filter: Long?): List<ItemDetail> =
+    when (filter) {
+        null -> list
+        -1L -> list.filter { it.userEdit?.categoryId == null }
+        else -> list.filter { it.userEdit?.categoryId == filter }
+    }
 
 @Composable
 private fun PostListTab(
