@@ -40,7 +40,7 @@ import com.reater.app.data.local.entity.UserEditEntity
         SavedCollectionEntity::class,
         SavedQueryEntity::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -94,6 +94,14 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_5_6: Migration = Migration(5, 6) { connection ->
             connection.execSql("ALTER TABLE `comments` ADD COLUMN `mediaJson` TEXT NOT NULL DEFAULT ''")
+        }
+
+        val MIGRATION_6_7: Migration = Migration(6, 7) { connection ->
+            connection.execSql("ALTER TABLE `items` ADD COLUMN `topicTag` TEXT NOT NULL DEFAULT ''")
+        }
+
+        val MIGRATION_7_8: Migration = Migration(7, 8) { connection ->
+            connection.execSql("ALTER TABLE `saved_collections` ADD COLUMN `isEnabled` INTEGER NOT NULL DEFAULT 1")
         }
     }
 }
