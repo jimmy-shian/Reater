@@ -614,21 +614,100 @@ object ThreadsSjsParser {
         return ""
     }
 
-    /** caption.text 優先；無則拼 text_fragments plaintext（官方欄位，見 EasyDown 文件） */
+    /** 文字區塊結構標記：一般訊息與 snippet 灰框的分界。
+     *  U+2063 隱形分隔符自成一行，真實內文幾乎不可能出現；
+     *  FTS 視為分隔符不產生 token，複製前會先拆分故不會外流。 */
+    const val SNIPPET_SEP_LINE = "\u2063"
+    const val SNIPPET_SEP = "\n\n\u2063\n\n"
+
+    /** 去除顯示用：把結構標記還原為普通段落分隔（列表預覽、比對鍵等純文字場景） */
+    fun stripSnippetMarkers(text: String): String {
+        if (!text.contains(SNIPPET_SEP_LINE)) return text
+        return text.replace(SNIPPET_SEP, "\n\n")
+            .replace(Regex("(?m)^\\h*\u2063\\h*$"), "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    /** 是否含結構化文字區塊（只有這種才配複製鍵；一般訊息一律不用） */
+    fun hasSnippetBlock(text: String): Boolean = text.contains(SNIPPET_SEP_LINE)
+
+    /** 拆分一般訊息與文字區塊：(general, snippet)；無標記時 snippet 為 ""（舊資料走啟發式兜底） */
+    fun splitSnippetBlock(text: String): Pair<String, String> {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || !trimmed.contains(SNIPPET_SEP_LINE)) return trimmed to ""
+        val idx = trimmed.indexOf(SNIPPET_SEP)
+        if (idx >= 0) {
+            return trimmed.substring(0, idx).trim() to
+                trimmed.substring(idx + SNIPPET_SEP.length).trim()
+        }
+        // 非標準形（如經 sanitize 壓成單換行）：按標記行切分
+        val parts = trimmed.split(Regex("(?m)^\\h*\u2063\\h*$"))
+        return parts.getOrNull(0)?.trim().orEmpty() to
+            parts.drop(1).joinToString("\n\n").trim()
+    }
+
+    /** caption.text 優先；無則拼 text_fragments plaintext（官方欄位，見 EasyDown 文件）；
+     * 另含 snippet_attachment_info.text_fragments（文字區塊/2-2 卡片實測：
+     * DdAkapOFCgT 的 529 字 prompt 只在此欄，caption 僅 16 字短標題）。
+     * 一般訊息與文字區塊以 SNIPPET_SEP 結構分隔（不再混成一段），
+     * 詳情頁只有文字區塊配灰框＋複製鍵，一般訊息一律純顯示。 */
     fun postText(post: JSONObject): String {
+        val general = mutableListOf<String>()
+        fun addGeneral(s: String) {
+            val t = s.trim()
+            if (t.isBlank() || t == "null") return
+            // 已收錄（含子字串）則跳過，避免 caption == text_fragments 首段時重複
+            if (general.any { it == t || it.contains(t) || t.contains(it) }) {
+                // 較長者勝出：若新段更長，取代舊的短段
+                val idx = general.indexOfFirst { it.contains(t) }
+                if (idx >= 0 && t.length > general[idx].length) general[idx] = t
+                return
+            }
+            general.add(t)
+        }
         val rawCap = post.optJSONObject("caption")?.optString("text").orEmpty()
         val caption = if (rawCap == "null") "" else rawCap
-        if (caption.isNotBlank()) return caption.trim()
-        val fragments = post.optJSONObject("text_post_app_info")
-            ?.optJSONObject("text_fragments")
-            ?.optJSONArray("fragments") ?: return ""
-        val sb = StringBuilder()
-        for (i in 0 until fragments.length()) {
-            val part = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
-            if (part == "null") continue
-            sb.append(part)
+        addGeneral(caption)
+        val tpa = post.optJSONObject("text_post_app_info")
+        // 主 text_fragments（多 fragment 仍直接拼接為一段，與舊行為一致）
+        val fragments = tpa?.optJSONObject("text_fragments")?.optJSONArray("fragments")
+        if (fragments != null) {
+            val sb = StringBuilder()
+            for (i in 0 until fragments.length()) {
+                val part = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
+                if (part == "null" || part.isBlank()) continue
+                sb.append(part)
+            }
+            addGeneral(sb.toString())
         }
-        return sb.toString().trim()
+        // 文字區塊：snippet_attachment_info.text_fragments（/share/BAuxH1CWYu 實測主欄位）
+        var snippet = ""
+        val snippetFrags = tpa?.optJSONObject("snippet_attachment_info")
+            ?.optJSONObject("text_fragments")?.optJSONArray("fragments")
+        if (snippetFrags != null) {
+            val sb = StringBuilder()
+            for (i in 0 until snippetFrags.length()) {
+                val part = snippetFrags.optJSONObject(i)?.optString("plaintext").orEmpty()
+                if (part == "null" || part.isBlank()) continue
+                if (sb.isNotEmpty()) sb.append("\n\n")
+                sb.append(part.trim())
+            }
+            snippet = sb.toString().trim()
+            if (snippet.isNotBlank()) {
+                // 與一般訊息去重（較長者勝出，避免短標題與長內文重複存兩份）
+                if (general.any { it == snippet || it.contains(snippet) }) {
+                    snippet = ""
+                } else {
+                    val idx = general.indexOfFirst { snippet.contains(it) }
+                    if (idx >= 0) general.removeAt(idx)
+                }
+            }
+        }
+        val generalText = general.joinToString("\n\n").trim()
+        if (snippet.isBlank()) return generalText
+        if (generalText.isBlank()) return snippet
+        return generalText + SNIPPET_SEP + snippet
     }
 
     // ---------- 媒體 ----------

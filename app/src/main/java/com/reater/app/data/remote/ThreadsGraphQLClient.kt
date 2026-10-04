@@ -223,29 +223,41 @@ class ThreadsGraphQLClient @Inject constructor(
         }
     }
 
-    /** 兩份留言清單合併：key = author + 空白正規化後的文字；帶 media 或讚數更高者勝出 */
+    /** 兩份留言清單合併：key = author + 結構標記還原後空白正規化文字；結構化版本優先保留 */
     private fun mergeCommentsLists(
         base: List<FetchedComment>,
         extra: List<FetchedComment>
     ): List<FetchedComment> {
         val map = LinkedHashMap<String, FetchedComment>()
-        fun norm(t: String) = t.replace(Regex("\\s+"), " ").trim()
+        fun norm(t: String) =
+            com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(t)
+                .replace(Regex("\\s+"), " ").trim()
         for (c in (base + extra)) {
             val key = c.author.trim().lowercase() + "\u0000" + norm(c.text).lowercase()
             if (key.isBlank() || key.endsWith("\u0000")) continue
             val prev = map[key]
+            val prevStructured =
+                com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(prev?.text.orEmpty())
+            val curStructured =
+                com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(c.text)
             if (prev == null ||
                 (prev.media.isEmpty() && c.media.isNotEmpty()) ||
-                (c.likeCount > prev.likeCount)
+                (c.likeCount > prev.likeCount) ||
+                (!prevStructured && curStructured)
             ) {
-                // 保留較多資訊者：media 併集 + 較高讚數（同內容多變體只留一份）
+                // 保留較多資訊者：media 併集 + 較高讚數（同內容多變體只留一份）；
+                // 結構化（帶文字區塊標記）版本優先，避免 DOM 純文字版蓋掉 SJS 結構版
+                val textHolder: FetchedComment =
+                    if (prev != null && prevStructured && !curStructured) prev else c
                 val merged = if (prev != null && prev.media.isNotEmpty() && c.media.isNotEmpty()) {
-                    c.copy(
+                    textHolder.copy(
                         media = MediaDedup.distinctFetched(prev.media + c.media),
                         likeCount = maxOf(prev.likeCount, c.likeCount)
                     )
                 } else if (prev != null && prev.media.isNotEmpty() && c.media.isEmpty()) {
-                    c.copy(media = prev.media, likeCount = maxOf(prev.likeCount, c.likeCount))
+                    textHolder.copy(media = prev.media, likeCount = maxOf(prev.likeCount, c.likeCount))
+                } else if (prev != null) {
+                    textHolder.copy(likeCount = maxOf(prev.likeCount, c.likeCount))
                 } else {
                     c
                 }
@@ -341,7 +353,12 @@ class ThreadsGraphQLClient @Inject constructor(
                 )
             }
             if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
-                val domClean = domFetched.filter { it.text != sjs.bodyText }.take(50)
+                // 主文排除：結構標記還原＋空白正規化後比對，避免 SJS 結構版與 DOM 純文字版比對失手造成主文重複成留言
+                fun normBody(t: String) =
+                    com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(t)
+                        .replace(Regex("\\s+"), " ").trim()
+                val sjsBodyNorm = normBody(sjs.bodyText)
+                val domClean = domFetched.filter { normBody(it.text) != sjsBodyNorm }.take(50)
                 // SSR 留言 + DOM 留言合併：同一則（author+文字）優先取帶 media 的版本，
                 // DOM 補 SSR 沒帶圖的留言，SSR 補 DOM 沒渲染出來的
                 val mergedComments = if (sjs.comments.isNotEmpty()) {
