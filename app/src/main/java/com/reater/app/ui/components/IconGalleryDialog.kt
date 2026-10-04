@@ -562,8 +562,7 @@ fun IconGalleryDialog(
                                 expanded = scopeExpanded,
                                 onClick = { scopeExpanded = !scopeExpanded },
                                 title = "圖示範圍",
-                                value = scopeLabel,
-                                compact = true
+                                value = scopeLabel
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             // 展開/收合：expandVertically(top) + fadeIn 300ms / 反向 250ms（見 ReaterDropdownMotion）
