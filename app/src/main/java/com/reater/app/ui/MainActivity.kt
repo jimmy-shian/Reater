@@ -962,7 +962,7 @@ fun MainScreen(
                     IconButton(onClick = {
                         val activePosts = if (currentTab == 3) proFilteredPosts else posts
                         if (activePosts.isNotEmpty()) {
-                            val shareText = activePosts.joinToString("\n") { detail ->
+                            val shareText = activePosts.joinToString("\n\n") { detail ->
                                 formatPostShareText(detail)
                             }
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1312,7 +1312,7 @@ private fun PostListTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(posts, key = { it.item.id }) { itemDetail ->
+            items(posts, key = { "post-${it.item.id}" }) { itemDetail ->
                 PostCard(
                     itemDetail = itemDetail,
                     categories = categories,
@@ -1400,7 +1400,7 @@ private fun ProCategoryTabContent(
                     modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
                 )
             }
-            items(collections, key = { it.id }) { col ->
+            items(collections, key = { "col-${it.id}" }) { col ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
@@ -1453,7 +1453,7 @@ private fun ProCategoryTabContent(
                 }
             }
         } else {
-            items(posts, key = { it.item.id }) { itemDetail ->
+            items(posts, key = { "post-${it.item.id}" }) { itemDetail ->
                 PostCard(
                     itemDetail = itemDetail,
                     categories = categories,
