@@ -170,6 +170,10 @@ class ThreadsGraphQLClient @Inject constructor(
 
             val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
             val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
+            // 圖1 數字修正：伺服器宣告總數優先（like/reply/repost），
+            // reply 取 max(伺服器總數, 已抓留言數)——抓不全時仍顯示真實總數而非 23 這種局部數
+            val serverReply = parsed.replyCount
+            val serverRepost = parsed.repostCount
 
             if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty()) {
                 Result.success(
@@ -182,8 +186,8 @@ class ThreadsGraphQLClient @Inject constructor(
                         postedAt = if (postedAtMs > 0) postedAtMs else System.currentTimeMillis(),
                         bodyText = bodyText,
                         likeCount = likeCount,
-                        replyCount = commentsWithMedia.size,
-                        repostCount = 0,
+                        replyCount = maxOf(serverReply, commentsWithMedia.size),
+                        repostCount = serverRepost,
                         comments = commentsWithMedia,
                         media = downloadedMediaList,
                         rawJsonMin = """{"code":"$extractedShortcode"}""",
@@ -387,8 +391,8 @@ class ThreadsGraphQLClient @Inject constructor(
                     postedAt = if (sjs.postedAtMs > 0) sjs.postedAtMs else System.currentTimeMillis(),
                     bodyText = sjs.bodyText,
                     likeCount = sjs.likeCount,
-                    replyCount = commentsWithMedia.size,
-                    repostCount = 0,
+                    replyCount = maxOf(sjs.replyCount, commentsWithMedia.size),
+                    repostCount = sjs.repostCount,
                     comments = commentsWithMedia,
                     media = downloadedMedia,
                     rawJsonMin = "{\"code\":\"$shortcode\"}",
@@ -443,8 +447,8 @@ class ThreadsGraphQLClient @Inject constructor(
                             postedAt = if (fromHtml.postedAtMs > 0) fromHtml.postedAtMs else System.currentTimeMillis(),
                             bodyText = fromHtml.bodyText,
                             likeCount = fromHtml.likeCount,
-                            replyCount = fromHtml.comments.size,
-                            repostCount = 0,
+                            replyCount = maxOf(fromHtml.replyCount, fromHtml.comments.size),
+                            repostCount = fromHtml.repostCount,
                             comments = fromHtml.comments,
                             media = downloadedMedia2,
                             rawJsonMin = "{\"code\":\"$shortcode\"}",
@@ -471,6 +475,16 @@ class ThreadsGraphQLClient @Inject constructor(
                         ?: sjs?.authorHandle?.takeIf { it.isNotBlank() }
                         ?: domFetched.firstOrNull()?.author ?: "threads_user"
                 }
+                // 主文 DOM（與 bodyGuess 同文者）的讚數即主文讚數；SJS 缺失時用它補 likeCount，
+                // 否則主文會永遠顯示無數字、看起來像「解析不確」
+                val mainDomLike = domFetched.firstOrNull { it.text == bodyGuess }?.likeCount
+                    ?: domFetched.firstOrNull()?.takeIf { bodyGuess.isBlank() }?.likeCount
+                    ?: 0
+                val mainLike = sjs?.likeCount?.takeIf { it > 0 }
+                    ?: refetch?.likeCount?.takeIf { it > 0 }
+                    ?: mainDomLike
+                val serverReplyDom = sjs?.replyCount ?: refetch?.replyCount ?: 0
+                val serverRepostDom = sjs?.repostCount ?: refetch?.repostCount ?: 0
                 val filtered = domFetched.filter { it.text != bodyGuess }.take(50)
                 if (bodyGuess.isNotBlank() || filtered.isNotEmpty()) {
                     return@withContext Result.success(
@@ -482,9 +496,9 @@ class ThreadsGraphQLClient @Inject constructor(
                             authorVerified = sjs?.authorVerified ?: false,
                             postedAt = System.currentTimeMillis(),
                             bodyText = bodyGuess,
-                            likeCount = sjs?.likeCount ?: 0,
-                            replyCount = filtered.size,
-                            repostCount = 0,
+                            likeCount = mainLike,
+                            replyCount = maxOf(serverReplyDom, filtered.size),
+                            repostCount = serverRepostDom,
                             comments = downloadCommentMedia(filtered, shortcode),
                             media = sjs?.media?.mapIndexed { index, m ->
                                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, index)
