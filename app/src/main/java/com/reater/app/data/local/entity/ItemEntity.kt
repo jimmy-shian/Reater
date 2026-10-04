@@ -26,6 +26,8 @@ data class ItemEntity(
     val postedAt: Long = 0L, // UTC epoch millis
     val postedAtRaw: String = "",
     val bodyText: String = "",
+    /** Threads 主題標籤（topic pill；抓不到時為內文首個 hashtag；供同主題預選分類用） */
+    val topicTag: String = "",
     val commentsText: String = "",
     val mediaJson: String = "[]",
     val likeCount: Int = 0,

@@ -49,6 +49,8 @@ object ThreadsSjsParser {
         val media: List<FetchedMedia>,
         /** 留言（含每則留言自帶的圖/影媒體），上限 50 */
         val comments: List<FetchedComment>,
+        /** Threads 主題標籤（pill 欄位優先，否則內文首個 hashtag；供同主題預選分類用） */
+        val topicTag: String = "",
         /** /share/ 留言鏈的母文（主本身 is_reply==true 時回溯；頂層串文為 null） */
         val parent: ParentPost? = null,
         /**
@@ -300,7 +302,8 @@ object ThreadsSjsParser {
             media = effMedia,
             comments = comments,
             parent = parent,
-            parentChain = parentChain
+            parentChain = parentChain,
+            topicTag = TopicTags.resolve(effectiveMain, effBody)
         )
     }
 
