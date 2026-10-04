@@ -20,6 +20,7 @@ import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.AiAnalysisResult
 import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
+import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
 import kotlinx.coroutines.flow.Flow
@@ -118,10 +119,14 @@ class ThreadPostRepository @Inject constructor(
         }
         // Upsert ItemEntity
         val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
+        // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
+        val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
+            .ifBlank { TopicTags.firstHashtag(combinedBody) }
         val itemId = if (existing != null) {
             val updated = existing.copy(
                 shortcode = shortcode,
                 authorHandle = authorHandle.ifBlank { existing.authorHandle },
+                topicTag = resolvedTopic.ifBlank { existing.topicTag },
                 authorDisplayName = fetchedResult?.authorDisplayName ?: existing.authorDisplayName,
                 authorProfileUrl = fetchedResult?.authorProfileUrl ?: existing.authorProfileUrl,
                 authorVerified = fetchedResult?.authorVerified ?: existing.authorVerified,
@@ -143,6 +148,7 @@ class ThreadPostRepository @Inject constructor(
                 canonicalUrl = canonicalUrl,
                 shortcode = shortcode,
                 authorHandle = authorHandle,
+                topicTag = resolvedTopic,
                 authorDisplayName = fetchedResult?.authorDisplayName ?: authorHandle,
                 authorProfileUrl = fetchedResult?.authorProfileUrl.orEmpty(),
                 authorVerified = fetchedResult?.authorVerified ?: false,
@@ -457,6 +463,7 @@ class ThreadPostRepository @Inject constructor(
         val comments = detail.comments.joinToString(" ") { it.text }
         val searchable = listOf(
             detail.item.bodyText,
+            detail.item.topicTag,
             detail.item.commentsText,
             detail.userEdit?.userBodyOverride.orEmpty(),
             detail.manualNote,
