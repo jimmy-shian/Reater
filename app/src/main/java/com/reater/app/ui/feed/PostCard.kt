@@ -61,8 +61,6 @@ import coil.compose.AsyncImage
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.ItemDetail
 import com.reater.app.ui.AvatarIcons
- import com.reater.app.ui.components.CategoryBadge
- import com.reater.app.ui.components.CategoryDropdown
 import com.reater.app.ui.components.LinkifiedText
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.player.InlineVideoPlayer
@@ -71,13 +69,13 @@ import java.io.File
 
 /**
  * 格式化單一貼文分享文字：
- * "摘要\n乾淨網址"（摘要有值＝ AI摘要 or 筆記；無摘要時只輸出網址）
+ * "網址: 我的說明摘要 or AI摘要 or 空著"
  * 網址一律去除 ?xmt= / ?slof= 等追蹤參數後再輸出。
  */
 fun formatPostShareText(itemDetail: ItemDetail): String {
     val url = com.reater.app.domain.UrlParser.stripTrackingParams(itemDetail.item.canonicalUrl)
     val summary = itemDetail.manualSummary.ifBlank { itemDetail.manualNote }.trim()
-    return if (summary.isNotBlank()) "$summary\n$url" else url
+    return if (summary.isNotBlank()) "$url: $summary" else "$url: "
 }
 
 @Composable
@@ -87,18 +85,12 @@ fun PostCard(
     onClick: () -> Unit,
     onToggleRead: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onDelete: () -> Unit,
-    onUpdateCategory: (Long?) -> Unit = {},
-    onRequestCreateCategory: (prefill: String, itemId: Long) -> Unit = { _, _ -> }
+    onDelete: () -> Unit
 ) {
     val context = LocalContext.current
     val category = categories.firstOrNull { it.id == itemDetail.userEdit?.categoryId }
     val firstMedia = itemDetail.media.firstOrNull()
     var showMenu by remember { mutableStateOf(false) }
-    // 列表直改分類：點中間徽章即展開儲存同款 CategoryDropdown，不必進詳情再點 ...
-    var showCategoryEditor by remember(itemDetail.item.id, itemDetail.userEdit?.categoryId) {
-        mutableStateOf(false)
-    }
 
     Card(
         modifier = Modifier
@@ -152,7 +144,7 @@ fun PostCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (!itemDetail.isRead) "未讀" else "已讀",
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = if (!itemDetail.isRead) MaterialTheme.colorScheme.onPrimaryContainer
                                 else MaterialTheme.colorScheme.outline
@@ -220,12 +212,32 @@ fun PostCard(
                             modifier = Modifier.size(14.dp)
                         )
                     }
-                    // 分類徽章（含未分類）一律顯示，點即改分類（儲存同款選單）
-                    Spacer(modifier = Modifier.width(8.dp))
-                    CategoryBadge(
-                        category = category,
-                        onClick = { showCategoryEditor = !showCategoryEditor }
-                    )
+                    if (category != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = AvatarIcons.getDrawableRes(category.avatarIcon)),
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = Color.Unspecified
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = category.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -296,34 +308,12 @@ fun PostCard(
                 }
             }
 
-            // 行內改分類（儲存同款 CategoryDropdown）：點徽章展開，選即生效
-            if (showCategoryEditor) {
-                Spacer(modifier = Modifier.height(6.dp))
-                CategoryDropdown(
-                    categories = categories,
-                    selectedCategoryId = itemDetail.userEdit?.categoryId,
-                    onSelect = {
-                        onUpdateCategory(it)
-                        showCategoryEditor = false
-                        Toast.makeText(
-                            context,
-                            if (it == null) "已改為未分類" else "分類已更新",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    },
-                    onRequestCreate = { query ->
-                        showCategoryEditor = false
-                        onRequestCreateCategory(query, itemDetail.item.id)
-                    }
-                )
-            }
-
             Spacer(modifier = Modifier.height(8.dp))
 
             // Body Text — 點內文即展開詳情（像 Threads）；URL 仍可點擊外部跳轉
             LinkifiedText(
                 text = remember(itemDetail.displayBody) {
-                    com.reater.app.data.remote.threads.ThreadsSjsParser.stripSnippetMarkers(itemDetail.displayBody).trim()
+                    itemDetail.displayBody.trim()
                         .replace(Regex("\n{3,}"), "\n\n")
                         .ifBlank { "無內文" }
                 },
@@ -331,7 +321,7 @@ fun PostCard(
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,
-                lineHeight = 18.sp,
+                lineHeight = 20.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth(),
                 onNeutralClick = onClick
@@ -387,7 +377,7 @@ fun PostCard(
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("詳情", fontSize = 12.sp, color = Color.White, maxLines = 1)
+                            Text("詳情", fontSize = 11.sp, color = Color.White, maxLines = 1)
                         }
                     }
                 }
@@ -442,7 +432,7 @@ fun PostCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = formatSavedTime(itemDetail.item.sourceFetchedAt),
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.outline
             )
         }

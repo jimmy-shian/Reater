@@ -240,7 +240,7 @@ fun ReaterDropdownOption(
                 if (subLabel != null) {
                     Text(
                         text = subLabel,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
                         softWrap = false,
@@ -292,7 +292,7 @@ fun ReaterDropdownNumberInput(
                 onValueChange = { onValueChange(it.filter { ch -> ch.isDigit() }) },
                 label = { Text(label, fontSize = 12.sp) },
                 suffix = { Text(suffix, fontSize = 12.sp) },
-                supportingText = { Text(hint, fontSize = 12.sp) },
+                supportingText = { Text(hint, fontSize = 11.sp) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 shape = RoundedCornerShape(8.dp),

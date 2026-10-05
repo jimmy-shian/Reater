@@ -6,7 +6,6 @@
     <application
         android:name=".ReaterApplication"
         android:allowBackup="true"
-        android:hasFragileUserData="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -28,16 +27,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- Pro 一鍵開通：reater://pro-unlock?email=..&code=PRO-XXXX-XXXX-XXXX
-                 點連結即開 App 自動解鎖（見 MainActivity.parseProUnlock）。
-                 注意：不配 https://reater.app 備用——該網域不存在，
-                 Gmail/Chrome 點 https 會先報「沒有該網域」，根本到不了 App。
-                 解鎖方式：信內複製 reater:// 連結 → App「解鎖→貼上開通連結」，
-                 或手動輸入 Email + 啟用碼。 -->
+                 寄信用戶點連結即開 App 自動解鎖（見 MainActivity.parseProUnlock）。
+                 https 版是備用（部分信箱只把 https 變可點），不做 autoVerify，
+                 沒網站也能經由選單「用 Reater 開啟」。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="reater" android:host="pro-unlock" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="reater.app" android:pathPrefix="/pro-unlock" />
             </intent-filter>
         </activity>
 

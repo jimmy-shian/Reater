@@ -9,7 +9,6 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,18 +24,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
-import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -51,12 +44,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,10 +56,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.shape.CircleShape
 import com.reater.app.ui.components.ThreadsStatsRow
 import androidx.compose.ui.graphics.Color
@@ -77,7 +65,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -92,7 +79,6 @@ import com.reater.app.ui.MediaViewerDialog
 import com.reater.app.ui.ViewerMedia
 import com.reater.app.ui.components.CategoryBadge
 import com.reater.app.ui.components.CategoryDropdown
-import com.reater.app.ui.components.CopyableTextBlock
 import com.reater.app.ui.components.LinkifiedText
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.feed.formatPostShareText
@@ -171,147 +157,6 @@ private fun parseThreadChain(rawBody: String, defaultAuthor: String): List<Threa
     }
     // 避免病態堆疊拖慢渲染
     return blocks.take(6)
-}
-
-/** 普通訊息只可展開；只有 Threads snippet 結構才顯示複製卡。 */
-private const val PLAIN_COLLAPSE_MIN_CHARS = 60
-private const val PLAIN_COLLAPSE_MIN_LINES = 4
-
-/**
- * 拆分「一般訊息 + 文字區塊」：
- * - 有結構標記：精確拆成普通訊息與 snippet，只有 snippet 可複製。
- * - 沒有結構標記：全文都是普通訊息，不因長度而顯示複製鍵。
- */
-private fun splitLeadAndSnippet(text: String): Pair<String, String> {
-    val trimmed = text.trim()
-    if (trimmed.isEmpty()) return "" to ""
-    if (com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(trimmed)) {
-        return com.reater.app.data.remote.threads.ThreadsSjsParser.splitSnippetBlock(trimmed)
-    }
-    // 不用字數/換行數猜測，避免普通留言被誤顯示成可複製卡片。
-    return trimmed to ""
-}
-
-/**
- * 可收合的純文字（一般訊息用：無灰框、無複製鍵；過長才出現展開/收起）。
- */
-@Composable
-private fun CollapsiblePlainText(
-    text: String,
-    modifier: Modifier = Modifier,
-    collapsedMaxLines: Int = 4,
-    fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 18.sp,
-    color: Color = MaterialTheme.colorScheme.onSurface
-) {
-    if (text.isBlank()) return
-    var expanded by remember(text) { mutableStateOf(false) }
-    val collapsible = text.length > PLAIN_COLLAPSE_MIN_CHARS || text.lines().size >= PLAIN_COLLAPSE_MIN_LINES
-    val maxLines = if (!collapsible || expanded) Int.MAX_VALUE else collapsedMaxLines
-    Column(modifier = modifier.fillMaxWidth()) {
-        LinkifiedText(
-            text = text,
-            fontSize = fontSize,
-            lineHeight = lineHeight,
-            color = color,
-            softWrap = true,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            onNeutralClick = { if (collapsible) expanded = !expanded },
-            modifier = Modifier.fillMaxWidth()
-        )
-        if (collapsible) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 2.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = if (expanded) "收起" else "展開全文",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "收起" else "展開全文",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 選擇性可複製文字：
- * - 一般訊息（短或長）→ 純文字顯示 (無灰框、無複製鍵；長文可展開收起)。
- * - 文字區塊 (snippet) → CopyableTextBlock (灰框 + 複製鍵 + 展開收起)。
- * - 混合 (一般訊息 + 文字區塊) → 上方純文字 + 下方灰框 (只複製文字區塊)。
- */
-@Composable
-private fun SelectiveTextBlock(
-    text: String,
-    modifier: Modifier = Modifier,
-    label: String? = null,
-    collapsedMaxLines: Int = 6,
-    collapseThresholdChars: Int = 200,
-    collapseThresholdLines: Int = 7,
-    fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 18.sp,
-    color: Color = MaterialTheme.colorScheme.onSurface
-) {
-    if (text.isBlank()) return
-    val (lead, snippet) = remember(text) { splitLeadAndSnippet(text) }
-    if (lead.isNotBlank() && snippet.isNotBlank()) {
-        Column(modifier = modifier.fillMaxWidth()) {
-            CollapsiblePlainText(
-                text = lead,
-                collapsedMaxLines = 4,
-                fontSize = fontSize,
-                lineHeight = lineHeight,
-                color = color,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            CopyableTextBlock(
-                text = snippet,
-                label = label,
-                collapsedMaxLines = collapsedMaxLines,
-                collapseThresholdChars = collapseThresholdChars,
-                collapseThresholdLines = collapseThresholdLines,
-                fontSize = fontSize,
-                lineHeight = lineHeight,
-                color = color,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    } else if (snippet.isNotBlank()) {
-        CopyableTextBlock(
-            text = snippet,
-            label = label,
-            collapsedMaxLines = collapsedMaxLines,
-            collapseThresholdChars = collapseThresholdChars,
-            collapseThresholdLines = collapseThresholdLines,
-            fontSize = fontSize,
-            lineHeight = lineHeight,
-            color = color,
-            modifier = modifier.fillMaxWidth()
-        )
-    } else {
-        CollapsiblePlainText(
-            text = lead.ifBlank { text.trim() },
-            collapsedMaxLines = collapsedMaxLines,
-            fontSize = fontSize,
-            lineHeight = lineHeight,
-            color = color,
-            modifier = modifier.fillMaxWidth()
-        )
-    }
 }
 
 /**
@@ -461,225 +306,6 @@ private fun getAvatarColor(name: String): Color {
     return AVATAR_PALETTE[hash % AVATAR_PALETTE.size]
 }
 
-/** Threads 會保留輪播原圖比例；固定正方形裁切會讓儲存畫面和原文不同。 */
-private fun mediaAspectRatio(width: Int, height: Int, fallback: Float = 1f): Float {
-    if (width <= 0 || height <= 0) return fallback
-    return (width.toFloat() / height.toFloat()).coerceIn(0.55f, 1.8f)
-}
-
-@Composable
-private fun ThreadAvatar(
-    name: String,
-    profileUrl: String = "",
-    modifier: Modifier = Modifier.size(36.dp)
-) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(getAvatarColor(name)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (profileUrl.isNotBlank()) {
-            AsyncImage(
-                model = profileUrl,
-                contentDescription = "$name 頭像",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Text(
-                text = name.take(1).uppercase(),
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-        }
-    }
-}
-
-/**
- * 圖2 文章圖片簡易左右顯示：單張維持大圖；多張改橫滑縮圖列（省垂直空間）。
- * 縮圖 132dp 正方裁切（Crop 無灰邊），點任一開全螢幕檢視器；右上顯示「n 張・左右滑」提示。
- */
-@Composable
-private fun MediaGalleryRow(
-    media: List<com.reater.app.data.local.entity.MediaEntity>,
-    onOpenAt: (com.reater.app.data.local.entity.MediaEntity) -> Unit
-) {
-    if (media.isEmpty()) return
-    if (media.size == 1) {
-        val m = media[0]
-        val source: Any = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
-            File(m.localPath)
-        } else {
-            m.remoteUrl
-        }
-        val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(mediaAspectRatio(m.width, m.height, 1.15f))
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
-        ) {
-            if (isVideo) {
-                InlineVideoPlayer(
-                    remoteUrl = m.remoteUrl,
-                    localPath = m.localPath,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                AsyncImage(
-                    model = source,
-                    contentDescription = "貼文圖片",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { onOpenAt(m) },
-                    contentScale = ContentScale.Crop
-                )
-            }
-        }
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "${media.size} 張・左右滑動查看",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.outline
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(media, key = { _, m -> m.remoteUrl + m.localPath }) { _, m ->
-                val source: Any = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
-                    File(m.localPath)
-                } else {
-                    m.remoteUrl
-                }
-                val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
-                Box(
-                    modifier = Modifier
-                        .width(132.dp)
-                        .aspectRatio(mediaAspectRatio(m.width, m.height))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
-                ) {
-                    if (isVideo) {
-                        InlineVideoPlayer(
-                            remoteUrl = m.remoteUrl,
-                            localPath = m.localPath,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        AsyncImage(
-                            model = source,
-                            contentDescription = "貼文圖片",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onOpenAt(m) },
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 留言圖片同樣橫滑簡易顯示（FetchedMedia 版，複用同一視覺語言）。
- */
-@Composable
-private fun CommentMediaGalleryRow(
-    media: List<FetchedMedia>,
-    onOpenAt: (Int) -> Unit
-) {
-    if (media.isEmpty()) return
-    if (media.size == 1) {
-        val cm = media[0]
-        val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(mediaAspectRatio(cm.width, cm.height, 1.15f))
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            if (cmIsVideo) {
-                InlineVideoPlayer(
-                    remoteUrl = cm.remoteUrl,
-                    localPath = cm.localPath,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                val cmSource: Any = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
-                    File(cm.localPath)
-                } else {
-                    cm.remoteUrl
-                }
-                AsyncImage(
-                    model = cmSource,
-                    contentDescription = "留言圖片",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { onOpenAt(0) },
-                    contentScale = ContentScale.Crop
-                )
-            }
-        }
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "${media.size} 張・左右滑動查看",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.outline
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(media, key = { i, m -> m.remoteUrl + m.localPath + i }) { ci, cm ->
-                val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
-                Box(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .aspectRatio(mediaAspectRatio(cm.width, cm.height))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    if (cmIsVideo) {
-                        InlineVideoPlayer(
-                            remoteUrl = cm.remoteUrl,
-                            localPath = cm.localPath,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        val cmSource: Any = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
-                            File(cm.localPath)
-                        } else {
-                            cm.remoteUrl
-                        }
-                        AsyncImage(
-                            model = cmSource,
-                            contentDescription = "留言圖片",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onOpenAt(ci) },
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 @Composable
 fun DetailDialog(
@@ -687,8 +313,7 @@ fun DetailDialog(
     categories: List<CategoryEntity>,
     viewModel: MainViewModel,
     onDismiss: () -> Unit,
-    onMoveToTrash: () -> Unit,
-    onRequestCreateCategory: (prefill: String) -> Unit = {}
+    onMoveToTrash: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -700,25 +325,10 @@ fun DetailDialog(
         }
     }
     var isSummarizing by remember { mutableStateOf(false) }
-    var currentSummary by remember(item.item.id) { mutableStateOf(item.manualSummary) }
-    // Flow 更新（AI 完成後）即時同步摘要顯示；備註草稿只在初次/外部變更且無未存修改時同步，避免蓋掉輸入
-    LaunchedEffect(item.manualSummary) { currentSummary = item.manualSummary }
-    var noteDraft by remember(item.item.id) { mutableStateOf(item.manualNote) }
-    var lastSyncedNote by remember(item.item.id) { mutableStateOf(item.manualNote) }
-    // 外部 Flow 更新時：只有本地無未存修改（draft == 上次同步值）才跟進，否則保留使用者原始輸入
-    LaunchedEffect(item.manualNote) {
-        if (noteDraft == lastSyncedNote) {
-            noteDraft = item.manualNote
-        }
-        lastSyncedNote = item.manualNote
-    }
-    var isSavingNote by remember { mutableStateOf(false) }
+    var currentSummary by remember { mutableStateOf(item.manualSummary) }
     var showAiConsent by remember { mutableStateOf(false) }
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
     val coroutineScope = rememberCoroutineScope()
-    // 頂/底超滑下拉關閉（對齊 MediaViewerDialog 手感）：滑到頂再往下拉、或滑到底再往上推，
-    // 超過一段距離出現拉鋸指示（箭頭膠囊），放開超過閾值即關閉，否則彈回。
-    val detailScrollState = rememberScrollState()
     val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
     // 全螢幕媒體檢視器下標（null = 關閉；索引對應「祖先在前、主文在後」的扁平有序，與存檔合併順序一致）
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
@@ -755,33 +365,16 @@ fun DetailDialog(
             val result = viewModel.summarizeItemWithAi(item)
             isSummarizing = false
             result.onSuccess {
-                // AI 只更新摘要顯示；備註草稿與已存備註一律保留，不清空使用者原始輸入
-                // （persistAiAnalysis 在 DB 層同樣只寫 manualSummary、保留 manualNote）
                 currentSummary = it
-                Toast.makeText(context, "AI 分析完成！（備註已保留）", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "AI 分析完成！", Toast.LENGTH_SHORT).show()
             }.onFailure { err ->
                 Toast.makeText(context, err.message ?: "AI 分析失敗", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    fun saveNote() {
-        if (isSavingNote) return
-        val trimmed = noteDraft.trim()
-        // 未變更則不寫庫，避免洗掉 editedAt；清空也是合法操作（使用者主動清才清）
-        if (trimmed == item.manualNote.trim() && noteDraft == lastSyncedNote) {
-            Toast.makeText(context, "備註無變更", Toast.LENGTH_SHORT).show()
-            return
-        }
-        isSavingNote = true
-        viewModel.updateManualNote(item.item.id, noteDraft)
-        lastSyncedNote = noteDraft
-        isSavingNote = false
-        Toast.makeText(context, "備註已儲存", Toast.LENGTH_SHORT).show()
-    }
-
     if (showAiConsent) {
-        com.reater.app.ui.theme.AppDialog(onDismissRequest = { showAiConsent = false }) {
+        Dialog(onDismissRequest = { showAiConsent = false }) {
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.padding(20.dp)) {
                     Row(
@@ -811,118 +404,16 @@ fun DetailDialog(
         }
     }
 
-    com.reater.app.ui.theme.AppDialog(onDismissRequest = onDismiss) {
-        // 超滑關閉閾值（與 MediaViewerDialog 同級手感：120~160dp）
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        val dismissThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
-        val hintThresholdPx = remember(density) { with(density) { 36.dp.toPx() } }
-        // 橡皮筋位移：拖曳中即時跟手（snapTo），放開後彈簧回位；避免 draggable 搶奪中段捲動，
-        // 改用 nestedScroll 只吃「內容已到盡頭剩下的」位移，中段滑動完全不受影響。
-        val overscrollAnim = remember {
-            androidx.compose.animation.core.Animatable(0f)
-        }
-        val overscrollConnection = remember(detailScrollState, dismissThresholdPx) {
-            object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-                override fun onPreScroll(
-                    available: androidx.compose.ui.geometry.Offset,
-                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
-                ): androidx.compose.ui.geometry.Offset {
-                    // 僅在手指實體拖曳且已有橡皮筋位移時，反向滑動優先收回橡皮筋，避免內文跳動
-                    if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
-                        val cur = overscrollAnim.value
-                        if (cur > 0f && available.y < 0f) {
-                            val consumedY = available.y.coerceAtLeast(-cur)
-                            coroutineScope.launch { overscrollAnim.snapTo(cur + consumedY) }
-                            return androidx.compose.ui.geometry.Offset(0f, consumedY)
-                        } else if (cur < 0f && available.y > 0f) {
-                            val consumedY = available.y.coerceAtMost(-cur)
-                            coroutineScope.launch { overscrollAnim.snapTo(cur + consumedY) }
-                            return androidx.compose.ui.geometry.Offset(0f, consumedY)
-                        }
-                    }
-                    return androidx.compose.ui.geometry.Offset.Zero
-                }
-
-                override fun onPostScroll(
-                    consumed: androidx.compose.ui.geometry.Offset,
-                    available: androidx.compose.ui.geometry.Offset,
-                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
-                ): androidx.compose.ui.geometry.Offset {
-                    // 嚴格限制：僅「手指按著拖曳（UserInput）」才吃超滑位移；慣性捲動（Fling / SideEffect）到頂/到底絕不吃、不觸發關閉
-                    if (source != androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput || available.y == 0f) {
-                        return androidx.compose.ui.geometry.Offset.Zero
-                    }
-                    val atTop = available.y > 0f && !detailScrollState.canScrollBackward
-                    val atBottom = available.y < 0f && !detailScrollState.canScrollForward
-                    if (atTop || atBottom) {
-                        val cur = overscrollAnim.value
-                        val resistance =
-                            1f - (kotlin.math.abs(cur) / 600f).coerceIn(0f, 0.75f)
-                        val next =
-                            (cur + available.y * 0.45f * resistance).coerceIn(-420f, 420f)
-                        coroutineScope.launch { overscrollAnim.snapTo(next) }
-                        return androidx.compose.ui.geometry.Offset(0f, available.y)
-                    }
-                    return androidx.compose.ui.geometry.Offset.Zero
-                }
-
-                override suspend fun onPostFling(
-                    consumed: androidx.compose.ui.unit.Velocity,
-                    available: androidx.compose.ui.unit.Velocity
-                ): androidx.compose.ui.unit.Velocity {
-                    // 慣性甩動絕不直接關閉；放開手指時若位移已超過閾值才關閉，否則一律彈簧回位
-                    val cur = overscrollAnim.value
-                    if (kotlin.math.abs(cur) > dismissThresholdPx) {
-                        onDismiss()
-                    } else if (cur != 0f) {
-                        overscrollAnim.animateTo(
-                            0f,
-                            animationSpec = androidx.compose.animation.core.spring(
-                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                            )
-                        )
-                    }
-                    return androidx.compose.ui.unit.Velocity.Zero
-                }
-            }
-        }
-        // 放開手指（捲動結束）結算：超過閾值關閉，否則彈簧回位保底
-        LaunchedEffect(detailScrollState.isScrollInProgress) {
-            if (!detailScrollState.isScrollInProgress && overscrollAnim.value != 0f) {
-                if (kotlin.math.abs(overscrollAnim.value) > dismissThresholdPx) {
-                    onDismiss()
-                } else {
-                    overscrollAnim.animateTo(
-                        0f,
-                        animationSpec = androidx.compose.animation.core.spring(
-                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                        )
-                    )
-                }
-            }
-        }
-        val animatedY = overscrollAnim.value
-        val overscrollAlpha = (1f - (kotlin.math.abs(animatedY) / 1200f).coerceIn(0f, 0.6f))
-        val showTopHint = animatedY > hintThresholdPx
-        val showBottomHint = animatedY < -hintThresholdPx
+    Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
-                .clip(RoundedCornerShape(16.dp))
-                .graphicsLayer {
-                    translationY = animatedY
-                    alpha = overscrollAlpha
-                }
-                // 頂/底超滑拉鋸：只在內容已滑到盡頭時吃掉手勢，中段滑動不受影響
-                .nestedScroll(overscrollConnection),
+                .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 固定頂欄：左上 ... 溢位選單 + 分類徽章（中間可直接點開改分類）+ 分享 + X 關閉（最右）
+                // 固定頂欄：左上 ... 溢位選單 + 分類徽章（左）+ 分享 + X 關閉（最右）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -975,7 +466,7 @@ fun DetailDialog(
                                         Text("AI 智慧摘要")
                                         Text(
                                             text = "產生摘要・分類建議・標籤",
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.outline
                                         )
                                     }
@@ -992,8 +483,7 @@ fun DetailDialog(
                     }
                     CategoryBadge(
                         category = category,
-                        modifier = Modifier.weight(1f, fill = false),
-                        onClick = { showCategoryEditor = !showCategoryEditor }
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
@@ -1029,10 +519,10 @@ fun DetailDialog(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(detailScrollState)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
-                // 改分類編輯器（點中間徽章或 ... 選單展開）：與儲存時同款下拉，篩選 + 即時生效
+                // 改分類編輯器（由 ... 選單展開）：下拉篩選 + 即時生效
                 if (showCategoryEditor) {
                     Spacer(modifier = Modifier.height(8.dp))
                     CategoryDropdown(
@@ -1046,9 +536,8 @@ fun DetailDialog(
                                 Toast.LENGTH_SHORT
                             ).show()
                         },
-                        onRequestCreate = { query ->
-                            showCategoryEditor = false
-                            onRequestCreateCategory(query)
+                        onRequestCreate = {
+                            Toast.makeText(context, "請至 PRO 分類以 + 新增分類", Toast.LENGTH_SHORT).show()
                         }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1128,7 +617,7 @@ fun DetailDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "此為留言鏈舊存檔，圖片已自動歸位到母文（原誤掛在留言下）。重新儲存可永久修正。",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
@@ -1190,7 +679,7 @@ fun DetailDialog(
                                 ) {
                                     Text(
                                         text = ancestor.label ?: "分享",
-                                        fontSize = 12.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1198,37 +687,63 @@ fun DetailDialog(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            // 母文/分享內文：短訊息純顯示，文字區塊才套灰框＋一鍵複製
-                            if (ancestor.body.isBlank()) {
-                                Text(
-                                    text = "（無內文）",
-                                    fontSize = 14.sp,
-                                    lineHeight = 18.sp,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            } else {
-                                SelectiveTextBlock(
-                                    text = ancestor.body,
-                                    label = ancestor.label ?: "分享",
-                                    fontSize = 14.sp,
-                                    lineHeight = 18.sp,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            LinkifiedText(
+                                text = ancestor.body.ifBlank { "（無內文）" },
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
                             // 祖先區塊媒體（母文圖歸母文：銀晝戰績/裝備/排行在此顯示，不再掛到子文下）
-                            // 圖2：多圖改左右橫滑簡易顯示，省垂直空間
                             if (aMedia.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                MediaGalleryRow(media = aMedia) { am ->
+                                aMedia.forEach { am ->
+                                    val aSource = if (am.localPath.isNotBlank() && File(am.localPath).exists()) {
+                                        File(am.localPath)
+                                    } else {
+                                        am.remoteUrl
+                                    }
+                                    val aIsVideo = am.kind.equals("VIDEO", ignoreCase = true)
+                                    // viewer 下標需映射回頂層 viewerSortedMedia（正規化比對，避免多變體 URL 錯位）
                                     val aKey = com.reater.app.data.remote.MediaDedup.normalizeKey(am.remoteUrl)
                                     val globalIdx = viewerSortedMedia.indexOfFirst {
                                         com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == aKey
                                     }
-                                    if (globalIdx >= 0) viewerIndex = globalIdx
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(190.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .then(
+                                                if (aIsVideo) Modifier
+                                                else Modifier.clickable {
+                                                    if (globalIdx >= 0) viewerIndex = globalIdx
+                                                }
+                                            )
+                                    ) {
+                                        if (aIsVideo) {
+                                            InlineVideoPlayer(
+                                                remoteUrl = am.remoteUrl,
+                                                localPath = am.localPath,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            AsyncImage(
+                                                model = aSource,
+                                                contentDescription = "母文圖片",
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clickable {
+                                                        if (globalIdx >= 0) viewerIndex = globalIdx
+                                                    },
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
                                 }
-                                Spacer(modifier = Modifier.height(6.dp))
                             }
 
                             // 互動圖示列（Threads 原生四件套，共用模組）
@@ -1248,12 +763,20 @@ fun DetailDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.width(42.dp)
                     ) {
-                        ThreadAvatar(
-                            name = mainBlock.author,
-                            profileUrl = item.item.authorProfileUrl
-                                .takeIf { mainBlock.author.equals(item.item.authorHandle, ignoreCase = true) }
-                                .orEmpty()
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(getAvatarColor(mainBlock.author)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mainBlock.author.take(1).uppercase(),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                         if (hasComments) {
                             Box(
                                 modifier = Modifier
@@ -1288,7 +811,7 @@ fun DetailDialog(
                                 ) {
                                     Text(
                                         text = mainBlock.label,
-                                        fontSize = 12.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1307,7 +830,7 @@ fun DetailDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = formatSavedTime(item.item.sourceFetchedAt),
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -1323,7 +846,7 @@ fun DetailDialog(
                             Text(
                                 text = "無內文",
                                 fontSize = 14.sp,
-                                lineHeight = 18.sp,
+                                lineHeight = 20.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1339,40 +862,69 @@ fun DetailDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
-                            // 主文內文：短訊息純顯示，文字區塊才套灰框＋一鍵複製
-                            if (rawBody.isBlank()) {
-                                Text(
-                                    text = "無內文",
-                                    fontSize = 14.sp,
-                                    lineHeight = 18.sp,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            } else {
-                                SelectiveTextBlock(
-                                    text = rawBody,
-                                    label = mainBlock.label,
-                                    fontSize = 14.sp,
-                                    lineHeight = 18.sp,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            LinkifiedText(
+                                text = rawBody.ifBlank { "無內文" },
+                                fontSize = 14.sp,
+                                lineHeight = 21.sp,
+                                softWrap = true,
+                                color = if (rawBody.isBlank()) MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
-                        // 圖2：多圖改左右橫滑簡易顯示，單張仍大圖
                         if (mainMediaList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            MediaGalleryRow(media = mainMediaList) { m ->
+                            mainMediaList.forEach { m ->
                                 val mKey = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
                                 val globalIdx = viewerSortedMedia.indexOfFirst {
                                     com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == mKey
                                 }
-                                if (globalIdx >= 0) viewerIndex = globalIdx
-                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
-                                    .takeIf { it >= 0 }
+                                val imageSource = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
+                                    File(m.localPath)
+                                } else {
+                                    m.remoteUrl
+                                }
+                                val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(190.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .then(
+                                            if (isVideo) Modifier
+                                            else Modifier.clickable {
+                                                if (globalIdx >= 0) viewerIndex = globalIdx
+                                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
+                                                    .takeIf { it >= 0 }
+                                            }
+                                        )
+                                ) {
+                                    if (isVideo) {
+                                        InlineVideoPlayer(
+                                            remoteUrl = m.remoteUrl,
+                                            localPath = m.localPath,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        AsyncImage(
+                                            model = imageSource,
+                                            contentDescription = "Media",
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clickable {
+                                                    if (globalIdx >= 0) viewerIndex = globalIdx
+                                                    else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
+                                                        .takeIf { it >= 0 }
+                                                },
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
                         }
 
                         if (mainMediaList.isEmpty() && !hasAnyBlockMedia &&
@@ -1397,7 +949,7 @@ fun DetailDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "圖片/影片未能自動下載，可點上方按鈕在 Threads 查看原貼文。",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     lineHeight = 16.sp,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -1415,7 +967,40 @@ fun DetailDialog(
                     }
                 }
 
-                // （個人筆記改到底部可編輯區塊，此處不再重複顯示，避免與底部編輯器雙份）
+                // AI 摘要
+                if (currentSummary.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "✨ AI 智能摘要",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = currentSummary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+
+                // 個人筆記
+                if (item.manualNote.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(text = "個人筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = item.manualNote, fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
+                }
 
                 // 3. 精華留言區塊（以圖3 串文風格：左側頭像軌＋垂直連接線，右側帳號＋內容＋媒體＋讚數列）
                 if (item.comments.isNotEmpty()) {
@@ -1495,27 +1080,55 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                // 留言內文：一般短訊息純顯示，只有文字區塊才套灰框＋一鍵複製
-                                SelectiveTextBlock(
+                                LinkifiedText(
                                     text = displayCommentText,
                                     fontSize = 13.sp,
-                                    lineHeight = 17.sp,
-                                    collapsedMaxLines = 4,
-                                    collapseThresholdChars = 140,
-                                    collapseThresholdLines = 5,
+                                    lineHeight = 19.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                // 留言媒體（圖2：多圖橫滑簡易顯示）
+                                // 留言媒體
                                 if (commentMedia.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    CommentMediaGalleryRow(media = commentMedia) { ci ->
-                                        commentViewerMedia = commentMedia.map { m ->
-                                            ViewerMedia(kind = m.kind, remoteUrl = m.remoteUrl, localPath = m.localPath)
+                                    commentMedia.forEachIndexed { ci, cm ->
+                                        val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(180.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            if (cmIsVideo) {
+                                                InlineVideoPlayer(
+                                                    remoteUrl = cm.remoteUrl,
+                                                    localPath = cm.localPath,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                val cmSource = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
+                                                    File(cm.localPath)
+                                                } else {
+                                                    cm.remoteUrl
+                                                }
+                                                AsyncImage(
+                                                    model = cmSource,
+                                                    contentDescription = "留言圖片",
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clickable {
+                                                            commentViewerMedia = commentMedia.map { m ->
+                                                                ViewerMedia(kind = m.kind, remoteUrl = m.remoteUrl, localPath = m.localPath)
+                                                            }
+                                                            commentViewerIndex = ci
+                                                        },
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            }
                                         }
-                                        commentViewerIndex = ci
+                                        Spacer(modifier = Modifier.height(4.dp))
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
                                 }
 
                                 // 留言互動數值列（Threads 原生四件套，共用模組；小一號圖示）
@@ -1526,109 +1139,6 @@ fun DetailDialog(
                                     modifier = Modifier.padding(vertical = 2.dp)
                                 )
                             }
-                        }
-                    }
-                }
-
-                // 備註（可編輯，位於 AI 摘要與底部操作列上方）：AI 摘要只寫摘要欄，絕不清空此處使用者輸入
-                Spacer(modifier = Modifier.height(16.dp))
-                val noteUnsaved = noteDraft != lastSyncedNote
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(10.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = "備註", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        if (noteUnsaved) {
-                            Text(
-                                text = "● 未儲存",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else if (item.manualNote.isNotBlank()) {
-                            Text(
-                                text = "已儲存",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = noteDraft,
-                        onValueChange = { noteDraft = it },
-                        placeholder = { Text("寫下你的備註…（AI 摘要不會覆蓋這裡）", fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        minLines = 2,
-                        maxLines = 6
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (noteDraft.isNotBlank() && noteDraft != item.manualNote) {
-                            OutlinedButton(
-                                onClick = {
-                                    noteDraft = item.manualNote
-                                    lastSyncedNote = item.manualNote
-                                },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) { Text("還原", fontSize = 12.sp) }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Button(
-                            onClick = { saveNote() },
-                            enabled = !isSavingNote && noteUnsaved,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            if (isSavingNote) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Text("儲存備註", fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-
-                // AI 摘要（精華留言下方、底部操作列上方）
-                if (currentSummary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "✨ AI 智能摘要",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = currentSummary,
-                                fontSize = 13.sp,
-                                lineHeight = 17.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
                         }
                     }
                 }
@@ -1676,45 +1186,6 @@ fun DetailDialog(
                     }
                 }
                 }
-            }
-            // 頂/底超滑拉鋸指示（對齊圖像/影片檢視器：多滑一段距離出現，放開超過閾值關閉）
-            if (showTopHint || showBottomHint) {
-                val pullingDown = animatedY > 0f
-                val progress = (kotlin.math.abs(animatedY) / dismissThresholdPx).coerceIn(0f, 1f)
-                val readyToDismiss = kotlin.math.abs(animatedY) > dismissThresholdPx
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (readyToDismiss) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                    tonalElevation = 4.dp,
-                    modifier = Modifier
-                        .align(if (pullingDown) Alignment.TopCenter else Alignment.BottomCenter)
-                        .padding(vertical = 10.dp)
-                        .alpha(0.45f + 0.55f * progress)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (pullingDown) Icons.Default.KeyboardDoubleArrowDown
-                            else Icons.Default.KeyboardDoubleArrowUp,
-                            contentDescription = null,
-                            tint = if (readyToDismiss) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (readyToDismiss) "放開即關閉" else "繼續滑動可關閉",
-                            fontSize = 12.sp,
-                            fontWeight = if (readyToDismiss) FontWeight.Bold else FontWeight.Medium,
-                            color = if (readyToDismiss) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
             }
         }
     }

@@ -15,7 +15,6 @@ data class SavedCollectionEntity(
     val iconName: String = "life",
     val rulesJson: String, // e.g. {"isRead":false,"minLikes":50}
     val sortOrder: Int = 0,
-    val isEnabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
 )
 

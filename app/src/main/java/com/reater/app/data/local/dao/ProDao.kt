@@ -19,9 +19,6 @@ interface ProDao {
     @Query("DELETE FROM saved_collections WHERE id = :id")
     suspend fun deleteCollection(id: Long)
 
-    @Query("UPDATE saved_collections SET isEnabled = :enabled WHERE id = :id")
-    suspend fun setCollectionEnabled(id: Long, enabled: Boolean)
-
     @Query("SELECT * FROM saved_queries ORDER BY createdAt DESC")
     fun observeAllSavedQueries(): Flow<List<SavedQueryEntity>>
 

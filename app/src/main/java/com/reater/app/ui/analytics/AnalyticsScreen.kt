@@ -164,7 +164,7 @@ fun AnalyticsScreen(
                         ) {
                             Text(
                                 text = "PRO 完整",
-                                fontSize = 12.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
                             )
@@ -272,7 +272,7 @@ fun AnalyticsScreen(
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
                                     text = count.toString(),
-                                    fontSize = 20.sp,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -362,14 +362,14 @@ private fun StatCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = value,
-                fontSize = 20.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = title,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.outline
             )
         }
@@ -393,7 +393,7 @@ private fun InsightPill(
             modifier = Modifier.padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = label, fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+            Text(text = label, fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
         }
@@ -437,11 +437,11 @@ private fun InteractiveAnalyticsChart(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "次數 (則)", fontSize = 12.sp, color = outline)
+                Text(text = "次數 (則)", fontSize = 11.sp, color = outline)
                 if (selectedIndex in data.indices) {
                     Text(
                         text = "選取：${data[selectedIndex].first} (${data[selectedIndex].second} 則)",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = primary
                     )
@@ -457,9 +457,9 @@ private fun InteractiveAnalyticsChart(
                     verticalArrangement = Arrangement.SpaceBetween,
                     horizontalAlignment = Alignment.End
                 ) {
-                    Text(text = maxVal.toString(), fontSize = 12.sp, color = outline)
-                    Text(text = (maxVal / 2).toString(), fontSize = 12.sp, color = outline)
-                    Text(text = "0", fontSize = 12.sp, color = outline)
+                    Text(text = maxVal.toString(), fontSize = 10.sp, color = outline)
+                    Text(text = (maxVal / 2).toString(), fontSize = 10.sp, color = outline)
+                    Text(text = "0", fontSize = 10.sp, color = outline)
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -580,7 +580,7 @@ private fun InteractiveAnalyticsChart(
                     if (i % showStep == 0 || i == data.size - 1) {
                         Text(
                             text = shortDayLabel(day),
-                            fontSize = 12.sp,
+                            fontSize = 10.sp,
                             fontWeight = if (i == selectedIndex) FontWeight.Bold else FontWeight.Normal,
                             color = if (i == selectedIndex) primary else outline,
                             maxLines = 1,
@@ -651,7 +651,7 @@ private fun TimeFrequencySection(
                     ) {
                         Text(
                             text = "高峰：${peakSlot.title}",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -681,7 +681,7 @@ private fun TimeFrequencySection(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = slot.timeRange,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }

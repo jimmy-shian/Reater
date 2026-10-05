@@ -103,8 +103,4 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
     implementation(libs.androidx.billing.ktx)
-
-    // Unit tests (JVM): real org.json so SJS parser can be exercised off-device
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20231013")
 }

@@ -115,7 +115,7 @@ fun CategoryCreateDialog(
         }
     }
 
-    com.reater.app.ui.theme.AppDialog(
+    Dialog(
         onDismissRequest = { requestDismiss() },
         properties = DialogProperties(
             decorFitsSystemWindows = false,
@@ -266,14 +266,14 @@ fun CategoryCreateDialog(
     }
 
     if (showDiscardConfirm) {
-        com.reater.app.ui.theme.AppAlertDialog(
+        AlertDialog(
             onDismissRequest = { showDiscardConfirm = false },
             title = { Text("捨棄尚未建立的分類？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     "已輸入「${catName.trim()}」尚未建立，返回會捨棄草稿。",
                     fontSize = 14.sp,
-                    lineHeight = 18.sp
+                    lineHeight = 20.sp
                 )
             },
             confirmButton = {
@@ -318,7 +318,7 @@ fun CategoryEditDialog(
         }
     }
 
-    com.reater.app.ui.theme.AppDialog(
+    Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             decorFitsSystemWindows = false,
@@ -468,14 +468,14 @@ fun CategoryEditDialog(
     }
 
     if (showDeleteConfirm) {
-        com.reater.app.ui.theme.AppAlertDialog(
+        AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("刪除「${category.name}」？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     "該分類底下的貼文會改為「未分類」，不會刪除貼文本身。",
                     fontSize = 14.sp,
-                    lineHeight = 18.sp
+                    lineHeight = 20.sp
                 )
             },
             confirmButton = {

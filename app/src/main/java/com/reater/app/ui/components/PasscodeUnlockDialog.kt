@@ -69,13 +69,11 @@ fun PasscodeUnlockDialog(
     var passcode by remember(initialCode) { mutableStateOf(initialCode) }
     var emailInput by remember(initialEmail) { mutableStateOf(initialEmail) }
     var isVerifying by remember { mutableStateOf(false) }
-    var pastedLink by remember { mutableStateOf("") }
-    var linkError by remember { mutableStateOf("") }
 
     val unlockScrollState = rememberScrollState()
     DismissFocusOnScroll(unlockScrollState, focusManager)
 
-    com.reater.app.ui.theme.AppDialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -106,7 +104,7 @@ fun PasscodeUnlockDialog(
                         text = ProCopy.UNLOCK_DESC,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.outline,
-                        lineHeight = 17.sp
+                        lineHeight = 18.sp
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -149,67 +147,6 @@ fun PasscodeUnlockDialog(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text("貼上開通連結自動填入", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Gmail 常把 reater:// 顯示成純文字點不開：長按複製連結，貼到下方按「填入」即可，免手打。",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.outline,
-                        lineHeight = 16.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = pastedLink,
-                        onValueChange = { pastedLink = it; linkError = "" },
-                        placeholder = {
-                            Text(
-                                "貼上 reater://pro-unlock?email=..&code=..",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
-                    if (linkError.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = linkError,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            val parsed = runCatching {
-                                com.reater.app.ui.MainActivity.parseProUnlock(
-                                    Uri.parse(pastedLink.trim())
-                                )
-                            }.getOrNull()
-                            if (parsed != null) {
-                                emailInput = parsed.email
-                                passcode = parsed.code
-                                pastedLink = ""
-                                linkError = ""
-                                Toast.makeText(context, "已帶入 Email 與啟用碼，按「驗證並啟用」即可", Toast.LENGTH_SHORT).show()
-                            } else {
-                                linkError = "連結格式不正確，請確認是信中的完整一鍵開通連結"
-                            }
-                        },
-                        enabled = pastedLink.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("從連結填入 Email 與啟用碼", fontSize = 12.sp)
-                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -289,7 +226,7 @@ fun PasscodeUnlockDialog(
                         "或透過 Google Play 一次性購買",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        lineHeight = 17.sp,
+                        lineHeight = 19.sp,
                         softWrap = true,
                         modifier = Modifier.fillMaxWidth()
                     )

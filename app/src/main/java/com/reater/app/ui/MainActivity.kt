@@ -22,7 +22,6 @@ import com.reater.app.ui.components.IconGalleryDialog
 import com.reater.app.ui.components.UserAvatarView
 import com.reater.app.ui.analytics.AnalyticsScreen
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -262,85 +261,12 @@ class MainViewModel @Inject constructor(
     val customAvatarUri: StateFlow<String?> = settingsRepository.customAvatarUri
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val customAvatarHistory: StateFlow<List<String>> = settingsRepository.customAvatarHistory
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val customAvatarOriginal: StateFlow<String?> = settingsRepository.customAvatarOriginal
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
     fun setCustomAvatarId(id: String) {
         viewModelScope.launch { settingsRepository.setCustomAvatarId(id) }
     }
 
     fun setCustomAvatarUri(uri: String?) {
         viewModelScope.launch { settingsRepository.setCustomAvatarUri(uri) }
-    }
-
-    fun selectAvatarHistory(path: String) {
-        viewModelScope.launch { settingsRepository.selectCustomAvatar(path) }
-    }
-
-    fun deleteAvatarHistory(path: String) {
-        viewModelScope.launch { settingsRepository.deleteCustomAvatar(path) }
-    }
-
-    /** 相簿選圖 -> 拷貝成新的時間戳內部檔後持久保存；回傳是否成功 */
-    fun importCustomAvatar(source: android.net.Uri, onDone: (Boolean) -> Unit = {}) {
-        viewModelScope.launch {
-            val saved = settingsRepository.importCustomAvatar(source)
-            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
-        }
-    }
-
-    /** 裁切編輯器產出的正方形圖 -> 存成新的時間戳內部檔並設為使用中 */
-    fun saveCroppedAvatar(
-        bitmap: android.graphics.Bitmap,
-        scale: Float = 1f,
-        normOffsetX: Float = 0f,
-        normOffsetY: Float = 0f,
-        onDone: (Boolean) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            val saved = settingsRepository.importAvatarBitmap(bitmap, scale, normOffsetX, normOffsetY)
-            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
-        }
-    }
-
-    /**
-     * 新流程：picker 原圖先存原始檔（全圖保留），裁切結果存同 ts 成品。
-     * 重編一律從原始檔讀取，不裁成品，根治越編越小/模糊。
-     */
-    fun importOriginalThenCropped(
-        source: android.net.Uri,
-        cropped: android.graphics.Bitmap,
-        scale: Float = 1f,
-        normOffsetX: Float = 0f,
-        normOffsetY: Float = 0f,
-        onDone: (Boolean) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            val saved = settingsRepository.importOriginalThenCropped(source, cropped, scale, normOffsetX, normOffsetY)
-            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
-        }
-    }
-
-    /** 重編儲存：從原始檔重裁（呼叫方需傳入 currentOriginal），無原始檔時退化為一般儲存。 */
-    fun reEditSaveCropped(
-        cropped: android.graphics.Bitmap,
-        oldOriginalPath: String?,
-        scale: Float = 1f,
-        normOffsetX: Float = 0f,
-        normOffsetY: Float = 0f,
-        onDone: (Boolean) -> Unit = {}
-    ) {
-        viewModelScope.launch {
-            val saved = settingsRepository.reEditSaveCropped(cropped, oldOriginalPath, scale, normOffsetX, normOffsetY)
-            withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
-        }
-    }
-
-    fun clearCustomAvatar() {
-        viewModelScope.launch { settingsRepository.setCustomAvatarUri(null) }
     }
 
     val billingUiState: StateFlow<BillingUiState> = billingManager.uiState
@@ -392,8 +318,6 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             smartCollectionEngine.seedDefaultProCollectionsIfEmpty()
             repository.purgeExpiredTrash()
-            // 舊版 content:// 暫存 URI 重開即失效，自動清除退回內建圖示
-            runCatching { settingsRepository.validateCustomAvatar() }
         }
     }
 
@@ -432,13 +356,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** 詳情頁備註編輯用：只寫 manualNote，不動 AI 摘要 */
-    fun updateManualNote(itemId: Long, note: String) {
-        viewModelScope.launch {
-            repository.updateManualNote(itemId, note)
-        }
-    }
-
     // PRO Tab 建分類 Dialog 狀態（免費 3 自訂上限，滿額轉解鎖）
     private val _showCreateCategoryDialog = MutableStateFlow(false)
     val showCreateCategoryDialog: StateFlow<Boolean> = _showCreateCategoryDialog
@@ -446,19 +363,11 @@ class MainViewModel @Inject constructor(
     private val _createCategoryPrefill = MutableStateFlow("")
     val createCategoryPrefill: StateFlow<String> = _createCategoryPrefill
 
-    // 從詳細頁/列表下拉點「新增」進入：建完要自動歸到該貼文
-    private val _createCategoryAssignItemId = MutableStateFlow<Long?>(null)
-
     private val _showProLimitNotice = MutableStateFlow(false)
     val showProLimitNotice: StateFlow<Boolean> = _showProLimitNotice
 
-    fun setShowCreateCategoryDialog(show: Boolean, prefill: String = "", assignItemId: Long? = null) {
-        if (show) {
-            _createCategoryPrefill.value = prefill
-            _createCategoryAssignItemId.value = assignItemId
-        } else {
-            _createCategoryAssignItemId.value = null
-        }
+    fun setShowCreateCategoryDialog(show: Boolean, prefill: String = "") {
+        if (show) _createCategoryPrefill.value = prefill
         _showCreateCategoryDialog.value = show
     }
 
@@ -466,7 +375,7 @@ class MainViewModel @Inject constructor(
         _showProLimitNotice.value = show
     }
 
-    // 編輯分類：null = 關閉；非 null = 開啟編輯框
+    // 分類編輯狀態：null = 未開啟編輯；非 null = 正在編輯該分類
     private val _editingCategory = MutableStateFlow<CategoryEntity?>(null)
     val editingCategory: StateFlow<CategoryEntity?> = _editingCategory
 
@@ -485,7 +394,7 @@ class MainViewModel @Inject constructor(
     fun deleteCategory(id: Long) {
         viewModelScope.launch {
             val target = categories.value.firstOrNull { it.id == id } ?: return@launch
-            // 內建分類不可刪除：自訂分類刪除後貼文改為未分類，不刪文
+            // 內建分類不可刪除：僅允許重新命名/換圖
             if (target.isDefault) return@launch
             categoryDao.deleteCategory(id)
             categoryDao.nullOutDanglingCategoryRefs()
@@ -494,34 +403,22 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setCollectionEnabled(id: Long, enabled: Boolean) {
-        viewModelScope.launch {
-            proDao.setCollectionEnabled(id, enabled)
-        }
-    }
     fun createCategory(name: String, avatarIcon: String) {
         if (name.isBlank()) return
         val customCount = categories.value.count { !it.isDefault }
         if (!isProUnlocked.value && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
             _showCreateCategoryDialog.value = false
-            _createCategoryAssignItemId.value = null
             _showProLimitNotice.value = true
             return
         }
         viewModelScope.launch {
-            val newId = categoryDao.insertCategory(
+            categoryDao.insertCategory(
                 CategoryEntity(
                     name = name.trim(),
                     colorArgb = 0xFF5C6BC0.toInt(),
                     avatarIcon = avatarIcon.ifBlank { "life" }
                 )
             )
-            val assignTo = _createCategoryAssignItemId.value
-            _createCategoryAssignItemId.value = null
-            // 從下拉「+ 新增」進來：建立後直接把這篇文章歸到新分類，免再選一次
-            if (assignTo != null) {
-                repository.updateCategory(assignTo, newId)
-            }
             _showCreateCategoryDialog.value = false
         }
     }
@@ -725,13 +622,12 @@ fun MainScreen(
     val collections by viewModel.smartCollections.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val proCategoryFilter by viewModel.proCategoryFilter.collectAsState()
-    // 各分類項目數（供 PRO 分類管理列顯示「N 個項目」）
-    val categoryCounts = remember(allPosts) {
-        buildMap<Long, Int> {
-            allPosts.forEach { detail ->
-                val cid = detail.userEdit?.categoryId ?: return@forEach
-                put(cid, (get(cid) ?: 0) + 1)
-            }
+    val proFilteredPosts = remember(posts, proCategoryFilter, searchQuery, allPosts) {
+        val base = if (searchQuery.isNotBlank()) posts else allPosts
+        when (proCategoryFilter) {
+            null -> base
+            -1L -> base.filter { it.userEdit?.categoryId == null }
+            else -> base.filter { it.userEdit?.categoryId == proCategoryFilter }
         }
     }
     val context = LocalContext.current
@@ -740,8 +636,6 @@ fun MainScreen(
 
     val customAvatarId by viewModel.customAvatarId.collectAsState()
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
-    val customAvatarHistory by viewModel.customAvatarHistory.collectAsState()
-    val customAvatarOriginal by viewModel.customAvatarOriginal.collectAsState()
     var showIconGallery by remember { mutableStateOf(false) }
 
     val reaterExportLauncher = rememberLauncherForActivityResult(
@@ -819,7 +713,7 @@ fun MainScreen(
     }
 
     if (itemToDelete != null) {
-        com.reater.app.ui.theme.AppAlertDialog(
+        AlertDialog(
             onDismissRequest = { itemToDelete = null },
             title = { Text("移至垃圾桶？") },
             text = { Text("此記錄將移入垃圾桶並保留 30 天，期間內可隨時還原；超過 30 天後系統將自動永久清除。") },
@@ -844,7 +738,7 @@ fun MainScreen(
     }
 
     if (showEmptyTrashConfirm) {
-        com.reater.app.ui.theme.AppAlertDialog(
+        AlertDialog(
             onDismissRequest = { showEmptyTrashConfirm = false },
             title = { Text("清空垃圾桶？") },
             text = { Text("確定要永久刪除垃圾桶中的所有記錄嗎？此動作無法復原。") },
@@ -885,9 +779,6 @@ fun MainScreen(
                 viewModel.moveToTrash(liveDetail)
                 selectedItemForDetail = null
                 Toast.makeText(context, "已移至垃圾桶", Toast.LENGTH_SHORT).show()
-            },
-            onRequestCreateCategory = { prefill ->
-                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = liveDetail.item.id)
             }
         )
     }
@@ -910,69 +801,14 @@ fun MainScreen(
         IconGalleryDialog(
             isPro = isPro,
             currentAvatarId = customAvatarId,
-            currentAvatarUri = customAvatarUri,
-            currentAvatarOriginal = customAvatarOriginal,
             onSelectAvatar = { id ->
-                // 留在圖示總覽不關閉：圓形勾選可再點一下取消，回到相片或上一個圖示
                 viewModel.setCustomAvatarId(id)
-                Toast.makeText(context, "已套用，再點一次圓形勾選可取消", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "已成功更換個人頭貼", Toast.LENGTH_SHORT).show()
+                showIconGallery = false
             },
             onOpenUnlock = {
                 showIconGallery = false
                 showUnlockDialog = true
-            },
-            onImportPhoto = { uri ->
-                // 解碼失敗的退路：直接拷貝成時間戳新檔（同樣即時同步）
-                viewModel.importCustomAvatar(uri) { success ->
-                    Toast.makeText(
-                        context,
-                        if (success) "已成功套用自訂頭像照片" else "讀取照片失敗，請重試",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            onClearPhoto = {
-                viewModel.clearCustomAvatar()
-                Toast.makeText(context, "已刪除自訂照片，退回圖示頭貼", Toast.LENGTH_SHORT).show()
-            },
-            avatarHistory = customAvatarHistory,
-            onSelectHistory = { path ->
-                viewModel.selectAvatarHistory(path)
-                Toast.makeText(context, "已切換為選擇的過往圖片", Toast.LENGTH_SHORT).show()
-            },
-            onDeleteHistory = { path ->
-                viewModel.deleteAvatarHistory(path)
-                Toast.makeText(context, "已刪除該張過往圖片", Toast.LENGTH_SHORT).show()
-            },
-            onSaveCropped = { bitmap, scale, normX, normY ->
-                // 舊流程退路（無原始檔）：存成新的時間戳內部檔，留在圖示總覽不關閉方便預覽
-                viewModel.saveCroppedAvatar(bitmap, scale, normX, normY) { success ->
-                    Toast.makeText(
-                        context,
-                        if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            onSaveCroppedWithSource = { bitmap, sourceUri, scale, normX, normY ->
-                // 新流程：原始檔完整保留＋成品同 ts 配對
-                viewModel.importOriginalThenCropped(sourceUri, bitmap, scale, normX, normY) { success ->
-                    Toast.makeText(
-                        context,
-                        if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            onSaveReEdit = { bitmap, oldOriginal, scale, normX, normY ->
-                // 重編：從原始檔重裁，不裁成品避免畫質遞減
-                viewModel.reEditSaveCropped(bitmap, oldOriginal, scale, normX, normY) { success ->
-                    Toast.makeText(
-                        context,
-                        if (success) "已更新頭像位置（原圖保留）" else "儲存裁切圖片失敗，請重試",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
             },
             onDismiss = { showIconGallery = false }
         )
@@ -997,7 +833,7 @@ fun MainScreen(
             if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
             else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
         } else null
-        // key 綁 prefill：從下拉「新增 xxx」帶入關鍵字時重建初始值，避免殘留上次輸入
+        // key 帶 prefill：從下拉「新增 xxx」進來時帶入關鍵字；返回捨棄後草稿不殘留
         androidx.compose.runtime.key(createPrefill) {
             com.reater.app.ui.components.CategoryCreateDialog(
                 initialName = createPrefill,
@@ -1010,10 +846,10 @@ fun MainScreen(
         }
     }
 
-    // 分類編輯 Dialog：PRO 分類頁自訂分類列 ✎ 進入，可改名換圖與刪除
+    // 分類編輯 Dialog（入口：PRO 分類頁 → 自訂分類 → ✎；內建分類可改名不可刪除）
     val editingCategory by viewModel.editingCategory.collectAsState()
     editingCategory?.let { editing ->
-        // 取最新 entity，避免列表刷新後顯示舊名舊圖
+        // 取最新 entity，避免改名後顯示舊值
         val live = categories.firstOrNull { it.id == editing.id } ?: editing
         com.reater.app.ui.components.CategoryEditDialog(
             category = live,
@@ -1026,7 +862,7 @@ fun MainScreen(
             },
             onDelete = {
                 viewModel.deleteCategory(live.id)
-                Toast.makeText(context, "分類已刪除，底下貼文改為未分類", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "分類已刪除，貼文改為未分類", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1034,7 +870,7 @@ fun MainScreen(
     // PRO 配額滿額提示（與 ProCopy 同文案；確認即轉解鎖）
     val showLimit by viewModel.showProLimitNotice.collectAsState()
     if (showLimit) {
-        com.reater.app.ui.theme.AppDialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
+        Dialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -1049,7 +885,7 @@ fun MainScreen(
                     Text(
                         text = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_DESC,
                         fontSize = 14.sp,
-                        lineHeight = 18.sp,
+                        lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1105,7 +941,7 @@ fun MainScreen(
                             ) {
                                 Text(
                                     text = "PRO",
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
@@ -1115,10 +951,9 @@ fun MainScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        // PRO 分類頁為純管理頁（無貼文列表），分享一律以目前搜尋/列表為準
-                        val activePosts = posts
+                        val activePosts = if (currentTab == 3) proFilteredPosts else posts
                         if (activePosts.isNotEmpty()) {
-                            val shareText = activePosts.joinToString("\n\n") { detail ->
+                            val shareText = activePosts.joinToString("\n") { detail ->
                                 formatPostShareText(detail)
                             }
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1239,10 +1074,7 @@ fun MainScreen(
                 }
             }
 
-            // Tab 標籤列：全部 / 未讀(數字) / 收藏 / PRO分類 / 垃圾桶 / 分析
-            // 垃圾桶、分析固定最右；分類改由下方第二列下拉選單篩選。
-            val unreadCount = unreadPosts.size
-            val favCount = favoritePosts.size
+            // Tab 標籤列：點擊切換；左右滑動切換由下方 HorizontalPager 跟手處理
             ScrollableTabRow(
                 selectedTabIndex = pagerState.currentPage,
                 edgePadding = 16.dp
@@ -1250,27 +1082,17 @@ fun MainScreen(
                 Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } },
-                    text = {
-                        Text(
-                            if (unreadCount > 0) "${stringResource(R.string.tab_all)} (${unreadCount}未讀)"
-                            else stringResource(R.string.tab_all)
-                        )
-                    }
+                    text = { Text(stringResource(R.string.tab_all)) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 1,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(1) } },
-                    text = { Text("${stringResource(R.string.tab_unread)} (${unreadCount})") }
+                    text = { Text(stringResource(R.string.tab_unread)) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 2,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(2) } },
-                    text = {
-                        Text(
-                            if (favCount > 0) "${stringResource(R.string.tab_favorite)} (${favCount})"
-                            else stringResource(R.string.tab_favorite)
-                        )
-                    }
+                    text = { Text(stringResource(R.string.tab_favorite)) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 3,
@@ -1289,35 +1111,6 @@ fun MainScreen(
                 )
             }
 
-            // 第二列：前三頁（全部/未讀/收藏）共用分類下拉篩選，帶展開過度動畫
-            androidx.compose.animation.AnimatedVisibility(
-                visible = pagerState.currentPage in 0..2,
-                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
-            ) {
-                val filterBase: List<ItemDetail> = when (pagerState.currentPage) {
-                    1 -> if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
-                    2 -> if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
-                    else -> if (searchQuery.isNotBlank()) posts else allPosts
-                }
-                val barCounts = remember(filterBase, categories) {
-                    buildMap<Long?, Int> {
-                        put(-1L, filterBase.count { it.userEdit?.categoryId == null })
-                        categories.forEach { cat ->
-                            put(cat.id, filterBase.count { it.userEdit?.categoryId == cat.id })
-                        }
-                    }
-                }
-                com.reater.app.ui.components.CategoryFilterBar(
-                    categories = categories,
-                    selectedId = proCategoryFilter,
-                    counts = barCounts,
-                    totalCount = filterBase.size,
-                    onSelect = { viewModel.setProCategoryFilter(it) },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
             // 支援主畫面內容左右滑動切換頁面
             androidx.compose.foundation.pager.HorizontalPager(
                 state = pagerState,
@@ -1327,21 +1120,12 @@ fun MainScreen(
             ) { page ->
                 when (page) {
                     0 -> {
-                        val baseList = if (searchQuery.isNotBlank()) posts else allPosts
-                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
-                        val filterSuffix = when (proCategoryFilter) {
-                            null -> ""
-                            -1L -> "\n（目前篩選：未分類）"
-                            else -> {
-                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
-                                if (n != null) "\n（目前篩選：$n）" else ""
-                            }
-                        }
+                        val displayList = if (searchQuery.isNotBlank()) posts else allPosts
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容$filterSuffix"
-                            else "目前尚無內容\n在 Threads 中點擊分享至 Reater 即可保存！$filterSuffix",
+                            emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容"
+                            else "目前尚無內容\n在 Threads 中點擊分享至 Reater 即可保存！",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1365,31 +1149,16 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it },
-                            onUpdateCategory = { detail, catId ->
-                                viewModel.updateCategory(detail.item.id, catId)
-                            },
-                            onRequestCreateCategory = { prefill, itemId ->
-                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
-                            }
+                            onDelete = { itemToDelete = it }
                         )
                     }
                     1 -> {
-                        val baseList = if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
-                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
-                        val filterSuffix = when (proCategoryFilter) {
-                            null -> ""
-                            -1L -> "\n（目前篩選：未分類）"
-                            else -> {
-                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
-                                if (n != null) "\n（目前篩選：$n）" else ""
-                            }
-                        }
+                        val displayList = if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容$filterSuffix"
-                            else "太棒了！所有貼文皆已閱讀完畢$filterSuffix",
+                            emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容"
+                            else "太棒了！所有貼文皆已閱讀完畢",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1413,31 +1182,16 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it },
-                            onUpdateCategory = { detail, catId ->
-                                viewModel.updateCategory(detail.item.id, catId)
-                            },
-                            onRequestCreateCategory = { prefill, itemId ->
-                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
-                            }
+                            onDelete = { itemToDelete = it }
                         )
                     }
                     2 -> {
-                        val baseList = if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
-                        val displayList = applyCategoryFilter(baseList, proCategoryFilter)
-                        val filterSuffix = when (proCategoryFilter) {
-                            null -> ""
-                            -1L -> "\n（目前篩選：未分類）"
-                            else -> {
-                                val n = categories.firstOrNull { it.id == proCategoryFilter }?.name
-                                if (n != null) "\n（目前篩選：$n）" else ""
-                            }
-                        }
+                        val displayList = if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容$filterSuffix"
-                            else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！$filterSuffix",
+                            emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容"
+                            else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1461,19 +1215,15 @@ fun MainScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
-                            onDelete = { itemToDelete = it },
-                            onUpdateCategory = { detail, catId ->
-                                viewModel.updateCategory(detail.item.id, catId)
-                            },
-                            onRequestCreateCategory = { prefill, itemId ->
-                                viewModel.setShowCreateCategoryDialog(true, prefill = prefill, assignItemId = itemId)
-                            }
+                            onDelete = { itemToDelete = it }
                         )
                     }
                     3 -> {
                         ProCategoryTabContent(
                             categories = categories,
                             isPro = isPro,
+                            proCategoryFilter = proCategoryFilter,
+                            onSelectCategoryFilter = { viewModel.setProCategoryFilter(it) },
                             onAddCategoryClick = {
                                 val customCount = categories.count { !it.isDefault }
                                 if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
@@ -1483,10 +1233,33 @@ fun MainScreen(
                                 }
                             },
                             collections = collections,
-                            categoryCounts = categoryCounts,
+                            posts = proFilteredPosts,
+                            onSelectDetail = { detail ->
+                                selectedItemForDetail = detail
+                                viewModel.markAsRead(detail)
+                                viewModel.recordOpen(detail)
+                            },
+                            onToggleRead = { detail ->
+                                val willBeRead = !detail.isRead
+                                viewModel.toggleRead(detail)
+                                Toast.makeText(
+                                    context,
+                                    if (willBeRead) "已標為已讀（不再顯示於未讀）" else "已標為未讀",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            onToggleFavorite = { detail ->
+                                val willFav = !detail.isFavorite
+                                viewModel.toggleFavorite(detail)
+                                Toast.makeText(
+                                    context,
+                                    if (willFav) "已加入收藏" else "已取消收藏",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            onDelete = { itemToDelete = it },
                             onOpenUnlock = { showUnlockDialog = true },
-                            onEditCategory = { viewModel.setEditingCategory(it) },
-                            onToggleCollection = { id, enabled -> viewModel.setCollectionEnabled(id, enabled) }
+                            onEditCategory = { viewModel.setEditingCategory(it) }
                         )
                     }
                     4 -> {
@@ -1516,14 +1289,6 @@ fun MainScreen(
     }
 }
 
-/** 第二列分類篩選共用：null=全部，-1L=未分類，其餘=分類 id */
-private fun applyCategoryFilter(list: List<ItemDetail>, filter: Long?): List<ItemDetail> =
-    when (filter) {
-        null -> list
-        -1L -> list.filter { it.userEdit?.categoryId == null }
-        else -> list.filter { it.userEdit?.categoryId == filter }
-    }
-
 @Composable
 private fun PostListTab(
     posts: List<ItemDetail>,
@@ -1532,9 +1297,7 @@ private fun PostListTab(
     onSelectDetail: (ItemDetail) -> Unit,
     onToggleRead: (ItemDetail) -> Unit,
     onToggleFavorite: (ItemDetail) -> Unit,
-    onDelete: (ItemDetail) -> Unit,
-    onUpdateCategory: (ItemDetail, Long?) -> Unit = { _, _ -> },
-    onRequestCreateCategory: (prefill: String, itemId: Long) -> Unit = { _, _ -> }
+    onDelete: (ItemDetail) -> Unit
 ) {
     if (posts.isEmpty()) {
         Box(
@@ -1547,7 +1310,7 @@ private fun PostListTab(
                 text = emptyMessage,
                 color = MaterialTheme.colorScheme.outline,
                 fontSize = 15.sp,
-                lineHeight = 19.sp,
+                lineHeight = 22.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
@@ -1557,16 +1320,14 @@ private fun PostListTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(posts, key = { "post-${it.item.id}" }) { itemDetail ->
+            items(posts, key = { it.item.id }) { itemDetail ->
                 PostCard(
                     itemDetail = itemDetail,
                     categories = categories,
                     onClick = { onSelectDetail(itemDetail) },
                     onToggleRead = { onToggleRead(itemDetail) },
                     onToggleFavorite = { onToggleFavorite(itemDetail) },
-                    onDelete = { onDelete(itemDetail) },
-                    onUpdateCategory = { catId -> onUpdateCategory(itemDetail, catId) },
-                    onRequestCreateCategory = onRequestCreateCategory
+                    onDelete = { onDelete(itemDetail) }
                 )
             }
         }
@@ -1577,12 +1338,17 @@ private fun PostListTab(
 private fun ProCategoryTabContent(
     categories: List<CategoryEntity>,
     isPro: Boolean,
+    proCategoryFilter: Long?,
+    onSelectCategoryFilter: (Long?) -> Unit,
     onAddCategoryClick: () -> Unit,
     collections: List<SavedCollectionEntity>,
-    categoryCounts: Map<Long, Int> = emptyMap(),
+    posts: List<ItemDetail>,
+    onSelectDetail: (ItemDetail) -> Unit,
+    onToggleRead: (ItemDetail) -> Unit,
+    onToggleFavorite: (ItemDetail) -> Unit,
+    onDelete: (ItemDetail) -> Unit,
     onOpenUnlock: () -> Unit,
-    onEditCategory: (CategoryEntity) -> Unit = {},
-    onToggleCollection: (Long, Boolean) -> Unit = { _, _ -> }
+    onEditCategory: (CategoryEntity) -> Unit = {}
 ) {
     val customCount = categories.count { !it.isDefault }
     val quotaText = if (isPro) "分類無上限・共 ${categories.size} 個"
@@ -1593,7 +1359,6 @@ private fun ProCategoryTabContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // ---- 我的分類：純標籤管理，不做貼文篩選/過濾 ----
         item {
             Text(
                 text = "我的分類",
@@ -1612,7 +1377,13 @@ private fun ProCategoryTabContent(
                     text = "尚無自訂分類，按下方 + 新增（免費可建 3 個）",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.outline,
-                    lineHeight = 17.sp
+                    lineHeight = 19.sp
+                )
+            } else {
+                com.reater.app.ui.components.ProCategoryFilterRow(
+                    categories = categories,
+                    selectedId = proCategoryFilter,
+                    onSelect = onSelectCategoryFilter
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -1624,23 +1395,22 @@ private fun ProCategoryTabContent(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
-                        "新增分類（升級 Pro 無上限）"
-                    else "新增分類"
+                        "+ 新增分類（升級 Pro 無上限）"
+                    else "+ 新增分類"
                 )
             }
         }
-        // 分類管理：重新命名 / 更換圖示 / 刪除，前三頁第二列下拉會同步使用。
-        // 左側顯示該分類的真實圖示，下方顯示該分類項目數。
+        // 分類管理：重新命名 / 更換圖示 / 刪除（自訂可刪，內建僅可改名）
         if (categories.isNotEmpty()) {
             item {
                 Text(
-                    text = "管理分類（點 ✎ 編輯分類標籤）",
+                    text = "管理分類（點 ✎ 編輯）",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                 )
             }
-            items(categories, key = { "cat-${it.id}" }) { cat ->
+            items(categories, key = { it.id }) { cat ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
@@ -1654,12 +1424,13 @@ private fun ProCategoryTabContent(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
+                        Icon(
                             painter = painterResource(
                                 id = com.reater.app.ui.AvatarIcons.getDrawableRes(cat.avatarIcon)
                             ),
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(22.dp),
+                            tint = Color.Unspecified
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -1676,20 +1447,11 @@ private fun ProCategoryTabContent(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "內建",
-                                        fontSize = 12.sp,
+                                        fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            val itemCount = categoryCounts[cat.id] ?: 0
-                            Text(
-                                text = "$itemCount 個項目",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
                         IconButton(
                             onClick = { onEditCategory(cat) },
@@ -1706,101 +1468,77 @@ private fun ProCategoryTabContent(
                 }
             }
         }
-        // ---- 智慧篩選條件：顯示規則 + 可開關，不用 icon drawable ----
-        if (collections.isNotEmpty()) {
+        if (isPro && collections.isNotEmpty()) {
             item {
                 Text(
-                    text = "智慧篩選條件",
+                    text = "您的智慧篩選條件",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (isPro) "開關決定是否套用，關閉後該條件不再生效。"
-                    else "Pro 可自由開關套用；以下為預設三組規則預覽。",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.outline,
-                    lineHeight = 16.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
             }
-            items(collections, key = { "col-${it.id}" }) { col ->
-                val ruleText = remember(col.rulesJson, categories) {
-                    com.reater.app.domain.SmartCollectionEngine.describeRules(col.rulesJson) { cid ->
-                        categories.firstOrNull { it.id == cid }?.name
-                    }
-                }
-                // 固定色盤圓點（依 sortOrder 取色），取代原本 icon drawable
-                val dotPalette = listOf(
-                    Color(0xFFEF5350),
-                    Color(0xFFFFB300),
-                    Color(0xFFAB47BC),
-                    Color(0xFF5C6BC0),
-                    Color(0xFF26A69A)
-                )
-                val dotColor = dotPalette[(col.sortOrder % dotPalette.size + dotPalette.size) % dotPalette.size]
+            items(collections, key = { it.id }) { col ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (col.isEnabled)
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                     )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(
-                                    if (col.isEnabled) dotColor
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                    CircleShape
-                                )
+                        Text(
+                            text = col.name,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            // 名稱前的 emoji 裝飾不顯示，只留純文字
-                            val displayName = remember(col.name) {
-                                col.name.replace(Regex("^[^\\p{L}\\p{N}]+"), "").trim().ifBlank { col.name }
-                            }
-                            Text(
-                                text = displayName,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                color = if (col.isEnabled) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.outline
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "規則：$ruleText",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline,
-                                lineHeight = 16.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (!isPro) "預覽（升級 Pro 可開關）"
-                                else if (col.isEnabled) "生效中" else "已停用",
-                                fontSize = 12.sp,
-                                color = if (col.isEnabled && isPro) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = col.isEnabled && isPro,
-                            enabled = isPro,
-                            onCheckedChange = { checked -> onToggleCollection(col.id, checked) }
+                        Text(
+                            text = "規則生效中",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
+            }
+        }
+        item {
+            Text(
+                text = "篩選結果（共 ${posts.size} 筆）",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        if (posts.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "此分類目前尚無內容",
+                        color = MaterialTheme.colorScheme.outline,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        } else {
+            items(posts, key = { it.item.id }) { itemDetail ->
+                PostCard(
+                    itemDetail = itemDetail,
+                    categories = categories,
+                    onClick = { onSelectDetail(itemDetail) },
+                    onToggleRead = { onToggleRead(itemDetail) },
+                    onToggleFavorite = { onToggleFavorite(itemDetail) },
+                    onDelete = { onDelete(itemDetail) }
+                )
             }
         }
         if (!isPro) {
@@ -1837,7 +1575,7 @@ private fun TrashTabContent(
                     text = "垃圾桶目前是空的\n被移除的項目會在此保留 30 天",
                     color = MaterialTheme.colorScheme.outline,
                     fontSize = 15.sp,
-                    lineHeight = 19.sp,
+                    lineHeight = 22.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -1921,7 +1659,7 @@ fun TrashCard(
                 ) {
                     Text(
                         text = "剩餘 ${remainingDays} 天後永久清除",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -1942,7 +1680,7 @@ fun TrashCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,
-                lineHeight = 17.sp,
+                lineHeight = 18.sp,
                 modifier = Modifier.fillMaxWidth()
             )
 
