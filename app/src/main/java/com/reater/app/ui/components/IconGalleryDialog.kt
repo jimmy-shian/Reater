@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -103,9 +104,9 @@ fun IconGalleryDialog(
     avatarHistory: List<String> = emptyList(),
     onSelectHistory: (String) -> Unit = {},
     onDeleteHistory: (String) -> Unit = {},
-    onSaveCropped: (android.graphics.Bitmap) -> Unit = {},
-    onSaveCroppedWithSource: (android.graphics.Bitmap, android.net.Uri) -> Unit = { _, _ -> },
-    onSaveReEdit: (android.graphics.Bitmap, String?) -> Unit = { _, _ -> }
+    onSaveCropped: (android.graphics.Bitmap, Float, Float, Float) -> Unit = { _, _, _, _ -> },
+    onSaveCroppedWithSource: (android.graphics.Bitmap, android.net.Uri, Float, Float, Float) -> Unit = { _, _, _, _, _ -> },
+    onSaveReEdit: (android.graphics.Bitmap, String?, Float, Float, Float) -> Unit = { _, _, _, _, _ -> }
 ) {
     // 標籤僅保留 2 個：0: 全部（含下拉篩選 全部/免費/PRO），1: 自訂相片 (PRO)
     // 「全部」頁內的範圍篩選改用下拉選單（共用 ReaterDropdown 動畫），不再把免費/PRO 獨立成頁籤
@@ -145,10 +146,16 @@ fun IconGalleryDialog(
     var cropSource by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var cropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var cropIsReEdit by remember { mutableStateOf(false) }
+    var cropInitialScale by remember { mutableFloatStateOf(1f) }
+    var cropInitialNormOffsetX by remember { mutableFloatStateOf(0f) }
+    var cropInitialNormOffsetY by remember { mutableFloatStateOf(0f) }
     fun closeCrop() {
         cropSource = null
         cropSourceUri = null
         cropIsReEdit = false
+        cropInitialScale = 1f
+        cropInitialNormOffsetX = 0f
+        cropInitialNormOffsetY = 0f
     }
     val customPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -156,6 +163,9 @@ fun IconGalleryDialog(
                 val bmp = AvatarStorage.decodeForEdit(context, uri)
                 withContext(Dispatchers.Main) {
                     if (bmp != null) {
+                        cropInitialScale = 1f
+                        cropInitialNormOffsetX = 0f
+                        cropInitialNormOffsetY = 0f
                         cropSource = bmp
                         cropSourceUri = uri
                         cropIsReEdit = false
@@ -167,14 +177,17 @@ fun IconGalleryDialog(
     if (cropSource != null) {
         AvatarCropDialog(
             source = cropSource!!,
-            onConfirm = { cropped ->
+            initialScale = cropInitialScale,
+            initialNormOffsetX = cropInitialNormOffsetX,
+            initialNormOffsetY = cropInitialNormOffsetY,
+            onConfirm = { cropped, scale, normX, normY ->
                 val srcUri = cropSourceUri
                 val reEdit = cropIsReEdit
                 val origForReEdit = currentAvatarOriginal
                 closeCrop()
-                if (reEdit) onSaveReEdit(cropped, origForReEdit)
-                else if (srcUri != null) onSaveCroppedWithSource(cropped, srcUri)
-                else onSaveCropped(cropped)
+                if (reEdit) onSaveReEdit(cropped, origForReEdit, scale, normX, normY)
+                else if (srcUri != null) onSaveCroppedWithSource(cropped, srcUri, scale, normX, normY)
+                else onSaveCropped(cropped, scale, normX, normY)
             },
             onDismiss = { closeCrop() }
         )
@@ -188,7 +201,7 @@ fun IconGalleryDialog(
         val isLocked = item.isPro && !isPro
         val isSelected = isEffectivelySelected(item.id)
 
-        Dialog(
+        com.reater.app.ui.theme.AppDialog(
             onDismissRequest = { inspectingItem = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
@@ -289,7 +302,7 @@ fun IconGalleryDialog(
                                     Text(
                                         text = "PRO 專屬",
                                         color = Color.White,
-                                        fontSize = 10.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -323,7 +336,7 @@ fun IconGalleryDialog(
                     Text(
                         text = item.desc,
                         fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.outline,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 8.dp)
@@ -396,7 +409,7 @@ fun IconGalleryDialog(
     }
 
     // 主展示廳 Dialog
-    Dialog(
+    com.reater.app.ui.theme.AppDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
@@ -448,7 +461,7 @@ fun IconGalleryDialog(
                             ) {
                                 Text(
                                     text = if (isPro) "PRO 典藏" else "共 15 款",
-                                    fontSize = 10.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isPro) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -457,14 +470,7 @@ fun IconGalleryDialog(
                                 )
                             }
                         }
-                        Text(
-                            text = "精緻向量幾何設計・點擊卡片可放大檢視",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.outline,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
+                        // 副標已依設計移除，保留標題單行避免擠壓關閉鈕
                     }
 
                     IconButton(
@@ -484,8 +490,8 @@ fun IconGalleryDialog(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
-                // 篩選標籤：只保留「全部」與「自訂相片頭貼」；免費/PRO 改收進「全部」頁內的下拉選單
-                // pager 先建（雙向連動）：點頁籤 -> animateScrollToPage；左右滑 -> snapshotFlow 回寫頁籤
+                // 篩選工具列已合併進各頁內容（單列：圖示範圍下拉＋自訂相片入口），不再使用獨立雙列頁籤，避免「全部 (15)」重複出現
+                // pager 先建（雙向連動）：點按鈕 -> animateScrollToPage；左右滑 -> snapshotFlow 回寫頁籤
                 val tabScope = rememberCoroutineScope()
                 val pageCount = if (showCustomTab) 2 else 1
                 val pagerState = rememberPagerState(
@@ -497,47 +503,7 @@ fun IconGalleryDialog(
                         if (clamped != selectedTab) selectedTab = clamped
                     }
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 小尺寸切換 pills（取代大 FilterChip）：高 ~28dp、12sp，避免佔版
-                    GallerySmallTab(
-                        selected = selectedTab == 0,
-                        text = "全部 (${AvatarIcons.ALL.size})",
-                        onClick = {
-                            selectedTab = 0
-                            tabScope.launch {
-                                if (pagerState.currentPage != 0) pagerState.animateScrollToPage(0)
-                            }
-                        }
-                    )
-                    if (showCustomTab) {
-                        GallerySmallTab(
-                            selected = selectedTab == 1,
-                            text = "自訂相片頭貼",
-                            onClick = {
-                                selectedTab = 1
-                                tabScope.launch {
-                                    if (pagerState.currentPage != 1) pagerState.animateScrollToPage(1)
-                                }
-                            },
-                            leading = {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = if (selectedTab == 1) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        )
-                    }
-                }
+                // 舊獨立頁籤列已移除（與下方「圖示範圍」下拉合併），導覽改由各頁單一工具列負責
 
                 // 「全部」頁內容：範圍下拉選單（共用 ReaterDropdown 動畫）＋ 圖示列表
                 // 下拉選項：全部(15) / 基礎免費(5) / PRO 專屬(10)，編號仍依總覽順序 01~15
@@ -556,14 +522,35 @@ fun IconGalleryDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            ReaterDropdownTrigger(
-                                expanded = scopeExpanded,
-                                onClick = { scopeExpanded = !scopeExpanded },
-                                title = "圖示範圍",
-                                value = scopeLabel
-                            )
+                            // 合併式單一工具列：左為圖示範圍下拉（全部/免費/PRO），右為自訂相片入口
+                            // 取代舊的「全部 (15) 頁籤＋圖示範圍下拉」雙列，避免重複顯示「全部 (15)」
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ReaterDropdownTrigger(
+                                        expanded = scopeExpanded,
+                                        onClick = { scopeExpanded = !scopeExpanded },
+                                        title = "圖示範圍",
+                                        value = scopeLabel
+                                    )
+                                }
+                                if (showCustomTab) {
+                                    GalleryToolbarButton(
+                                        text = "自訂相片",
+                                        onClick = {
+                                            selectedTab = 1
+                                            tabScope.launch {
+                                                if (pagerState.currentPage != 1) pagerState.animateScrollToPage(1)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.height(6.dp))
                             // 展開/收合：expandVertically(top) + fadeIn 300ms / 反向 250ms（見 ReaterDropdownMotion）
                             ReaterDropdownPanel(
@@ -620,7 +607,56 @@ fun IconGalleryDialog(
                     }
                 }
                 val customPageContent: @Composable (Modifier) -> Unit = { pageModifier ->
-                    // 自訂相片頭貼頁簽（PRO）：原圖保留＋重編從原始檔讀取；按鈕僅保留 更換/刪除 左右並排
+                    // 自訂相片頁（PRO）：頂部單一工具列提供返回圖示一覽入口，與全部頁的合併工具列對應
+                    Column(modifier = pageModifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GalleryBackButton(
+                                text = "圖示一覽 (${AvatarIcons.ALL.size})",
+                                onClick = {
+                                    selectedTab = 0
+                                    tabScope.launch {
+                                        if (pagerState.currentPage != 0) pagerState.animateScrollToPage(0)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "自訂相片",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    // 自訂相片頭貼內容：原圖保留＋重編從原始檔讀取；按鈕僅保留 更換/刪除 左右並排
                     CustomPhotoSection(
                         avatarId = currentAvatarId,
                         avatarUri = currentAvatarUri,
@@ -631,32 +667,27 @@ fun IconGalleryDialog(
                         onSelectHistory = onSelectHistory,
                         onDeleteHistory = onDeleteHistory,
                         onEditCurrent = {
-                            // 重編一律從原始檔讀取（全圖保留），不斷裁成品避免越編越小
+                            // 重編一律從原始檔讀取（全圖保留），並載入上次放大與位移位置
                             cropScope.launch(Dispatchers.IO) {
                                 val origPath = currentAvatarOriginal
                                     ?: AvatarStorage.pairedOriginalFile(context, currentAvatarUri)?.absolutePath
-                                val origBmp = AvatarStorage.decodeFile(origPath)
-                                if (origBmp != null) {
-                                    withContext(Dispatchers.Main) {
+                                val origBmp = AvatarStorage.decodeFile(origPath) ?: AvatarStorage.decodeFile(currentAvatarUri)
+                                val transform = AvatarStorage.loadCropTransform(context, origPath ?: currentAvatarUri)
+                                withContext(Dispatchers.Main) {
+                                    if (origBmp != null) {
+                                        cropInitialScale = transform?.scale ?: 1f
+                                        cropInitialNormOffsetX = transform?.normOffsetX ?: 0f
+                                        cropInitialNormOffsetY = transform?.normOffsetY ?: 0f
                                         cropSource = origBmp
                                         cropSourceUri = null
                                         cropIsReEdit = true
                                     }
-                                } else {
-                                    // 舊版無原始檔：退化讀成品（仍可編，但提示原圖未保留）
-                                    val fallback = AvatarStorage.decodeFile(currentAvatarUri)
-                                    withContext(Dispatchers.Main) {
-                                        if (fallback != null) {
-                                            cropSource = fallback
-                                            cropSourceUri = null
-                                            cropIsReEdit = true
-                                        }
-                                    }
                                 }
                             }
                         },
-                        modifier = pageModifier.fillMaxSize()
+                        modifier = Modifier.weight(1f)
                     )
+                    }
                 }
 
                 // 內容與頁籤雙向連動：無自訂頁籤時只有「全部」，直接顯示避免連動錯亂
@@ -719,6 +750,126 @@ private fun GallerySmallTab(
                 softWrap = false
             )
         }
+    }
+}
+
+/**
+ * 合併式工具列按鈕：高度與 ReaterDropdownTrigger 對齊（vertical 12dp），用於「自訂相片」入口。
+ * 取代舊的雙列小頁籤，避免與下拉內的「全部 (15)」重複。
+ */
+@Composable
+private fun GalleryToolbarButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        ),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.outline
+            )
+            Text(
+                text = text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
+/**
+ * 返回圖示一覽按鈕：與下拉同高，左箭頭＋文字，點擊回到全部頁。
+ */
+@Composable
+private fun GalleryBackButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        ),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "‹",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Text(
+                text = text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/**
+ * 自訂相片說明列：勾選圖示＋單句文字，左對齊易讀。
+ */
+@Composable
+private fun PhotoInfoRow(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            Icons.Default.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(16.dp)
+                .padding(top = 2.dp)
+        )
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -832,7 +983,7 @@ private fun IconGalleryCard(
                         ) {
                             Text(
                                 text = "PRO",
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
                             )
@@ -845,7 +996,7 @@ private fun IconGalleryCard(
                         ) {
                             Text(
                                 text = "免費",
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -866,21 +1017,26 @@ private fun IconGalleryCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 右側操作：圓形勾選（小尺寸 28dp，垂直置中；實心=使用中，再點取消；空心=套用；鎖定款維持解鎖鈕）
+            // 右側操作：使用中＝實心 primary 圓＋白色勾（再點取消）；未選用＝空心圓（無勾，避免與使用中混淆）；鎖定款維持解鎖鈕
             if (isSelected) {
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary)
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                            shape = CircleShape
+                        )
                         .clickable { onDeselect() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "取消勾選，回到相片或上一個圖示",
+                        contentDescription = "使用中，再點一下取消勾選",
                         tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             } else if (isLocked) {
@@ -894,22 +1050,19 @@ private fun IconGalleryCard(
                     Text("解鎖", fontSize = 12.sp)
                 }
             } else {
-                IconButton(
-                    onClick = onApply,
+                Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
                         .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline,
+                            width = 1.5.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
                             shape = CircleShape
                         )
+                        .clickable(onClick = onApply),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = "套用此圖示",
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    // 未選用刻意留空：空心圓表示可點選套用，不再顯示淺色勾
                 }
             }
         }
@@ -925,7 +1078,7 @@ private fun IconGalleryCard(
         ) {
             Text(
                 text = "%02d".format(number),
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f),
                 maxLines = 1
@@ -973,7 +1126,7 @@ private fun CustomPhotoSection(
     var pendingDeletePath by remember { mutableStateOf<String?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
     if (pendingDeletePath != null) {
-        AlertDialog(
+        com.reater.app.ui.theme.AppAlertDialog(
             onDismissRequest = { pendingDeletePath = null },
             title = { Text("刪除這張過往圖片？") },
             text = { Text("將從 App 內部儲存永久刪除（含原始檔），使用中頭像若是此張會一併退回圖示。此動作無法復原。") },
@@ -996,7 +1149,7 @@ private fun CustomPhotoSection(
         )
     }
     if (showClearConfirm) {
-        AlertDialog(
+        com.reater.app.ui.theme.AppAlertDialog(
             onDismissRequest = { showClearConfirm = false },
             title = { Text("刪除自訂照片？") },
             text = { Text("將清除目前使用中的自訂照片並自動退回圖示頭貼，過往圖片仍保留可回選。確定要刪除嗎？") },
@@ -1058,7 +1211,7 @@ private fun CustomPhotoSection(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "點頭像調整位置・原圖保留可重編",
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
                 )
@@ -1072,19 +1225,26 @@ private fun CustomPhotoSection(
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = if (hasCustomPhoto) "自訂相片頭貼・使用中" else "尚未設定自訂照片",
-                fontSize = 16.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "原圖完整保留在 App 內部，調整位置可重編不失真；刪除相簿原圖或移動位置不影響顯示；關閉重開也不會不見。",
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
-                color = MaterialTheme.colorScheme.outline,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+            // 說明改為三列式資訊卡：每列一句、左對齊，避免長句分號擠成一團
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PhotoInfoRow(text = "原圖存在 App 內，隨時重調位置、不失真")
+                    PhotoInfoRow(text = "相簿原檔刪除或移動，不影響顯示")
+                    PhotoInfoRow(text = "重開 App 仍保留，不會遺失")
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
         if (hasCustomPhoto) {
@@ -1124,12 +1284,16 @@ private fun CustomPhotoSection(
                         Text("刪除照片", fontSize = 13.sp, color = MaterialTheme.colorScheme.error, maxLines = 1, softWrap = false)
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "刪除後自動退回圖示頭貼；也可在圖示頁點圓形勾選切換。",
-                    fontSize = 11.sp,
+                    text = "刪除後自動退回圖示頭貼\n也可在圖示頁點空心圓切換",
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.outline,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 )
             }
             if (validHistory.isNotEmpty()) {

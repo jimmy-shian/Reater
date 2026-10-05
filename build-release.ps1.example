@@ -91,6 +91,25 @@ if (-not $NoStopDaemon) {
     Step "6/6 keep daemon (-NoStopDaemon)"
 }
 
+# 7. Clean up build logs and intermediate artifacts
+Step "Cleanup intermediate artifacts and logs"
+$artifactsToRemove = @(
+    $Unsigned,
+    $Aligned
+)
+foreach ($artifact in $artifactsToRemove) {
+    if (Test-Path -LiteralPath $artifact) {
+        Remove-Item -LiteralPath $artifact -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed intermediate artifact: $(Split-Path $artifact -Leaf)" -ForegroundColor DarkGray
+    }
+}
+
+$logs = Get-ChildItem -Path $Root -Filter "*.log" -File -ErrorAction SilentlyContinue
+foreach ($logFile in $logs) {
+    Remove-Item -LiteralPath $logFile.FullName -Force -ErrorAction SilentlyContinue
+    Write-Host "Removed log: $($logFile.Name)" -ForegroundColor DarkGray
+}
+
 $sw.Stop()
 $secs = [int]$sw.Elapsed.TotalSeconds
 Write-Host ""

@@ -23,8 +23,15 @@ object AvatarStorage {
     private const val LEGACY_FILE_NAME = "custom_avatar.jpg"
     private const val PREFIX = "custom_avatar_"
     private const val ORIG_PREFIX = "custom_avatar_orig_"
+    private const val CROP_PREFIX = "custom_avatar_crop_"
     const val MAX_HISTORY = 8
     const val OUTPUT_SIZE = 512
+
+    data class CropTransform(
+        val scale: Float,
+        val normOffsetX: Float,
+        val normOffsetY: Float
+    )
 
     fun avatarDir(context: Context): File =
         File(context.filesDir, DIR_NAME).apply { mkdirs() }
@@ -36,6 +43,7 @@ object AvatarStorage {
     fun isAvatarFile(f: File): Boolean {
         if (f.name == LEGACY_FILE_NAME) return true
         if (f.name.startsWith(ORIG_PREFIX)) return true
+        if (f.name.startsWith(CROP_PREFIX)) return true
         if (!f.name.startsWith(PREFIX)) return false
         return f.name.endsWith(".jpg") || f.name.endsWith(".png")
     }
@@ -351,16 +359,57 @@ object AvatarStorage {
                 ?.sortedByDescending { it.lastModified() } ?: return
             // 保留與現存成品同 ts 的原始檔（重編需要）；其餘孤兒全清避免膨脹
             orphans.forEach { runCatching { it.delete() } }
+            // 孤兒裁切參數檔同步清理
+            dir.listFiles()?.filter { it.name.startsWith(CROP_PREFIX) }
+                ?.filter { extractTs(it.name) !in liveTs }
+                ?.forEach { runCatching { it.delete() } }
         } catch (_: Exception) {
         }
     }
 
-    /** 刪除成品及其配對原始檔。 */
+    /** 刪除成品及其配對原始檔與裁切參數檔。 */
     fun deletePairFor(displayFile: File) {
         runCatching { displayFile.delete() }
         val ts = extractTs(displayFile.name) ?: return
         val dir = displayFile.parentFile ?: return
         runCatching { File(dir, "$ORIG_PREFIX$ts.jpg").delete() }
         runCatching { File(dir, "$ORIG_PREFIX$ts.png").delete() }
+        runCatching { File(dir, "$CROP_PREFIX$ts.txt").delete() }
+    }
+
+    /** 儲存裁切縮放與位移參數（與 ts 配對，重編時可完整還原）。 */
+    fun saveCropTransform(
+        context: Context,
+        ts: Long,
+        scale: Float,
+        normOffsetX: Float,
+        normOffsetY: Float
+    ) {
+        runCatching {
+            val dir = avatarDir(context)
+            val file = File(dir, "$CROP_PREFIX$ts.txt")
+            file.writeText("$scale,$normOffsetX,$normOffsetY")
+        }
+    }
+
+    /** 讀取上次裁切縮放與位移參數；路徑或 ts 找不到回傳 null。 */
+    fun loadCropTransform(context: Context, pathOrTs: String?): CropTransform? {
+        if (pathOrTs.isNullOrBlank()) return null
+        return try {
+            val f = File(pathOrTs)
+            val ts = extractTs(f.name) ?: pathOrTs.toLongOrNull() ?: return null
+            val file = File(avatarDir(context), "$CROP_PREFIX$ts.txt")
+            if (!file.exists() || file.length() <= 0) return null
+            val content = file.readText().trim()
+            val parts = content.split(",")
+            if (parts.size >= 3) {
+                val scale = parts[0].toFloatOrNull() ?: 1f
+                val normX = parts[1].toFloatOrNull() ?: 0f
+                val normY = parts[2].toFloatOrNull() ?: 0f
+                CropTransform(scale, normX, normY)
+            } else null
+        } catch (_: Exception) {
+            null
+        }
     }
 }

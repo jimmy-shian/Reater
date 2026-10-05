@@ -70,7 +70,7 @@ fun ProUnlockCard(
                 text = ProCopy.LOCK_DESC_UNLOCKED_FEATURES,
                 fontSize = 13.sp,
                 color = descColor,
-                lineHeight = 19.sp,
+                lineHeight = 17.sp,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(12.dp))

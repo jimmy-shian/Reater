@@ -222,7 +222,7 @@ fun ShareSaveScreen(
 
     // 免費版配額提示（文案統一至 ProCopy，不使用第三方比喻）
     if (state.showProLimitNotice) {
-        Dialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
+        com.reater.app.ui.theme.AppDialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -237,7 +237,7 @@ fun ShareSaveScreen(
                     Text(
                         text = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_DESC,
                         fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -256,7 +256,7 @@ fun ShareSaveScreen(
 
     // 同一篇已存在：覆蓋並更新內容（重新抓取）/ 另存一篇新的（方形按鈕、左右均分）
     if (state.showDuplicateDialog) {
-        Dialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
+        com.reater.app.ui.theme.AppDialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -271,7 +271,7 @@ fun ShareSaveScreen(
                     Text(
                         text = "要覆蓋並更新內容（重新抓取），還是另存一篇新的？",
                         fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -301,7 +301,7 @@ fun ShareSaveScreen(
 
     // 同一篇在垃圾桶：復原並更新內容（重新抓取）/ 僅復原（方形按鈕、左右均分）
     if (state.showTrashDialog) {
-        Dialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
+        com.reater.app.ui.theme.AppDialog(onDismissRequest = { viewModel.dismissDuplicateDialogs() }) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -316,7 +316,7 @@ fun ShareSaveScreen(
                     Text(
                         text = "要復原並更新內容（重新抓取），還是僅復原？",
                         fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -488,7 +488,7 @@ fun ShareSaveScreen(
                             ) {
                                 Text(
                                     text = state.shareKindLabel,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     softWrap = false,
@@ -520,7 +520,7 @@ fun ShareSaveScreen(
                 AnimatedVisibility(visible = state.suggestedBasis.isNotBlank()) {
                     Text(
                         text = if (state.suggestedBasis == "topic") "已依過往同主題紀錄預選分類" else "已依過往同作者紀錄預選分類",
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(top = 4.dp)
                     )
@@ -592,7 +592,7 @@ fun ShareSaveScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "載入中…",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
                             )
@@ -666,7 +666,7 @@ fun ShareSaveScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "載入中…",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
                             )
@@ -748,7 +748,7 @@ fun ShareSaveScreen(
                         Text(
                             text = "你存的是留言鏈：上方【母文】為原貼（含原圖），下方為該則留言。要存主串請分享主貼文連結。",
                             fontSize = 12.sp,
-                            lineHeight = 17.sp,
+                            lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
@@ -804,7 +804,7 @@ fun ShareSaveScreen(
                                             .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Text("▶ 影片", fontSize = 10.sp, color = Color.White, maxLines = 1)
+                                        Text("▶ 影片", fontSize = 12.sp, color = Color.White, maxLines = 1)
                                     }
                                 }
                             }
@@ -837,7 +837,7 @@ fun ShareSaveScreen(
                         Text(
                             text = "此貼文含圖片/影片，自動下載失敗，請點右上開啟 Threads 查看。",
                             fontSize = 12.sp,
-                            lineHeight = 17.sp,
+                            lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }

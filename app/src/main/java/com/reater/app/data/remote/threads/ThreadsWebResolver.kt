@@ -191,6 +191,10 @@ object ThreadsWebResolver {
             "if(!src||src.indexOf('http')!=0)continue;" +
             "if(seenSrc[src])continue;" +
             "if(src.indexOf('profile_pic')>=0||src.indexOf('s206x206')>=0||src.indexOf('s150x150')>=0||src.indexOf('s320x320')>=0||src.indexOf('s480x480')>=0||src.indexOf('s640x640')>=0||src.indexOf('emoji')>=0||src.indexOf('avatar')>=0)continue;" +
+            // 頭像有時沒有 profile_pic/sXXXxXXX 標記；Threads 會以小尺寸 img 放在作者區，
+            // 不能把它當成留言媒體。真正的貼文圖片通常以大於 96dp 的元素呈現。
+            "var rect=el.getBoundingClientRect?el.getBoundingClientRect():null;" +
+            "if(rect&&rect.width>0&&rect.height>0&&rect.width<=96&&rect.height<=96)continue;" +
             "var pa=el.closest?a.closest('a'):null;" +
             "if(pa){var ph=pa.getAttribute('href')||'';if(ph.indexOf('/@')>=0)continue;}" +
             "seenSrc[src]=1;" +

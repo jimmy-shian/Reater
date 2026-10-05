@@ -373,6 +373,20 @@ class ThreadPostRepository @Inject constructor(
         refreshSearchIndex(itemId)
     }
 
+    /** 詳情頁編輯備註：只更新 manualNote，保留 manualSummary / 分類 / 收藏等既有欄位 */
+    suspend fun updateManualNote(itemId: Long, note: String) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId) ?: UserEditEntity(itemId = itemId)
+        itemDao.insertUserEdit(
+            current.copy(
+                manualNote = note,
+                editedAt = System.currentTimeMillis(),
+                // 若原本是 AI 寫入，保留 AI 來源標記；手動編輯則標 MANUAL_EDIT
+                editSource = if (current.editSource == "AI" && note == current.manualNote) "AI" else "MANUAL_EDIT"
+            )
+        )
+        refreshSearchIndex(itemId)
+    }
+
     /** 詳情開啟：開啟次數 +1（分析頁統計用；無列時先建列） */
     suspend fun recordOpen(itemId: Long) = database.withWriteTransaction {
         val current = itemDao.getUserEditByItemId(itemId)
@@ -469,6 +483,8 @@ class ThreadPostRepository @Inject constructor(
         itemDao.insertUserEdit(
             current.copy(
                 manualSummary = analysis.summary,
+                // 保留使用者原始備註：AI 只寫 manualSummary，絕不清空 manualNote
+                manualNote = current.manualNote,
                 categoryId = categoryId ?: current.categoryId,
                 editedAt = System.currentTimeMillis(),
                 editSource = "AI"

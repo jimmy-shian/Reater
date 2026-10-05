@@ -105,13 +105,14 @@ object ThreadsSjsParser {
 
         val legacyPosts = mutableListOf<JSONObject>()
         val replyPosts = mutableListOf<JSONObject>()
+        val selfThreadPosts = mutableListOf<JSONObject>()
         val mainCandidates = mutableListOf<JSONObject>()
         val allPosts = mutableListOf<JSONObject>()
         val seenReplyPk = HashSet<String>()
         for (block in ranked) {
             try {
                 val root = JSONObject(block)
-                collectNewShape(root, shortcode, mainCandidates, replyPosts, seenReplyPk, 0)
+                collectNewShape(root, shortcode, mainCandidates, replyPosts, selfThreadPosts, seenReplyPk, 0)
                 collectPosts(root, legacyPosts, 0)
                 collectAllPosts(root, allPosts, 0)
             } catch (_: Exception) {
@@ -119,6 +120,10 @@ object ThreadsSjsParser {
             }
             if (replyPosts.size > 200 && mainCandidates.isNotEmpty()) break
         }
+
+        // Threads 原生順序會把作者自串（self_thread.posts）放在一般 direct replies 前面。
+        // 若只收 direct_replies，像「指令 Prompt，歡迎返圖」會遺失或被 DOM 兜底插到錯誤位置。
+        replyPosts.addAll(0, selfThreadPosts)
 
         val main = mainCandidates.maxByOrNull { mainScore(it) }
             ?: legacyPosts.firstOrNull { it.optString("code") == shortcode }
@@ -532,6 +537,7 @@ object ThreadsSjsParser {
         shortcode: String,
         mains: MutableList<JSONObject>,
         replies: MutableList<JSONObject>,
+        selfThreadReplies: MutableList<JSONObject>,
         seenReplyPk: HashSet<String>,
         depth: Int
     ) {
@@ -540,20 +546,44 @@ object ThreadsSjsParser {
             is JSONObject -> {
                 val dr = node.optJSONObject("direct_replies")
                 if (dr != null) collectReplyEdges(dr, replies, seenReplyPk, depth)
+                val selfThread = node.optJSONObject("self_thread")
+                if (selfThread != null) {
+                    collectSelfThreadPosts(selfThread, selfThreadReplies, seenReplyPk, depth)
+                }
                 if (node.optString("code") == shortcode && mains.none { it === node }) {
                     mains.add(node)
                 }
                 // 已是留言節點：其子層多為 caption/media 細節，不必再深挖別的 direct_replies
                 val keys = node.keys()
                 while (keys.hasNext()) {
-                    collectNewShape(node.opt(keys.next()), shortcode, mains, replies, seenReplyPk, depth + 1)
+                    collectNewShape(node.opt(keys.next()), shortcode, mains, replies, selfThreadReplies, seenReplyPk, depth + 1)
                 }
             }
             is JSONArray -> {
                 for (i in 0 until node.length()) {
-                    collectNewShape(node.opt(i), shortcode, mains, replies, seenReplyPk, depth + 1)
+                    collectNewShape(node.opt(i), shortcode, mains, replies, selfThreadReplies, seenReplyPk, depth + 1)
                 }
             }
+        }
+    }
+
+    /** self_thread.posts.edges[].node → 作者自串回覆，Threads 會排在一般留言之前。 */
+    private fun collectSelfThreadPosts(
+        selfThread: JSONObject,
+        replies: MutableList<JSONObject>,
+        seenPk: HashSet<String>,
+        depth: Int
+    ) {
+        if (depth > MAX_DEPTH) return
+        val edges = selfThread.optJSONObject("posts")?.optJSONArray("edges") ?: return
+        for (edge in 0 until edges.length()) {
+            val post = edges.optJSONObject(edge)?.optJSONObject("node") ?: continue
+            val key = post.optString("pk").ifBlank { post.optString("id") }
+            if (key.isNotBlank() && !seenPk.add(key)) continue
+            if (post.optString("code").isBlank() && post.optJSONObject("caption") == null &&
+                post.optJSONObject("user") == null
+            ) continue
+            replies.add(post)
         }
     }
 

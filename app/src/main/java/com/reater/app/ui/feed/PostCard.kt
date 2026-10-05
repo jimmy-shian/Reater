@@ -152,7 +152,7 @@ fun PostCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (!itemDetail.isRead) "未讀" else "已讀",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = if (!itemDetail.isRead) MaterialTheme.colorScheme.onPrimaryContainer
                                 else MaterialTheme.colorScheme.outline
@@ -331,7 +331,7 @@ fun PostCard(
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,
-                lineHeight = 20.sp,
+                lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth(),
                 onNeutralClick = onClick
@@ -387,7 +387,7 @@ fun PostCard(
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("詳情", fontSize = 11.sp, color = Color.White, maxLines = 1)
+                            Text("詳情", fontSize = 12.sp, color = Color.White, maxLines = 1)
                         }
                     }
                 }
@@ -442,7 +442,7 @@ fun PostCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = formatSavedTime(itemDetail.item.sourceFetchedAt),
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline
             )
         }

@@ -104,7 +104,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                 Text(
                                     text = "待讀",
                                     style = TextStyle(
-                                        fontSize = 11.sp,
+                                        fontSize = 12.sp,
                                         color = ColorProvider(Color(0xFFAAAAAA))
                                     )
                                 )
@@ -127,7 +127,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                     text = "筆記: ${displayItem.manualNote.take(40)}",
                                     maxLines = 1,
                                     style = TextStyle(
-                                        fontSize = 11.sp,
+                                        fontSize = 12.sp,
                                         color = ColorProvider(Color(0xFFFFB300))
                                     )
                                 )

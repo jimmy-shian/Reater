@@ -234,7 +234,10 @@ class SettingsRepository @Inject constructor(
      */
     suspend fun importOriginalThenCropped(
         source: android.net.Uri,
-        cropped: android.graphics.Bitmap
+        cropped: android.graphics.Bitmap,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f
     ): Pair<String, String>? {
         val ts = System.currentTimeMillis()
         val origPath = try {
@@ -252,6 +255,7 @@ class SettingsRepository @Inject constructor(
             runCatching { java.io.File(origPath).delete() }
             return null
         }
+        com.reater.app.ui.AvatarStorage.saveCropTransform(context, ts, scale, normOffsetX, normOffsetY)
         val origNonNull: String = origPath
         val displayNonNull: String = displayPath
         context.dataStore.edit { prefs ->
@@ -275,7 +279,10 @@ class SettingsRepository @Inject constructor(
      */
     suspend fun reEditSaveCropped(
         cropped: android.graphics.Bitmap,
-        oldOriginalPath: String?
+        oldOriginalPath: String?,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f
     ): String? {
         val oldOrigFile = try {
             oldOriginalPath?.let { java.io.File(it) }
@@ -294,6 +301,7 @@ class SettingsRepository @Inject constructor(
                 runCatching { newOrig.delete() }
                 return null
             }
+            com.reater.app.ui.AvatarStorage.saveCropTransform(context, newTs, scale, normOffsetX, normOffsetY)
             context.dataStore.edit { prefs ->
                 prefs[KEY_CUSTOM_AVATAR_URI] = displayPath
                 prefs[KEY_CUSTOM_AVATAR_ORIG] = newOrig.absolutePath
@@ -308,7 +316,7 @@ class SettingsRepository @Inject constructor(
             return displayPath
         }
         // 無原始檔（舊版資料）：走舊的單成品儲存
-        return importAvatarBitmap(cropped)
+        return importAvatarBitmap(cropped, scale, normOffsetX, normOffsetY)
     }
 
     /**
@@ -366,15 +374,22 @@ class SettingsRepository @Inject constructor(
     }
 
     /** 裁切編輯器產出的 Bitmap 存成新的時間戳檔並設為使用中（PNG 保留透明 letterbox，同樣寫歷史、保證同步刷新）。 */
-    suspend fun importAvatarBitmap(bitmap: android.graphics.Bitmap): String? {
+    suspend fun importAvatarBitmap(
+        bitmap: android.graphics.Bitmap,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f
+    ): String? {
+        val ts = System.currentTimeMillis()
         val savedPath: String? = try {
             val dir = java.io.File(context.filesDir, "avatar").apply { mkdirs() }
-            val dest = java.io.File(dir, "custom_avatar_${System.currentTimeMillis()}.png")
+            val dest = java.io.File(dir, "custom_avatar_$ts.png")
             dest.outputStream().use { out ->
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
             }
             if (dest.exists() && dest.length() > 0) {
-                dest.setLastModified(System.currentTimeMillis())
+                dest.setLastModified(ts)
+                com.reater.app.ui.AvatarStorage.saveCropTransform(context, ts, scale, normOffsetX, normOffsetY)
                 dir.listFiles()
                     ?.filter {
                         it.name.startsWith("custom_avatar") &&
@@ -559,7 +574,7 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun setFontScale(scale: Float) {
-        context.dataStore.edit { it[KEY_FONT_SCALE] = scale.coerceIn(0.85f, 1.3f) }
+        context.dataStore.edit { it[KEY_FONT_SCALE] = scale.coerceIn(0.85f, 1.8f) }
     }
 
     suspend fun setUnreadNudgeEnabled(enabled: Boolean) {

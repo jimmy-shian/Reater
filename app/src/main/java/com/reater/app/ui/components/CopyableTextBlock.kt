@@ -59,7 +59,7 @@ fun CopyableTextBlock(
     collapseThresholdChars: Int = 200,
     collapseThresholdLines: Int = 7,
     fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 20.sp,
+    lineHeight: TextUnit = 18.sp,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
     if (text.isBlank()) return
@@ -89,7 +89,7 @@ fun CopyableTextBlock(
                 if (!label.isNullOrBlank()) {
                     Text(
                         text = label,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

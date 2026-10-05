@@ -163,7 +163,7 @@ fun MediaViewerDialog(
     val density = LocalDensity.current
     val dismissThresholdPx = remember(density) { with(density) { 120.dp.toPx() } }
 
-    Dialog(
+    com.reater.app.ui.theme.AppDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
@@ -246,16 +246,15 @@ fun MediaViewerDialog(
                     Text(
                         text = "${currentPage + 1} / ${media.size}",
                         color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(start = 8.dp)
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "關閉",
                             tint = Color.White,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }

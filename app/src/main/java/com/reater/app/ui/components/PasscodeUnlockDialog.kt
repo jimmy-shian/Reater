@@ -75,7 +75,7 @@ fun PasscodeUnlockDialog(
     val unlockScrollState = rememberScrollState()
     DismissFocusOnScroll(unlockScrollState, focusManager)
 
-    Dialog(onDismissRequest = onDismiss) {
+    com.reater.app.ui.theme.AppDialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -106,7 +106,7 @@ fun PasscodeUnlockDialog(
                         text = ProCopy.UNLOCK_DESC,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.outline,
-                        lineHeight = 18.sp
+                        lineHeight = 17.sp
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -158,7 +158,7 @@ fun PasscodeUnlockDialog(
                         text = "Gmail 常把 reater:// 顯示成純文字點不開：長按複製連結，貼到下方按「填入」即可，免手打。",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline,
-                        lineHeight = 17.sp
+                        lineHeight = 16.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
@@ -289,7 +289,7 @@ fun PasscodeUnlockDialog(
                         "或透過 Google Play 一次性購買",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        lineHeight = 19.sp,
+                        lineHeight = 17.sp,
                         softWrap = true,
                         modifier = Modifier.fillMaxWidth()
                     )

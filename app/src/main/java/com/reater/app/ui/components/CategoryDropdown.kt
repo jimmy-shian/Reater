@@ -165,7 +165,7 @@ fun CategoryDropdown(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     "內建",
-                                    fontSize = 10.sp,
+                                    fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.outline
                                 )
                             }
@@ -239,7 +239,7 @@ fun CategoryDropdown(
                     Text(
                         text = if (defaultCount > 0) "共 ${categories.size} 個分類（內建 $defaultCount）"
                         else "共 ${categories.size} 個分類",
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
                 }

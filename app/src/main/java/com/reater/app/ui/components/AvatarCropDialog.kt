@@ -7,8 +7,11 @@ import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,24 +64,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.input.pointer.pointerInput
 import com.reater.app.ui.AvatarStorage
 import kotlin.math.abs
 import kotlin.math.min
 
 /**
  * 頭像裁切編輯器：整張圖完整保留（Fit 不預裁），圓形範圍內單指拖曳＋雙指縮放選擇保留位置。
- * 縮放僅雙指手勢，不另設按鈕/滑桿避免干擾畫面；
- * 確認後回傳 512 正方形 Bitmap（未填滿處為透明，由呼叫方存成 PNG），由呼叫方存成新的時間戳內部檔。
+ * 縮放手勢全面消費觸控，避免母容器 verticalScroll 搶走事件造成卡死；
+ * 支援帶入上次編輯之放大比例與位移（initialScale / initialNormOffset），重編不重置為全圖。
+ * 確認後回傳 512 正方形 Bitmap 與縮放位移參數，由呼叫方存檔記錄。
  */
 @Composable
 fun AvatarCropDialog(
     source: Bitmap,
-    onConfirm: (Bitmap) -> Unit,
+    initialScale: Float = 1f,
+    initialNormOffsetX: Float = 0f,
+    initialNormOffsetY: Float = 0f,
+    onConfirm: (cropped: Bitmap, scale: Float, normOffsetX: Float, normOffsetY: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var userScale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var userScale by remember(source, initialScale) {
+        mutableFloatStateOf(initialScale.coerceIn(1f, 4f))
+    }
+    var offset by remember(source) { mutableStateOf(Offset.Zero) }
     var displayPx by remember { mutableFloatStateOf(0f) }
+    var hasAppliedInitialOffset by remember(source) { mutableStateOf(false) }
     val density = LocalDensity.current
 
     fun baseScale(): Float {
@@ -100,18 +111,7 @@ fun AvatarCropDialog(
         )
     }
 
-    fun setScale(ns: Float) {
-        val clamped = ns.coerceIn(1f, 4f)
-        userScale = clamped
-        offset = clampOffset(clamped, offset)
-    }
-
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        setScale(userScale * zoomChange)
-        offset = clampOffset(userScale, offset + panChange)
-    }
-
-    Dialog(
+    com.reater.app.ui.theme.AppDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
@@ -165,15 +165,63 @@ fun AvatarCropDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // 正方形裁切區：整張 Fit 完整顯示不預裁，手勢疊加縮放位移。
-                // sizeIn 限寬（先於 aspectRatio）保證任何螢幕都維持正方形。
+                // 獨立 pointerInput 攔截並消費單指平移與雙指捏合縮放，避免母層捲動搶手勢造成卡住。
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .sizeIn(maxWidth = 440.dp)
                         .aspectRatio(1f)
-                        .onSizeChanged { displayPx = it.width.toFloat() }
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .onSizeChanged {
+                            val px = it.width.toFloat()
+                            displayPx = px
+                            if (!hasAppliedInitialOffset && px > 0f) {
+                                val initRaw = Offset(initialNormOffsetX * px, initialNormOffsetY * px)
+                                offset = clampOffset(userScale, initRaw)
+                                hasAppliedInitialOffset = true
+                            }
+                        }
+                        .pointerInput(source, displayPx) {
+                            if (displayPx <= 0f) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+                                    when {
+                                        pressed.size >= 2 -> {
+                                            val zoomChange = event.calculateZoom()
+                                            val panChange = event.calculatePan()
+                                            if (zoomChange != 1f) {
+                                                val old = userScale
+                                                val new = (old * zoomChange).coerceIn(1f, 4f)
+                                                if (new != old) {
+                                                    val centroid = event.calculateCentroid()
+                                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                                    val k = new / old
+                                                    val focal = centroid - center
+                                                    userScale = new
+                                                    offset = clampOffset(new, offset * k + focal * (1f - k) + panChange)
+                                                } else if (panChange != Offset.Zero) {
+                                                    offset = clampOffset(userScale, offset + panChange)
+                                                }
+                                            } else if (panChange != Offset.Zero) {
+                                                offset = clampOffset(userScale, offset + panChange)
+                                            }
+                                            pressed.forEach { it.consume() }
+                                        }
+                                        pressed.size == 1 -> {
+                                            val pan = event.calculatePan()
+                                            if (pan != Offset.Zero) {
+                                                offset = clampOffset(userScale, offset + pan)
+                                            }
+                                            pressed.forEach { it.consume() }
+                                        }
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -191,7 +239,6 @@ fun AvatarCropDialog(
                                     translationX = offset.x
                                     translationY = offset.y
                                 }
-                                .transformable(transformState)
                         )
                     }
 
@@ -230,8 +277,10 @@ fun AvatarCropDialog(
                     }
                     Button(
                         onClick = {
-                            cropSquare(source, userScale, offset, displayPx, baseScale())?.let {
-                                onConfirm(it)
+                            cropSquare(source, userScale, offset, displayPx, baseScale())?.let { cropped ->
+                                val normX = if (displayPx > 0f) offset.x / displayPx else 0f
+                                val normY = if (displayPx > 0f) offset.y / displayPx else 0f
+                                onConfirm(cropped, userScale, normX, normY)
                             }
                         },
                         shape = RoundedCornerShape(10.dp),

@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -48,10 +51,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +65,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.shape.CircleShape
 import com.reater.app.ui.components.ThreadsStatsRow
 import androidx.compose.ui.graphics.Color
@@ -165,49 +173,23 @@ private fun parseThreadChain(rawBody: String, defaultAuthor: String): List<Threa
     return blocks.take(6)
 }
 
-/** 文字區塊可複製門檻：短訊息不套灰框、不顯示複製鍵 */
-private const val COPYABLE_MIN_CHARS = 60
-private const val COPYABLE_MIN_LINES = 4
-private const val SNIPPET_LEAD_MAX_CHARS = 80
+/** 普通訊息只可展開；只有 Threads snippet 結構才顯示複製卡。 */
+private const val PLAIN_COLLAPSE_MIN_CHARS = 60
+private const val PLAIN_COLLAPSE_MIN_LINES = 4
 
 /**
  * 拆分「一般訊息 + 文字區塊」：
- * - 新存檔（含結構標記）：精確拆分，一般訊息一律純顯示（再長也不給複製鍵），
- *   只有真正的文字區塊 (snippet) 配灰框＋複製鍵。
- * - 舊資料/無標記（DOM 兜底、舊存檔）：啟發式兜底，沿用舊行為避免舊文字區塊失去複製鍵。
- * - 單段短文 → (全文, "")：純文字顯示，不可複製。
- * - 單段長文 → ("", 全文)：整塊可複製（僅舊資料兜底會走到此分支）。
- * - 首段短 + 後段長 → (首段, 後段)：首段純文字，後段可複製 (只複製文字區塊)。
+ * - 有結構標記：精確拆成普通訊息與 snippet，只有 snippet 可複製。
+ * - 沒有結構標記：全文都是普通訊息，不因長度而顯示複製鍵。
  */
 private fun splitLeadAndSnippet(text: String): Pair<String, String> {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return "" to ""
-    // 結構化標記優先（新存檔精確拆分）
     if (com.reater.app.data.remote.threads.ThreadsSjsParser.hasSnippetBlock(trimmed)) {
         return com.reater.app.data.remote.threads.ThreadsSjsParser.splitSnippetBlock(trimmed)
     }
-    val parts = trimmed.split(Regex("\\n\\n+")).map { it.trim() }.filter { it.isNotEmpty() }
-    if (parts.isEmpty()) return "" to ""
-    if (parts.size == 1) {
-        val single = parts[0]
-        val long = single.length >= COPYABLE_MIN_CHARS || single.lines().size >= COPYABLE_MIN_LINES
-        return if (long) "" to single else single to ""
-    }
-    val lead = parts[0]
-    val rest = parts.drop(1).joinToString("\n\n").trim()
-    if (rest.isEmpty()) {
-        val long = lead.length >= COPYABLE_MIN_CHARS || lead.lines().size >= COPYABLE_MIN_LINES
-        return if (long) "" to lead else lead to ""
-    }
-    // 首段短 + 後段長 → 拆分 (一般訊息純顯示，文字區塊可複製)
-    if (lead.length <= SNIPPET_LEAD_MAX_CHARS &&
-        (rest.length >= COPYABLE_MIN_CHARS || rest.lines().size >= COPYABLE_MIN_LINES)
-    ) {
-        return lead to rest
-    }
-    // 整體長 → 整塊可複製；整體短 → 純文字
-    val wholeLong = trimmed.length >= COPYABLE_MIN_CHARS || trimmed.lines().size >= COPYABLE_MIN_LINES
-    return if (wholeLong) "" to trimmed else trimmed to ""
+    // 不用字數/換行數猜測，避免普通留言被誤顯示成可複製卡片。
+    return trimmed to ""
 }
 
 /**
@@ -219,12 +201,12 @@ private fun CollapsiblePlainText(
     modifier: Modifier = Modifier,
     collapsedMaxLines: Int = 4,
     fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 20.sp,
+    lineHeight: TextUnit = 18.sp,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
     if (text.isBlank()) return
     var expanded by remember(text) { mutableStateOf(false) }
-    val collapsible = text.length > COPYABLE_MIN_CHARS || text.lines().size >= COPYABLE_MIN_LINES
+    val collapsible = text.length > PLAIN_COLLAPSE_MIN_CHARS || text.lines().size >= PLAIN_COLLAPSE_MIN_LINES
     val maxLines = if (!collapsible || expanded) Int.MAX_VALUE else collapsedMaxLines
     Column(modifier = modifier.fillMaxWidth()) {
         LinkifiedText(
@@ -280,7 +262,7 @@ private fun SelectiveTextBlock(
     collapseThresholdChars: Int = 200,
     collapseThresholdLines: Int = 7,
     fontSize: TextUnit = 14.sp,
-    lineHeight: TextUnit = 20.sp,
+    lineHeight: TextUnit = 18.sp,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
     if (text.isBlank()) return
@@ -479,6 +461,42 @@ private fun getAvatarColor(name: String): Color {
     return AVATAR_PALETTE[hash % AVATAR_PALETTE.size]
 }
 
+/** Threads 會保留輪播原圖比例；固定正方形裁切會讓儲存畫面和原文不同。 */
+private fun mediaAspectRatio(width: Int, height: Int, fallback: Float = 1f): Float {
+    if (width <= 0 || height <= 0) return fallback
+    return (width.toFloat() / height.toFloat()).coerceIn(0.55f, 1.8f)
+}
+
+@Composable
+private fun ThreadAvatar(
+    name: String,
+    profileUrl: String = "",
+    modifier: Modifier = Modifier.size(36.dp)
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(getAvatarColor(name)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (profileUrl.isNotBlank()) {
+            AsyncImage(
+                model = profileUrl,
+                contentDescription = "$name 頭像",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = name.take(1).uppercase(),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        }
+    }
+}
+
 /**
  * 圖2 文章圖片簡易左右顯示：單張維持大圖；多張改橫滑縮圖列（省垂直空間）。
  * 縮圖 132dp 正方裁切（Crop 無灰邊），點任一開全螢幕檢視器；右上顯示「n 張・左右滑」提示。
@@ -500,7 +518,7 @@ private fun MediaGalleryRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(190.dp)
+                .aspectRatio(mediaAspectRatio(m.width, m.height, 1.15f))
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
@@ -527,7 +545,7 @@ private fun MediaGalleryRow(
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "${media.size} 張・左右滑動查看",
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.outline
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -544,7 +562,8 @@ private fun MediaGalleryRow(
                 val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
                 Box(
                     modifier = Modifier
-                        .size(132.dp)
+                        .width(132.dp)
+                        .aspectRatio(mediaAspectRatio(m.width, m.height))
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .then(if (isVideo) Modifier else Modifier.clickable { onOpenAt(m) })
@@ -586,7 +605,7 @@ private fun CommentMediaGalleryRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
+                .aspectRatio(mediaAspectRatio(cm.width, cm.height, 1.15f))
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
@@ -617,7 +636,7 @@ private fun CommentMediaGalleryRow(
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "${media.size} 張・左右滑動查看",
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.outline
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -629,7 +648,8 @@ private fun CommentMediaGalleryRow(
                 val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .width(120.dp)
+                        .aspectRatio(mediaAspectRatio(cm.width, cm.height))
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
@@ -680,10 +700,25 @@ fun DetailDialog(
         }
     }
     var isSummarizing by remember { mutableStateOf(false) }
-    var currentSummary by remember { mutableStateOf(item.manualSummary) }
+    var currentSummary by remember(item.item.id) { mutableStateOf(item.manualSummary) }
+    // Flow 更新（AI 完成後）即時同步摘要顯示；備註草稿只在初次/外部變更且無未存修改時同步，避免蓋掉輸入
+    LaunchedEffect(item.manualSummary) { currentSummary = item.manualSummary }
+    var noteDraft by remember(item.item.id) { mutableStateOf(item.manualNote) }
+    var lastSyncedNote by remember(item.item.id) { mutableStateOf(item.manualNote) }
+    // 外部 Flow 更新時：只有本地無未存修改（draft == 上次同步值）才跟進，否則保留使用者原始輸入
+    LaunchedEffect(item.manualNote) {
+        if (noteDraft == lastSyncedNote) {
+            noteDraft = item.manualNote
+        }
+        lastSyncedNote = item.manualNote
+    }
+    var isSavingNote by remember { mutableStateOf(false) }
     var showAiConsent by remember { mutableStateOf(false) }
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    // 頂/底超滑下拉關閉（對齊 MediaViewerDialog 手感）：滑到頂再往下拉、或滑到底再往上推，
+    // 超過一段距離出現拉鋸指示（箭頭膠囊），放開超過閾值即關閉，否則彈回。
+    val detailScrollState = rememberScrollState()
     val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
     // 全螢幕媒體檢視器下標（null = 關閉；索引對應「祖先在前、主文在後」的扁平有序，與存檔合併順序一致）
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
@@ -720,16 +755,33 @@ fun DetailDialog(
             val result = viewModel.summarizeItemWithAi(item)
             isSummarizing = false
             result.onSuccess {
+                // AI 只更新摘要顯示；備註草稿與已存備註一律保留，不清空使用者原始輸入
+                // （persistAiAnalysis 在 DB 層同樣只寫 manualSummary、保留 manualNote）
                 currentSummary = it
-                Toast.makeText(context, "AI 分析完成！", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "AI 分析完成！（備註已保留）", Toast.LENGTH_SHORT).show()
             }.onFailure { err ->
                 Toast.makeText(context, err.message ?: "AI 分析失敗", Toast.LENGTH_LONG).show()
             }
         }
     }
 
+    fun saveNote() {
+        if (isSavingNote) return
+        val trimmed = noteDraft.trim()
+        // 未變更則不寫庫，避免洗掉 editedAt；清空也是合法操作（使用者主動清才清）
+        if (trimmed == item.manualNote.trim() && noteDraft == lastSyncedNote) {
+            Toast.makeText(context, "備註無變更", Toast.LENGTH_SHORT).show()
+            return
+        }
+        isSavingNote = true
+        viewModel.updateManualNote(item.item.id, noteDraft)
+        lastSyncedNote = noteDraft
+        isSavingNote = false
+        Toast.makeText(context, "備註已儲存", Toast.LENGTH_SHORT).show()
+    }
+
     if (showAiConsent) {
-        Dialog(onDismissRequest = { showAiConsent = false }) {
+        com.reater.app.ui.theme.AppDialog(onDismissRequest = { showAiConsent = false }) {
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.padding(20.dp)) {
                     Row(
@@ -759,14 +811,116 @@ fun DetailDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    com.reater.app.ui.theme.AppDialog(onDismissRequest = onDismiss) {
+        // 超滑關閉閾值（與 MediaViewerDialog 同級手感：120~160dp）
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val dismissThresholdPx = remember(density) { with(density) { 140.dp.toPx() } }
+        val hintThresholdPx = remember(density) { with(density) { 36.dp.toPx() } }
+        // 橡皮筋位移：拖曳中即時跟手（snapTo），放開後彈簧回位；避免 draggable 搶奪中段捲動，
+        // 改用 nestedScroll 只吃「內容已到盡頭剩下的」位移，中段滑動完全不受影響。
+        val overscrollAnim = remember {
+            androidx.compose.animation.core.Animatable(0f)
+        }
+        val overscrollConnection = remember(detailScrollState, dismissThresholdPx) {
+            object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                override fun onPreScroll(
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                ): androidx.compose.ui.geometry.Offset {
+                    // 僅在手指實體拖曳且已有橡皮筋位移時，反向滑動優先收回橡皮筋，避免內文跳動
+                    if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+                        val cur = overscrollAnim.value
+                        if (cur > 0f && available.y < 0f) {
+                            val consumedY = available.y.coerceAtLeast(-cur)
+                            coroutineScope.launch { overscrollAnim.snapTo(cur + consumedY) }
+                            return androidx.compose.ui.geometry.Offset(0f, consumedY)
+                        } else if (cur < 0f && available.y > 0f) {
+                            val consumedY = available.y.coerceAtMost(-cur)
+                            coroutineScope.launch { overscrollAnim.snapTo(cur + consumedY) }
+                            return androidx.compose.ui.geometry.Offset(0f, consumedY)
+                        }
+                    }
+                    return androidx.compose.ui.geometry.Offset.Zero
+                }
+
+                override fun onPostScroll(
+                    consumed: androidx.compose.ui.geometry.Offset,
+                    available: androidx.compose.ui.geometry.Offset,
+                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                ): androidx.compose.ui.geometry.Offset {
+                    // 嚴格限制：僅「手指按著拖曳（UserInput）」才吃超滑位移；慣性捲動（Fling / SideEffect）到頂/到底絕不吃、不觸發關閉
+                    if (source != androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput || available.y == 0f) {
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                    val atTop = available.y > 0f && !detailScrollState.canScrollBackward
+                    val atBottom = available.y < 0f && !detailScrollState.canScrollForward
+                    if (atTop || atBottom) {
+                        val cur = overscrollAnim.value
+                        val resistance =
+                            1f - (kotlin.math.abs(cur) / 600f).coerceIn(0f, 0.75f)
+                        val next =
+                            (cur + available.y * 0.45f * resistance).coerceIn(-420f, 420f)
+                        coroutineScope.launch { overscrollAnim.snapTo(next) }
+                        return androidx.compose.ui.geometry.Offset(0f, available.y)
+                    }
+                    return androidx.compose.ui.geometry.Offset.Zero
+                }
+
+                override suspend fun onPostFling(
+                    consumed: androidx.compose.ui.unit.Velocity,
+                    available: androidx.compose.ui.unit.Velocity
+                ): androidx.compose.ui.unit.Velocity {
+                    // 慣性甩動絕不直接關閉；放開手指時若位移已超過閾值才關閉，否則一律彈簧回位
+                    val cur = overscrollAnim.value
+                    if (kotlin.math.abs(cur) > dismissThresholdPx) {
+                        onDismiss()
+                    } else if (cur != 0f) {
+                        overscrollAnim.animateTo(
+                            0f,
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                            )
+                        )
+                    }
+                    return androidx.compose.ui.unit.Velocity.Zero
+                }
+            }
+        }
+        // 放開手指（捲動結束）結算：超過閾值關閉，否則彈簧回位保底
+        LaunchedEffect(detailScrollState.isScrollInProgress) {
+            if (!detailScrollState.isScrollInProgress && overscrollAnim.value != 0f) {
+                if (kotlin.math.abs(overscrollAnim.value) > dismissThresholdPx) {
+                    onDismiss()
+                } else {
+                    overscrollAnim.animateTo(
+                        0f,
+                        animationSpec = androidx.compose.animation.core.spring(
+                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                        )
+                    )
+                }
+            }
+        }
+        val animatedY = overscrollAnim.value
+        val overscrollAlpha = (1f - (kotlin.math.abs(animatedY) / 1200f).coerceIn(0f, 0.6f))
+        val showTopHint = animatedY > hintThresholdPx
+        val showBottomHint = animatedY < -hintThresholdPx
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
-                .clip(RoundedCornerShape(16.dp)),
+                .clip(RoundedCornerShape(16.dp))
+                .graphicsLayer {
+                    translationY = animatedY
+                    alpha = overscrollAlpha
+                }
+                // 頂/底超滑拉鋸：只在內容已滑到盡頭時吃掉手勢，中段滑動不受影響
+                .nestedScroll(overscrollConnection),
             color = MaterialTheme.colorScheme.surface
         ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 固定頂欄：左上 ... 溢位選單 + 分類徽章（中間可直接點開改分類）+ 分享 + X 關閉（最右）
                 Row(
@@ -821,7 +975,7 @@ fun DetailDialog(
                                         Text("AI 智慧摘要")
                                         Text(
                                             text = "產生摘要・分類建議・標籤",
-                                            fontSize = 11.sp,
+                                            fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.outline
                                         )
                                     }
@@ -875,7 +1029,7 @@ fun DetailDialog(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(detailScrollState)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                 // 改分類編輯器（點中間徽章或 ... 選單展開）：與儲存時同款下拉，篩選 + 即時生效
@@ -974,7 +1128,7 @@ fun DetailDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "此為留言鏈舊存檔，圖片已自動歸位到母文（原誤掛在留言下）。重新儲存可永久修正。",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
@@ -1036,7 +1190,7 @@ fun DetailDialog(
                                 ) {
                                     Text(
                                         text = ancestor.label ?: "分享",
-                                        fontSize = 10.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1049,7 +1203,7 @@ fun DetailDialog(
                                 Text(
                                     text = "（無內文）",
                                     fontSize = 14.sp,
-                                    lineHeight = 20.sp,
+                                    lineHeight = 18.sp,
                                     color = MaterialTheme.colorScheme.outline,
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -1058,7 +1212,7 @@ fun DetailDialog(
                                     text = ancestor.body,
                                     label = ancestor.label ?: "分享",
                                     fontSize = 14.sp,
-                                    lineHeight = 20.sp,
+                                    lineHeight = 18.sp,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -1094,20 +1248,12 @@ fun DetailDialog(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.width(42.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(getAvatarColor(mainBlock.author)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = mainBlock.author.take(1).uppercase(),
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                        }
+                        ThreadAvatar(
+                            name = mainBlock.author,
+                            profileUrl = item.item.authorProfileUrl
+                                .takeIf { mainBlock.author.equals(item.item.authorHandle, ignoreCase = true) }
+                                .orEmpty()
+                        )
                         if (hasComments) {
                             Box(
                                 modifier = Modifier
@@ -1142,7 +1288,7 @@ fun DetailDialog(
                                 ) {
                                     Text(
                                         text = mainBlock.label,
-                                        fontSize = 10.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1161,7 +1307,7 @@ fun DetailDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = formatSavedTime(item.item.sourceFetchedAt),
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -1177,7 +1323,7 @@ fun DetailDialog(
                             Text(
                                 text = "無內文",
                                 fontSize = 14.sp,
-                                lineHeight = 20.sp,
+                                lineHeight = 18.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1198,7 +1344,7 @@ fun DetailDialog(
                                 Text(
                                     text = "無內文",
                                     fontSize = 14.sp,
-                                    lineHeight = 20.sp,
+                                    lineHeight = 18.sp,
                                     color = MaterialTheme.colorScheme.outline,
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -1207,7 +1353,7 @@ fun DetailDialog(
                                     text = rawBody,
                                     label = mainBlock.label,
                                     fontSize = 14.sp,
-                                    lineHeight = 21.sp,
+                                    lineHeight = 18.sp,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -1251,7 +1397,7 @@ fun DetailDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "圖片/影片未能自動下載，可點上方按鈕在 Threads 查看原貼文。",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     lineHeight = 16.sp,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -1269,13 +1415,7 @@ fun DetailDialog(
                     }
                 }
 
-                // 個人筆記
-                if (item.manualNote.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(text = "個人筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = item.manualNote, fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
-                }
+                // （個人筆記改到底部可編輯區塊，此處不再重複顯示，避免與底部編輯器雙份）
 
                 // 3. 精華留言區塊（以圖3 串文風格：左側頭像軌＋垂直連接線，右側帳號＋內容＋媒體＋讚數列）
                 if (item.comments.isNotEmpty()) {
@@ -1359,7 +1499,7 @@ fun DetailDialog(
                                 SelectiveTextBlock(
                                     text = displayCommentText,
                                     fontSize = 13.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 17.sp,
                                     collapsedMaxLines = 4,
                                     collapseThresholdChars = 140,
                                     collapseThresholdLines = 5,
@@ -1390,6 +1530,82 @@ fun DetailDialog(
                     }
                 }
 
+                // 備註（可編輯，位於 AI 摘要與底部操作列上方）：AI 摘要只寫摘要欄，絕不清空此處使用者輸入
+                Spacer(modifier = Modifier.height(16.dp))
+                val noteUnsaved = noteDraft != lastSyncedNote
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "備註", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        if (noteUnsaved) {
+                            Text(
+                                text = "● 未儲存",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (item.manualNote.isNotBlank()) {
+                            Text(
+                                text = "已儲存",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = noteDraft,
+                        onValueChange = { noteDraft = it },
+                        placeholder = { Text("寫下你的備註…（AI 摘要不會覆蓋這裡）", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        minLines = 2,
+                        maxLines = 6
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (noteDraft.isNotBlank() && noteDraft != item.manualNote) {
+                            OutlinedButton(
+                                onClick = {
+                                    noteDraft = item.manualNote
+                                    lastSyncedNote = item.manualNote
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) { Text("還原", fontSize = 12.sp) }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Button(
+                            onClick = { saveNote() },
+                            enabled = !isSavingNote && noteUnsaved,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            if (isSavingNote) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("儲存備註", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 // AI 摘要（精華留言下方、底部操作列上方）
                 if (currentSummary.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1410,7 +1626,7 @@ fun DetailDialog(
                             Text(
                                 text = currentSummary,
                                 fontSize = 13.sp,
-                                lineHeight = 19.sp,
+                                lineHeight = 17.sp,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
@@ -1460,6 +1676,45 @@ fun DetailDialog(
                     }
                 }
                 }
+            }
+            // 頂/底超滑拉鋸指示（對齊圖像/影片檢視器：多滑一段距離出現，放開超過閾值關閉）
+            if (showTopHint || showBottomHint) {
+                val pullingDown = animatedY > 0f
+                val progress = (kotlin.math.abs(animatedY) / dismissThresholdPx).coerceIn(0f, 1f)
+                val readyToDismiss = kotlin.math.abs(animatedY) > dismissThresholdPx
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (readyToDismiss) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                    tonalElevation = 4.dp,
+                    modifier = Modifier
+                        .align(if (pullingDown) Alignment.TopCenter else Alignment.BottomCenter)
+                        .padding(vertical = 10.dp)
+                        .alpha(0.45f + 0.55f * progress)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (pullingDown) Icons.Default.KeyboardDoubleArrowDown
+                            else Icons.Default.KeyboardDoubleArrowUp,
+                            contentDescription = null,
+                            tint = if (readyToDismiss) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (readyToDismiss) "放開即關閉" else "繼續滑動可關閉",
+                            fontSize = 12.sp,
+                            fontWeight = if (readyToDismiss) FontWeight.Bold else FontWeight.Medium,
+                            color = if (readyToDismiss) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
             }
         }
     }

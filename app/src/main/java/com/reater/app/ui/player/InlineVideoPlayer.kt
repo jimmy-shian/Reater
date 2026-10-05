@@ -193,7 +193,7 @@ fun InlineVideoPlayer(
 
     // 全螢幕彈窗（放大轉橫向，關閉自動還原直向）
     if (isFullscreen) {
-        Dialog(
+        com.reater.app.ui.theme.AppDialog(
             onDismissRequest = { isFullscreen = false },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,

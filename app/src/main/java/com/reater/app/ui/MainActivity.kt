@@ -293,9 +293,15 @@ class MainViewModel @Inject constructor(
     }
 
     /** 裁切編輯器產出的正方形圖 -> 存成新的時間戳內部檔並設為使用中 */
-    fun saveCroppedAvatar(bitmap: android.graphics.Bitmap, onDone: (Boolean) -> Unit = {}) {
+    fun saveCroppedAvatar(
+        bitmap: android.graphics.Bitmap,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f,
+        onDone: (Boolean) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val saved = settingsRepository.importAvatarBitmap(bitmap)
+            val saved = settingsRepository.importAvatarBitmap(bitmap, scale, normOffsetX, normOffsetY)
             withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
         }
     }
@@ -307,10 +313,13 @@ class MainViewModel @Inject constructor(
     fun importOriginalThenCropped(
         source: android.net.Uri,
         cropped: android.graphics.Bitmap,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f,
         onDone: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val saved = settingsRepository.importOriginalThenCropped(source, cropped)
+            val saved = settingsRepository.importOriginalThenCropped(source, cropped, scale, normOffsetX, normOffsetY)
             withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
         }
     }
@@ -319,10 +328,13 @@ class MainViewModel @Inject constructor(
     fun reEditSaveCropped(
         cropped: android.graphics.Bitmap,
         oldOriginalPath: String?,
+        scale: Float = 1f,
+        normOffsetX: Float = 0f,
+        normOffsetY: Float = 0f,
         onDone: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val saved = settingsRepository.reEditSaveCropped(cropped, oldOriginalPath)
+            val saved = settingsRepository.reEditSaveCropped(cropped, oldOriginalPath, scale, normOffsetX, normOffsetY)
             withContext(kotlinx.coroutines.Dispatchers.Main) { onDone(saved != null) }
         }
     }
@@ -417,6 +429,13 @@ class MainViewModel @Inject constructor(
     fun updateCategory(itemId: Long, categoryId: Long?) {
         viewModelScope.launch {
             repository.updateCategory(itemId, categoryId)
+        }
+    }
+
+    /** 詳情頁備註編輯用：只寫 manualNote，不動 AI 摘要 */
+    fun updateManualNote(itemId: Long, note: String) {
+        viewModelScope.launch {
+            repository.updateManualNote(itemId, note)
         }
     }
 
@@ -800,7 +819,7 @@ fun MainScreen(
     }
 
     if (itemToDelete != null) {
-        AlertDialog(
+        com.reater.app.ui.theme.AppAlertDialog(
             onDismissRequest = { itemToDelete = null },
             title = { Text("移至垃圾桶？") },
             text = { Text("此記錄將移入垃圾桶並保留 30 天，期間內可隨時還原；超過 30 天後系統將自動永久清除。") },
@@ -825,7 +844,7 @@ fun MainScreen(
     }
 
     if (showEmptyTrashConfirm) {
-        AlertDialog(
+        com.reater.app.ui.theme.AppAlertDialog(
             onDismissRequest = { showEmptyTrashConfirm = false },
             title = { Text("清空垃圾桶？") },
             text = { Text("確定要永久刪除垃圾桶中的所有記錄嗎？此動作無法復原。") },
@@ -925,9 +944,9 @@ fun MainScreen(
                 viewModel.deleteAvatarHistory(path)
                 Toast.makeText(context, "已刪除該張過往圖片", Toast.LENGTH_SHORT).show()
             },
-            onSaveCropped = { bitmap ->
+            onSaveCropped = { bitmap, scale, normX, normY ->
                 // 舊流程退路（無原始檔）：存成新的時間戳內部檔，留在圖示總覽不關閉方便預覽
-                viewModel.saveCroppedAvatar(bitmap) { success ->
+                viewModel.saveCroppedAvatar(bitmap, scale, normX, normY) { success ->
                     Toast.makeText(
                         context,
                         if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
@@ -935,9 +954,9 @@ fun MainScreen(
                     ).show()
                 }
             },
-            onSaveCroppedWithSource = { bitmap, sourceUri ->
+            onSaveCroppedWithSource = { bitmap, sourceUri, scale, normX, normY ->
                 // 新流程：原始檔完整保留＋成品同 ts 配對
-                viewModel.importOriginalThenCropped(sourceUri, bitmap) { success ->
+                viewModel.importOriginalThenCropped(sourceUri, bitmap, scale, normX, normY) { success ->
                     Toast.makeText(
                         context,
                         if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
@@ -945,9 +964,9 @@ fun MainScreen(
                     ).show()
                 }
             },
-            onSaveReEdit = { bitmap, oldOriginal ->
+            onSaveReEdit = { bitmap, oldOriginal, scale, normX, normY ->
                 // 重編：從原始檔重裁，不裁成品避免畫質遞減
-                viewModel.reEditSaveCropped(bitmap, oldOriginal) { success ->
+                viewModel.reEditSaveCropped(bitmap, oldOriginal, scale, normX, normY) { success ->
                     Toast.makeText(
                         context,
                         if (success) "已更新頭像位置（原圖保留）" else "儲存裁切圖片失敗，請重試",
@@ -1015,7 +1034,7 @@ fun MainScreen(
     // PRO 配額滿額提示（與 ProCopy 同文案；確認即轉解鎖）
     val showLimit by viewModel.showProLimitNotice.collectAsState()
     if (showLimit) {
-        Dialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
+        com.reater.app.ui.theme.AppDialog(onDismissRequest = { viewModel.setShowProLimitNotice(false) }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -1030,7 +1049,7 @@ fun MainScreen(
                     Text(
                         text = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_DESC,
                         fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1086,7 +1105,7 @@ fun MainScreen(
                             ) {
                                 Text(
                                     text = "PRO",
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
@@ -1528,7 +1547,7 @@ private fun PostListTab(
                 text = emptyMessage,
                 color = MaterialTheme.colorScheme.outline,
                 fontSize = 15.sp,
-                lineHeight = 22.sp,
+                lineHeight = 19.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
@@ -1593,7 +1612,7 @@ private fun ProCategoryTabContent(
                     text = "尚無自訂分類，按下方 + 新增（免費可建 3 個）",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.outline,
-                    lineHeight = 19.sp
+                    lineHeight = 17.sp
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -1657,7 +1676,7 @@ private fun ProCategoryTabContent(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "內建",
-                                        fontSize = 10.sp,
+                                        fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                 }
@@ -1666,7 +1685,7 @@ private fun ProCategoryTabContent(
                             val itemCount = categoryCounts[cat.id] ?: 0
                             Text(
                                 text = "$itemCount 個項目",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -1702,7 +1721,7 @@ private fun ProCategoryTabContent(
                     else "Pro 可自由開關套用；以下為預設三組規則預覽。",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline,
-                    lineHeight = 17.sp
+                    lineHeight = 16.sp
                 )
                 Spacer(modifier = Modifier.height(6.dp))
             }
@@ -1763,7 +1782,7 @@ private fun ProCategoryTabContent(
                                 text = "規則：$ruleText",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline,
-                                lineHeight = 17.sp
+                                lineHeight = 16.sp
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -1818,7 +1837,7 @@ private fun TrashTabContent(
                     text = "垃圾桶目前是空的\n被移除的項目會在此保留 30 天",
                     color = MaterialTheme.colorScheme.outline,
                     fontSize = 15.sp,
-                    lineHeight = 22.sp,
+                    lineHeight = 19.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -1902,7 +1921,7 @@ fun TrashCard(
                 ) {
                     Text(
                         text = "剩餘 ${remainingDays} 天後永久清除",
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -1923,7 +1942,7 @@ fun TrashCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,
-                lineHeight = 18.sp,
+                lineHeight = 17.sp,
                 modifier = Modifier.fillMaxWidth()
             )
 

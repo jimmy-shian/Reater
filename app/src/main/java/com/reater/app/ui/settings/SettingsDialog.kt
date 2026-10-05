@@ -46,9 +46,13 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -113,6 +117,10 @@ fun SettingsDialog(
     val settingsScope = androidx.compose.runtime.rememberCoroutineScope()
     var settingsCropSource by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var settingsCropSourceUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var settingsCropIsReEdit by remember { mutableStateOf(false) }
+    var settingsCropInitialScale by remember { mutableFloatStateOf(1f) }
+    var settingsCropInitialNormOffsetX by remember { mutableFloatStateOf(0f) }
+    var settingsCropInitialNormOffsetY by remember { mutableFloatStateOf(0f) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -121,6 +129,10 @@ fun SettingsDialog(
                 val bmp = AvatarStorage.decodeForEdit(context, uri)
                 withContext(Dispatchers.Main) {
                     if (bmp != null) {
+                        settingsCropInitialScale = 1f
+                        settingsCropInitialNormOffsetX = 0f
+                        settingsCropInitialNormOffsetY = 0f
+                        settingsCropIsReEdit = false
                         settingsCropSource = bmp
                         settingsCropSourceUri = uri
                     } else viewModel.importCustomAvatar(uri) { success ->
@@ -157,7 +169,7 @@ fun SettingsDialog(
     val settingsScrollState = rememberScrollState()
     DismissFocusOnScroll(settingsScrollState, focusManager)
 
-    Dialog(onDismissRequest = { dismissWithApply() }) {
+    com.reater.app.ui.theme.AppDialog(onDismissRequest = { dismissWithApply() }) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -166,79 +178,85 @@ fun SettingsDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 固定頂欄
-                DialogHeader(
-                    title = "系統設定",
-                    onClose = { dismissWithApply() },
-                    modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
-                )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(settingsScrollState)
-                        .dismissFocusOnTap(focusManager)
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                ) {
-
-                    // ---------- 外觀 ----------
-                    SettingsSectionTitle("外觀與閱讀")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "亮暗模式", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("system" to "跟隨系統", "light" to "淺色", "dark" to "深色").forEach { (id, label) ->
-                            FilterChip(
-                                selected = themeMode == id,
-                                onClick = { viewModel.setThemeMode(id) },
-                                label = { Text(label, maxLines = 1, fontSize = 12.sp) }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "字體大小", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            text = "${(previewScale * 100).toInt()}%",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Slider(
-                        value = previewScale,
-                        onValueChange = { previewScale = it },
-                        valueRange = 0.85f..1.3f,
-                        steps = 8,
+                    // 固定頂欄
+                    DialogHeader(
+                        title = "系統設定",
+                        onClose = { dismissWithApply() },
+                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Box(
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(10.dp)
+                            .weight(1f)
+                            .verticalScroll(settingsScrollState)
+                            .dismissFocusOnTap(focusManager)
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
-                        Text(
-                            text = "Reater 閱讀器預覽：探索與典藏優質貼文",
-                            fontSize = (14 * previewScale).sp,
-                            lineHeight = (20 * previewScale).sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium
+
+                        // ---------- 外觀 ----------
+                        SettingsSectionTitle("外觀與閱讀")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "亮暗模式", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("system" to "跟隨系統", "light" to "淺色", "dark" to "深色").forEach { (id, label) ->
+                                FilterChip(
+                                    selected = themeMode == id,
+                                    onClick = { viewModel.setThemeMode(id) },
+                                    label = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "字體大小", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "${(previewScale * 100).toInt()}%",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = previewScale,
+                            onValueChange = { previewScale = it },
+                            valueRange = 0.85f..1.80f,
+                            steps = 18,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(10.dp)
+                        ) {
+                            val baseDensity = LocalDensity.current
+                            val previewDensity = remember(baseDensity, previewScale) {
+                                Density(baseDensity.density, previewScale.coerceIn(0.85f, 1.8f))
+                            }
+                            CompositionLocalProvider(LocalDensity provides previewDensity) {
+                                Text(
+                                    text = "Reater 閱讀器預覽：探索與典藏優質貼文",
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -278,7 +296,7 @@ fun SettingsDialog(
                                                     .background(Color(0xFFFFB300), RoundedCornerShape(4.dp))
                                                     .padding(horizontal = 5.dp, vertical = 1.dp)
                                             ) {
-                                                Text("PRO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                                Text("PRO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                                             }
                                         }
                                         Spacer(modifier = Modifier.height(2.dp))
@@ -328,6 +346,30 @@ fun SettingsDialog(
                                     }
                                     if (customAvatarUri != null) {
                                         OutlinedButton(
+                                            onClick = {
+                                                settingsScope.launch(Dispatchers.IO) {
+                                                    val origPath = viewModel.customAvatarOriginal.value
+                                                        ?: AvatarStorage.pairedOriginalFile(context, customAvatarUri)?.absolutePath
+                                                    val origBmp = AvatarStorage.decodeFile(origPath) ?: AvatarStorage.decodeFile(customAvatarUri)
+                                                    val transform = AvatarStorage.loadCropTransform(context, origPath ?: customAvatarUri)
+                                                    withContext(Dispatchers.Main) {
+                                                        if (origBmp != null) {
+                                                            settingsCropInitialScale = transform?.scale ?: 1f
+                                                            settingsCropInitialNormOffsetX = transform?.normOffsetX ?: 0f
+                                                            settingsCropInitialNormOffsetY = transform?.normOffsetY ?: 0f
+                                                            settingsCropSource = origBmp
+                                                            settingsCropSourceUri = null
+                                                            settingsCropIsReEdit = true
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("編輯", fontSize = 12.sp, maxLines = 1)
+                                        }
+                                        OutlinedButton(
                                             onClick = { viewModel.setCustomAvatarUri(null) },
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
@@ -375,7 +417,7 @@ fun SettingsDialog(
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "解鎖 10 款尊爵圖示、圖示總覽大廳與自訂相片",
-                                        fontSize = 11.sp,
+                                        fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                 }
@@ -572,7 +614,7 @@ fun SettingsDialog(
                                     ) {
                                         Text(
                                             text = periodLabel,
-                                            fontSize = 11.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                                             maxLines = 1,
@@ -712,7 +754,7 @@ fun SettingsDialog(
                         Text(
                             text = "允許將貼文與留言傳送至設定的 AI 服務",
                             fontSize = 13.sp,
-                            lineHeight = 18.sp,
+                            lineHeight = 17.sp,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -796,12 +838,25 @@ fun SettingsDialog(
     if (settingsCropSource != null) {
         AvatarCropDialog(
             source = settingsCropSource!!,
-            onConfirm = { cropped ->
+            initialScale = settingsCropInitialScale,
+            initialNormOffsetX = settingsCropInitialNormOffsetX,
+            initialNormOffsetY = settingsCropInitialNormOffsetY,
+            onConfirm = { cropped, scale, normX, normY ->
                 val srcUri = settingsCropSourceUri
+                val isReEdit = settingsCropIsReEdit
                 settingsCropSource = null
                 settingsCropSourceUri = null
-                if (srcUri != null) {
-                    viewModel.importOriginalThenCropped(srcUri, cropped) { success ->
+                settingsCropIsReEdit = false
+                if (isReEdit) {
+                    viewModel.reEditSaveCropped(cropped, viewModel.customAvatarOriginal.value, scale, normX, normY) { success ->
+                        Toast.makeText(
+                            context,
+                            if (success) "已更新頭像位置（原圖保留）" else "儲存裁切圖片失敗，請重試",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else if (srcUri != null) {
+                    viewModel.importOriginalThenCropped(srcUri, cropped, scale, normX, normY) { success ->
                         Toast.makeText(
                             context,
                             if (success) "已成功套用自訂頭像照片（原圖已保留）" else "儲存裁切圖片失敗，請重試",
@@ -809,7 +864,7 @@ fun SettingsDialog(
                         ).show()
                     }
                 } else {
-                    viewModel.saveCroppedAvatar(cropped) { success ->
+                    viewModel.saveCroppedAvatar(cropped, scale, normX, normY) { success ->
                         Toast.makeText(
                             context,
                             if (success) "已成功套用自訂頭像照片" else "儲存裁切圖片失敗，請重試",
@@ -821,6 +876,7 @@ fun SettingsDialog(
             onDismiss = {
                 settingsCropSource = null
                 settingsCropSourceUri = null
+                settingsCropIsReEdit = false
             }
         )
     }

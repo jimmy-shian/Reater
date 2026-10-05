@@ -63,7 +63,7 @@ fun CategoryBadge(
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = category?.name ?: fallbackName,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             maxLines = 1,
