@@ -66,7 +66,12 @@ object AvatarStorage {
         val dir = avatarDir(context)
         val files = dir.listFiles()?.filter { isDisplayFile(it) && it.length() > 0 }
             ?: return emptyList()
-        return files.sortedByDescending { it.lastModified() }
+        // 以檔名內的建立 timestamp 排序，不使用 lastModified：選取／讀取歷史圖片
+        // 可能改變檔案 metadata，導致同一張圖被錯誤移到列表最前面。
+        return files.sortedWith(
+            compareByDescending<File> { extractTs(it.name) ?: Long.MIN_VALUE }
+                .thenByDescending { it.lastModified() }
+        )
     }
 
     /** 從成品檔名抽出時間戳；失敗回傳 null。 */
@@ -340,7 +345,7 @@ object AvatarStorage {
     private fun pruneOverflow(dir: File) {
         try {
             val files = dir.listFiles()?.filter { isDisplayFile(it) }
-                ?.sortedByDescending { it.lastModified() } ?: return
+                ?.sortedWith(compareByDescending<File> { extractTs(it.name) ?: Long.MIN_VALUE }.thenByDescending { it.lastModified() }) ?: return
             files.drop(MAX_HISTORY).forEach { runCatching { deletePairFor(it) } }
         } catch (_: Exception) {
         }
@@ -350,13 +355,13 @@ object AvatarStorage {
     private fun prunePairsOverflow(dir: File) {
         try {
             val displays = dir.listFiles()?.filter { isDisplayFile(it) }
-                ?.sortedByDescending { it.lastModified() } ?: return
+                ?.sortedWith(compareByDescending<File> { extractTs(it.name) ?: Long.MIN_VALUE }.thenByDescending { it.lastModified() }) ?: return
             displays.drop(MAX_HISTORY).forEach { runCatching { deletePairFor(it) } }
             // 孤兒原始檔：沒有對應成品且超過上限，只保留最新的 MAX_HISTORY 個原始檔
             val liveTs = displays.take(MAX_HISTORY).mapNotNull { extractTs(it.name) }.toSet()
             val orphans = dir.listFiles()?.filter { isOriginalFile(it) && it.length() > 0 }
                 ?.filter { extractTs(it.name) !in liveTs }
-                ?.sortedByDescending { it.lastModified() } ?: return
+                ?.sortedWith(compareByDescending<File> { extractTs(it.name) ?: Long.MIN_VALUE }.thenByDescending { it.lastModified() }) ?: return
             // 保留與現存成品同 ts 的原始檔（重編需要）；其餘孤兒全清避免膨脹
             orphans.forEach { runCatching { it.delete() } }
             // 孤兒裁切參數檔同步清理

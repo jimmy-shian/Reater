@@ -190,12 +190,22 @@ object ThreadsSjsParser {
             false
         }
 
+        // Threads 的「熱門」排序不是 SSR edge 順序：置頂優先，其餘依讚數高到低。
+        // 保留原始索引作為同讚數的穩定 tie-breaker，避免留言畫面每次重排。
+        val orderedReplies = replyPosts.filter { p ->
+            attributedReplies.any { it === p }
+        }.withIndex().sortedWith(
+            compareByDescending<IndexedValue<JSONObject>> { isPinnedReply(it.value) }
+                .thenByDescending { it.value.optInt("like_count", 0) }
+                .thenBy { it.index }
+        ).map { it.value }
+
         val comments = mutableListOf<FetchedComment>()
         val seen = HashSet<String>()
         var idx = 0
 
         // 新 shape：direct_replies 留言（結構上已保證屬於本串，直接收，含留言媒體）
-        for (p in attributedReplies) {
+        for (p in orderedReplies) {
             if (comments.size >= MAX_COMMENTS) break
             val text = postText(p)
             val pMedia = postMedia(p)
@@ -211,6 +221,7 @@ object ThreadsSjsParser {
                     author = author,
                     text = text,
                     likeCount = p.optInt("like_count", 0),
+                    isPinned = isPinnedReply(p),
                     media = pMedia
                 )
             )
@@ -305,6 +316,12 @@ object ThreadsSjsParser {
             parentChain = parentChain,
             topicTag = TopicTags.resolve(effectiveMain, effBody)
         )
+    }
+
+    private fun isPinnedReply(post: JSONObject): Boolean {
+        return post.optJSONObject("text_post_app_info")
+            ?.optJSONObject("pinned_post_info")
+            ?.optBoolean("is_pinned_to_parent_post", false) == true
     }
 
     /**

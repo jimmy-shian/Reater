@@ -21,6 +21,8 @@ data class FetchedComment(
     val likeCount: Int,
     val parentExternalId: String? = null,
     val depth: Int = 0,
+    /** Threads 原始 pinned_post_info；沒有欄位時為 false。 */
+    val isPinned: Boolean = false,
     /** 留言自帶的圖/影（新 shape direct_replies 每則留言可有 image/video/carousel） */
     val media: List<FetchedMedia> = emptyList()
 )

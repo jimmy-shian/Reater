@@ -229,7 +229,9 @@ class ThreadPostRepository @Inject constructor(
                     likeCount = c.likeCount,
                     parentExternalId = c.parentExternalId,
                     depth = c.depth,
-                    sortKey = "0:${System.currentTimeMillis()}:$index",
+                    // 讀取 DAO 時直接依此 key 排序，確保「熱門」不會因重新開啟／合併 DOM 而失序。
+                    // 置頂優先；其餘讚數越高越前；最後用原始 index 穩定排序。
+                    sortKey = "0:${if (c.isPinned) 0 else 1}:${(999_999_999 - c.likeCount.coerceIn(0, 999_999_999)).toString().padStart(10, '0')}:${index.toString().padStart(8, '0')}",
                     mediaJson = com.reater.app.data.remote.FetchedMediaJson.encode(c.media)
                 )
             }

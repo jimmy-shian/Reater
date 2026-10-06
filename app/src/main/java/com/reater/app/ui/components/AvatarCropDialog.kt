@@ -111,7 +111,7 @@ fun AvatarCropDialog(
         )
     }
 
-    com.reater.app.ui.theme.AppDialog(
+    Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
