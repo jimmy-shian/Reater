@@ -1,10 +1,14 @@
 package com.reater.app.ui.player
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -33,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Pause
@@ -136,6 +141,11 @@ fun InlineVideoPlayer(
     var position by remember { mutableIntStateOf(0) }
     var duration by remember { mutableIntStateOf(0) }
 
+    // 預先取得本機影片真實尺寸（含旋轉校正）
+    val fileDims = remember(localPath) { getVideoDimensions(localPath) }
+    var videoWidth by remember(localPath) { mutableIntStateOf(fileDims?.first ?: 0) }
+    var videoHeight by remember(localPath) { mutableIntStateOf(fileDims?.second ?: 0) }
+
     fun applyInlineMute(mp: MediaPlayer?, muted: Boolean) {
         runCatching {
             if (muted) mp?.setVolume(0f, 0f) else mp?.setVolume(1f, 1f)
@@ -191,7 +201,7 @@ fun InlineVideoPlayer(
         }
     }
 
-    // 全螢幕彈窗（放大轉橫向，關閉自動還原直向）
+    // 全螢幕彈窗（自動依影片比例決定預設直或橫向，關閉自動還原直向）
     if (isFullscreen) {
         Dialog(
             onDismissRequest = { isFullscreen = false },
@@ -206,6 +216,8 @@ fun InlineVideoPlayer(
                 startPosition = position,
                 startPlaying = isPlaying,
                 startMuted = isMuted,
+                initialVideoWidth = videoWidth,
+                initialVideoHeight = videoHeight,
                 onClose = { finalPos, finalPlaying, finalMuted ->
                     isFullscreen = false
                     position = finalPos
@@ -252,6 +264,20 @@ fun InlineVideoPlayer(
                         isPrepared = true
                         isBuffering = false
                         duration = mp.duration
+                        val w = mp.videoWidth
+                        val h = mp.videoHeight
+                        if (w > 0 && h > 0) {
+                            videoWidth = w
+                            videoHeight = h
+                        }
+                        runCatching {
+                            mp.setOnVideoSizeChangedListener { _, newW, newH ->
+                                if (newW > 0 && newH > 0) {
+                                    videoWidth = newW
+                                    videoHeight = newH
+                                }
+                            }
+                        }
                         applyInlineMute(mp, isMuted)
                         if (autoPlay) {
                             VideoPlaybackManager.onPlayStarted(playerId) {
@@ -395,6 +421,8 @@ private fun FullscreenVideoViewer(
     startPosition: Int,
     startPlaying: Boolean,
     startMuted: Boolean = true,
+    initialVideoWidth: Int = 0,
+    initialVideoHeight: Int = 0,
     onClose: (finalPosition: Int, isPlaying: Boolean, isMuted: Boolean) -> Unit
 ) {
     val view = LocalView.current
@@ -416,8 +444,17 @@ private fun FullscreenVideoViewer(
     var showSpeedMenu by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    // 預設放大轉橫向（仿 YouTube 行為；真實轉向 Activity）
-    var isLandscape by remember { mutableStateOf(true) }
+    // 預設方向：依影片實際寬高比自動判斷（寬 >= 高 → 橫向，寬 < 高 → 直向）。
+    // 若初進入時尺寸未知，預設為 false (直向全螢幕)，避免手機縱向瀏覽時突然強行橫置。
+    val initialLandscape = remember {
+        if (initialVideoWidth > 0 && initialVideoHeight > 0) {
+            initialVideoWidth >= initialVideoHeight
+        } else {
+            getVideoDimensions(localPath)?.let { (w, h) -> w >= h }
+        }
+    }
+    var orientationDecided by remember { mutableStateOf(initialLandscape != null) }
+    var isLandscape by remember { mutableStateOf<Boolean?>(initialLandscape ?: false) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
@@ -425,8 +462,9 @@ private fun FullscreenVideoViewer(
     // 真實轉向：切換 Activity.requestedOrientation（Manifest 有 configChanges，不會重建）
     val activity = context as? android.app.Activity
     LaunchedEffect(isLandscape) {
+        if (isLandscape == null) return@LaunchedEffect
         runCatching {
-            activity?.requestedOrientation = if (isLandscape) {
+            activity?.requestedOrientation = if (isLandscape == true) {
                 ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             } else {
                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -452,17 +490,9 @@ private fun FullscreenVideoViewer(
     }
 
     // 設定 Dialog Window 透明系統列
-    val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+    val dialogWindow = remember(view) { findDialogWindow(view) }
     SideEffect {
-        dialogWindow?.let { win ->
-            WindowCompat.setDecorFitsSystemWindows(win, false)
-            win.statusBarColor = android.graphics.Color.TRANSPARENT
-            win.navigationBarColor = android.graphics.Color.TRANSPARENT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                win.isNavigationBarContrastEnforced = false
-                win.isStatusBarContrastEnforced = false
-            }
-        }
+        applyDialogWindowImmersive(dialogWindow)
     }
 
     // 退出時釋放播放器並還原直向
@@ -527,15 +557,6 @@ private fun FullscreenVideoViewer(
         onClose(position, isPlaying, isMuted)
     }
 
-    // 系統安全邊界：Compose 狀態化 insets（Dialog attach 後自動重算，不是一次性讀取）。
-    // 真實轉向後系統 insets 即為當前方向的正確值，只需通用保底即可。
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val safeTop = maxOf(statusTop + 4.dp, 10.dp)
-    val safeBottom = maxOf(navBottom + 16.dp, 28.dp)
-
-    val safeSidePadding = PaddingValues(start = 16.dp, end = 16.dp)
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -558,6 +579,23 @@ private fun FullscreenVideoViewer(
                         duration = mp.duration
                         isPrepared = true
                         isBuffering = false
+                        // 依影片實際寬高比自動決定直/橫向（僅進場時判斷一次）
+                        if (!orientationDecided) {
+                            val w = mp.videoWidth
+                            val h = mp.videoHeight
+                            if (w > 0 && h > 0) {
+                                orientationDecided = true
+                                isLandscape = (w >= h)
+                            }
+                        }
+                        runCatching {
+                            mp.setOnVideoSizeChangedListener { _, w, h ->
+                                if (!orientationDecided && w > 0 && h > 0) {
+                                    orientationDecided = true
+                                    isLandscape = (w >= h)
+                                }
+                            }
+                        }
                         runCatching {
                             if (isMuted) mp.setVolume(0f, 0f) else mp.setVolume(1f, 1f)
                         }
@@ -651,9 +689,7 @@ private fun FullscreenVideoViewer(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(top = safeTop)
-                        .padding(safeSidePadding)
-                        .padding(vertical = 8.dp),
+                        .then(fullscreenTopBarModifier(isLandscape == true)),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -672,7 +708,7 @@ private fun FullscreenVideoViewer(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (isLandscape) "橫向全螢幕" else "直向全螢幕",
+                            text = if (isLandscape == true) "橫向全螢幕" else "直向全螢幕",
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold
@@ -684,7 +720,7 @@ private fun FullscreenVideoViewer(
                         shape = RoundedCornerShape(16.dp),
                         color = Color.White.copy(alpha = 0.22f),
                         modifier = Modifier.clickable {
-                            isLandscape = !isLandscape
+                            isLandscape = !(isLandscape ?: true)
                             controlsVisible = true
                             lastInteractionTime = System.currentTimeMillis()
                         }
@@ -701,7 +737,7 @@ private fun FullscreenVideoViewer(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (isLandscape) "切換直向" else "切換橫向",
+                                text = if (isLandscape == true) "切換直向" else "切換橫向",
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -777,13 +813,11 @@ private fun FullscreenVideoViewer(
                 }
 
                 // 3. 底部 YouTube 風格進度條與資訊按鈕列
-                // 直向與橫向皆精準避開導覽列與側邊邊界
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(safeSidePadding)
-                        .padding(bottom = safeBottom)
+                        .then(fullscreenBottomBarModifier(isLandscape == true))
                 ) {
                     // 拖曳中時間預覽懸浮提示
                     if (scrubbing) {
@@ -853,7 +887,7 @@ private fun FullscreenVideoViewer(
                             fontWeight = FontWeight.Medium
                         )
 
-                        // 右側按鈕：靜音、倍速與轉向切換
+                        // 右側按鈕：靜音、下載、倍速與轉向切換
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -875,6 +909,43 @@ private fun FullscreenVideoViewer(
                                         contentDescription = if (isMuted) "取消靜音" else "靜音",
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            // 下載按鈕（將影片儲存到系統相簿，仿圖片檢視器）
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color.White.copy(alpha = 0.2f),
+                                modifier = Modifier.clickable {
+                                    controlsVisible = true
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    coroutineScope.launch {
+                                        saveMediaToGalleryWithFeedback(
+                                            context = context,
+                                            isVideo = true,
+                                            localPath = localPath,
+                                            remoteUrl = remoteUrl
+                                        )
+                                    }
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = "下載影片",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "下載",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
@@ -903,7 +974,7 @@ private fun FullscreenVideoViewer(
                                 shape = RoundedCornerShape(6.dp),
                                 color = Color.White.copy(alpha = 0.2f),
                                 modifier = Modifier.clickable {
-                                    isLandscape = !isLandscape
+                                    isLandscape = !(isLandscape ?: true)
                                     controlsVisible = true
                                     lastInteractionTime = System.currentTimeMillis()
                                 }
@@ -920,7 +991,7 @@ private fun FullscreenVideoViewer(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (isLandscape) "直向" else "橫向",
+                                        text = if (isLandscape == true) "直向" else "橫向",
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium

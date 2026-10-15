@@ -2,14 +2,16 @@ package com.reater.app.data.backup
 
 import androidx.room3.withWriteTransaction
 import com.reater.app.data.local.AppDatabase
+import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.CommentEntity
 import com.reater.app.data.local.entity.ItemEntity
 import com.reater.app.data.local.entity.ItemTagCrossRef
-import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.KeywordEntity
 import com.reater.app.data.local.entity.MediaEntity
+import com.reater.app.data.local.entity.SavedCollectionEntity
 import com.reater.app.data.local.entity.TagEntity
 import com.reater.app.data.local.entity.UserEditEntity
+import com.reater.app.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -18,8 +20,6 @@ import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import javax.inject.Inject
 import javax.inject.Singleton
-
-import com.reater.app.data.repository.SettingsRepository
 
 @Serializable
 data class ExportedSettings(
@@ -33,7 +33,10 @@ data class ExportedSettings(
     val customBaseUrl: String = "https://api.openai.com/v1",
     val aiTransmissionConsent: Boolean = false,
     val customAvatarId: String = "life",
-    val customAvatarUri: String? = null
+    val customAvatarUri: String? = null,
+    val isProLicensed: Boolean = false,
+    val proLicenseEmail: String? = null,
+    val proLicenseCode: String? = null
 )
 
 @Serializable
@@ -41,10 +44,19 @@ data class ReaterExportV1(
     val version: String = "v1",
     val fileFormat: String = "reater",
     val exportedAt: Long = System.currentTimeMillis(),
-    val appVersion: String = "1.0.0",
+    val appVersion: String = "1.0.2",
     val settings: ExportedSettings? = null,
     val items: List<ExportedItem>,
-    val categories: List<ExportedCategory> = emptyList()
+    val categories: List<ExportedCategory> = emptyList(),
+    val collections: List<ExportedCollection> = emptyList()
+)
+
+@Serializable
+data class ExportedCollection(
+    val name: String,
+    val iconName: String = "life",
+    val rulesJson: String,
+    val sortOrder: Int = 0
 )
 
 @Serializable
@@ -63,7 +75,11 @@ data class ExportedItem(
     val tags: List<String> = emptyList(),
     val comments: List<ExportedComment> = emptyList(),
     val categoryName: String? = null,
-    val media: List<ExportedMedia> = emptyList()
+    val media: List<ExportedMedia> = emptyList(),
+    val topicTag: String = "",
+    val isDeleted: Boolean = false,
+    val openCount: Int = 0,
+    val lastOpenedAt: Long = 0L
 )
 
 @Serializable
@@ -74,7 +90,8 @@ data class ExportedComment(
     val likeCount: Int,
     val parentExternalId: String? = null,
     val depth: Int = 0,
-    val sortKey: String = ""
+    val sortKey: String = "",
+    val mediaJson: String = ""
 )
 
 @Serializable
@@ -92,6 +109,7 @@ data class ExportedCategory(
     val colorArgb: Int,
     val sort: Int,
     val isDefault: Boolean,
+    val avatarIcon: String = "life",
     val keywords: List<ExportedKeyword> = emptyList()
 )
 
@@ -111,6 +129,7 @@ class BackupManager @Inject constructor(
 
     private val itemDao get() = database.itemDao()
     private val categoryDao get() = database.categoryDao()
+    private val proDao get() = database.proDao()
 
     private val json = Json {
         prettyPrint = true
@@ -125,6 +144,8 @@ class BackupManager @Inject constructor(
         val categories = categoryDao.getAllCategories()
         val keywordsByCategory = categoryDao.getAllKeywords().groupBy { it.categoryId }
         val categoryNames = categories.associate { it.id to it.name }
+        val collections = runCatching { proDao.observeAllCollections().first() }.getOrDefault(emptyList())
+
         val exportList = details.map { detail ->
             ExportedItem(
                 canonicalUrl = detail.item.canonicalUrl,
@@ -147,13 +168,18 @@ class BackupManager @Inject constructor(
                         likeCount = it.likeCount,
                         parentExternalId = it.parentExternalId,
                         depth = it.depth,
-                        sortKey = it.sortKey
+                        sortKey = it.sortKey,
+                        mediaJson = it.mediaJson
                     )
                 },
                 categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
                 media = detail.media.map {
                     ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position)
-                }
+                },
+                topicTag = detail.item.topicTag,
+                isDeleted = detail.item.isDeleted,
+                openCount = detail.userEdit?.openCount ?: 0,
+                lastOpenedAt = detail.userEdit?.lastOpenedAt ?: 0L
             )
         }
 
@@ -163,25 +189,47 @@ class BackupManager @Inject constructor(
                 colorArgb = category.colorArgb,
                 sort = category.sort,
                 isDefault = category.isDefault,
+                avatarIcon = category.avatarIcon,
                 keywords = keywordsByCategory[category.id].orEmpty().map {
                     ExportedKeyword(it.term, it.lang, it.weight, it.matchScope)
                 }
             )
         }
-        val currentSettings = ExportedSettings(
-            themeMode = settingsRepository.themeMode.first(),
-            fontScale = settingsRepository.fontScale.first(),
-            unreadNudgeEnabled = settingsRepository.unreadNudgeEnabled.first(),
-            unreadNudgeDelayMin = settingsRepository.unreadNudgeDelayMin.first(),
-            reviewDigestEnabled = settingsRepository.reviewDigestEnabled.first(),
-            reviewDigestHour = settingsRepository.reviewDigestHour.first(),
-            selectedModel = settingsRepository.selectedModel.first(),
-            customBaseUrl = settingsRepository.customBaseUrl.first(),
-            aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
-            customAvatarId = settingsRepository.customAvatarId.first(),
-            customAvatarUri = settingsRepository.customAvatarUri.first()
+
+        val exportedCollections = collections.map { col ->
+            ExportedCollection(
+                name = col.name,
+                iconName = col.iconName,
+                rulesJson = col.rulesJson,
+                sortOrder = col.sortOrder
+            )
+        }
+
+        val currentSettings = runCatching {
+            ExportedSettings(
+                themeMode = settingsRepository.themeMode.first(),
+                fontScale = settingsRepository.fontScale.first(),
+                unreadNudgeEnabled = settingsRepository.unreadNudgeEnabled.first(),
+                unreadNudgeDelayMin = settingsRepository.unreadNudgeDelayMin.first(),
+                reviewDigestEnabled = settingsRepository.reviewDigestEnabled.first(),
+                reviewDigestHour = settingsRepository.reviewDigestHour.first(),
+                selectedModel = settingsRepository.selectedModel.first(),
+                customBaseUrl = settingsRepository.customBaseUrl.first(),
+                aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
+                customAvatarId = settingsRepository.customAvatarId.first(),
+                customAvatarUri = settingsRepository.customAvatarUri.first(),
+                isProLicensed = settingsRepository.isProUnlocked.first(),
+                proLicenseEmail = settingsRepository.proLicenseEmail.first(),
+                proLicenseCode = settingsRepository.proLicenseCode.first()
+            )
+        }.getOrNull()
+
+        val exportData = ReaterExportV1(
+            items = exportList,
+            categories = exportedCategories,
+            collections = exportedCollections,
+            settings = currentSettings
         )
-        val exportData = ReaterExportV1(items = exportList, categories = exportedCategories, settings = currentSettings)
         val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
         outputStream.write(jsonString.toByteArray(StandardCharsets.UTF_8))
         outputStream.flush()
@@ -233,16 +281,17 @@ class BackupManager @Inject constructor(
                     val read = stream.read(buffer)
                     if (read < 0) break
                     total += read
-                    require(total <= MAX_IMPORT_BYTES) { "僅支援 .reater 專屬格式（檔案超過 50MB 上限）" }
+                    require(total <= MAX_IMPORT_BYTES) { "僅支援小於 50MB 之 .reater 備份檔" }
                     out.write(buffer, 0, read)
                 }
                 out.toByteArray()
             }
             val content = String(bytes, StandardCharsets.UTF_8)
             val imported = json.decodeFromString(ReaterExportV1.serializer(), content)
-            require(imported.fileFormat == "reater") { "僅支援 .reater 專屬格式" }
+            require(imported.fileFormat == "reater") { "非法的 .reater 專屬格式" }
             require(imported.version == "v1") { "不支援的備份版本：${imported.version}" }
-            require(imported.items.size <= MAX_IMPORT_ITEMS) { "僅支援 .reater 專屬格式（項目過多）" }
+            require(imported.items.size <= MAX_IMPORT_ITEMS) { "備份檔項目過多（超過上限）" }
+
             imported.settings?.let { s ->
                 settingsRepository.setThemeMode(s.themeMode)
                 settingsRepository.setFontScale(s.fontScale)
@@ -257,11 +306,16 @@ class BackupManager @Inject constructor(
                 if (s.customAvatarUri != null) {
                     settingsRepository.setCustomAvatarUri(s.customAvatarUri)
                 }
+                if (s.isProLicensed || !s.proLicenseCode.isNullOrBlank()) {
+                    settingsRepository.restoreProLicense(s.proLicenseEmail, s.proLicenseCode)
+                }
             }
+
             var count = 0
             database.withWriteTransaction {
                 val itemDao = database.itemDao()
                 val importedCategoryIds = mutableMapOf<String, Long>()
+
                 for (category in imported.categories) {
                     val existingCategory = categoryDao.getCategoryByName(category.name)
                     val saved = CategoryEntity(
@@ -269,7 +323,8 @@ class BackupManager @Inject constructor(
                         name = category.name,
                         colorArgb = category.colorArgb,
                         sort = category.sort,
-                        isDefault = category.isDefault
+                        isDefault = category.isDefault,
+                        avatarIcon = category.avatarIcon
                     )
                     val categoryId = if (existingCategory == null) categoryDao.insertCategory(saved) else {
                         categoryDao.insertCategory(saved)
@@ -281,8 +336,20 @@ class BackupManager @Inject constructor(
                     })
                     importedCategoryIds[category.name] = categoryId
                 }
+
+                for (col in imported.collections) {
+                    proDao.insertCollection(
+                        SavedCollectionEntity(
+                            name = col.name,
+                            iconName = col.iconName,
+                            rulesJson = col.rulesJson,
+                            sortOrder = col.sortOrder
+                        )
+                    )
+                }
+
                 for (item in imported.items) {
-                    require(item.canonicalUrl.isNotBlank()) { "僅支援 .reater 專屬格式（資料缺 URL）" }
+                    require(item.canonicalUrl.isNotBlank()) { "匯入資料缺少有效 URL" }
                     val existing = itemDao.getItemByCanonicalUrl(item.canonicalUrl)
                     val entity = ItemEntity(
                         id = existing?.id ?: 0,
@@ -295,6 +362,7 @@ class BackupManager @Inject constructor(
                         postedAt = item.postedAt,
                         postedAtRaw = existing?.postedAtRaw.orEmpty(),
                         bodyText = item.bodyText,
+                        topicTag = item.topicTag,
                         commentsText = item.commentsText,
                         mediaJson = existing?.mediaJson ?: "[]",
                         likeCount = existing?.likeCount ?: 0,
@@ -304,7 +372,9 @@ class BackupManager @Inject constructor(
                         sourceVersion = existing?.sourceVersion ?: 1,
                         lastFetchStatus = existing?.lastFetchStatus ?: "NOT_FETCHED",
                         lastFetchAt = existing?.lastFetchAt ?: 0L,
-                        rawJsonMin = ""
+                        rawJsonMin = "",
+                        isDeleted = item.isDeleted,
+                        deletedAt = if (item.isDeleted) System.currentTimeMillis() else null
                     )
                     val itemId = if (existing == null) itemDao.insertItem(entity) else {
                         itemDao.updateItem(entity)
@@ -320,6 +390,8 @@ class BackupManager @Inject constructor(
                             categoryId = item.categoryName?.let(importedCategoryIds::get) ?: oldEdit?.categoryId,
                             isRead = item.isRead,
                             isFavorite = item.isFavorite,
+                            openCount = item.openCount,
+                            lastOpenedAt = item.lastOpenedAt,
                             editedAt = System.currentTimeMillis(),
                             editSource = "IMPORT",
                             dirtyFlag = false
@@ -335,7 +407,8 @@ class BackupManager @Inject constructor(
                             likeCount = comment.likeCount,
                             parentExternalId = comment.parentExternalId,
                             depth = comment.depth,
-                            sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" }
+                            sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
+                            mediaJson = comment.mediaJson
                         )
                     })
                     database.mediaDao().deleteMediaByItemId(itemId)

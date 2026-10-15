@@ -90,6 +90,19 @@ class SettingsRepository @Inject constructor(
         prefs[KEY_PRO_EMAIL]
     }
 
+    val proLicenseCode: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_PRO_CODE]
+    }
+
+    suspend fun restoreProLicense(email: String?, code: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PRO_LICENSED] = true
+            prefs[KEY_PRO_UNLOCKED] = true
+            if (!email.isNullOrBlank()) prefs[KEY_PRO_EMAIL] = email
+            if (!code.isNullOrBlank()) prefs[KEY_PRO_CODE] = code
+        }
+    }
+
     val themeMode: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_THEME_MODE] ?: "system"
     }

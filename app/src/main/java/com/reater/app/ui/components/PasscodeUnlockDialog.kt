@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,12 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.reater.app.R
 import com.reater.app.ui.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -66,12 +69,32 @@ fun PasscodeUnlockDialog(
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
 
+    var isLinkMode by remember { mutableStateOf(false) }
+    var linkInput by remember { mutableStateOf("") }
     var passcode by remember(initialCode) { mutableStateOf(initialCode) }
     var emailInput by remember(initialEmail) { mutableStateOf(initialEmail) }
     var isVerifying by remember { mutableStateOf(false) }
 
     val unlockScrollState = rememberScrollState()
     DismissFocusOnScroll(unlockScrollState, focusManager)
+
+    fun parseUnlockLink(input: String): Pair<String, String>? {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return null
+        val uri = runCatching { Uri.parse(trimmed) }.getOrNull()
+        if (uri != null && uri.isHierarchical) {
+            val email = uri.getQueryParameter("email")?.trim().orEmpty()
+            val code = (uri.getQueryParameter("code") ?: uri.getQueryParameter("key"))?.trim().orEmpty()
+            if (email.isNotBlank() && code.isNotBlank()) return email to code
+        }
+        val emailMatch = Regex("""[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}""").find(trimmed)?.value
+        val codeMatch = Regex("""PRO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}""", RegexOption.IGNORE_CASE).find(trimmed)?.value
+            ?: Regex("""(?:code|key)[=:\s]+([A-Za-z0-9_-]+)""").find(trimmed)?.groups?.get(1)?.value
+        if (!emailMatch.isNullOrBlank() && !codeMatch.isNullOrBlank()) {
+            return emailMatch to codeMatch
+        }
+        return null
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -82,9 +105,8 @@ fun PasscodeUnlockDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 固定頂欄
                 DialogHeader(
-                    title = "解鎖 Reater Pro",
+                    title = "開通 Reater Pro",
                     onClose = onDismiss,
                     modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                 )
@@ -109,44 +131,111 @@ fun PasscodeUnlockDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text("本機密碼 / 啟用碼解鎖", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isLinkMode) "貼上一鍵開通連結 (單欄自動解析)" else "序號通行碼 / 授權信箱開通",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        IconButton(
+                            onClick = {
+                                isLinkMode = !isLinkMode
+                                if (!isLinkMode && linkInput.isNotBlank()) {
+                                    parseUnlockLink(linkInput)?.let { (e, c) ->
+                                        emailInput = e
+                                        passcode = c
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mode_switch),
+                                contentDescription = "切換輸入模式",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = passcode,
-                        onValueChange = { passcode = it },
-                        placeholder = {
-                            Text(
-                                "輸入專屬啟用碼 (如 PRO-XXXX-XXXX-XXXX)",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = emailInput,
-                        onValueChange = { emailInput = it },
-                        placeholder = {
+                    if (isLinkMode) {
+                        OutlinedTextField(
+                            value = linkInput,
+                            onValueChange = {
+                                linkInput = it
+                                parseUnlockLink(it)?.let { (e, c) ->
+                                    emailInput = e
+                                    passcode = c
+                                }
+                            },
+                            placeholder = {
+                                Text(
+                                    "貼上 reater:... 或 http://... 一行文字",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                        )
+                        val parsed = parseUnlockLink(linkInput)
+                        if (parsed != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                "申請時的 Email (必填,與啟用碼綁定)",
+                                text = "已識別信箱：${parsed.first} ｜ 序號：${parsed.second}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
-                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                    )
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = passcode,
+                            onValueChange = { passcode = it },
+                            placeholder = {
+                                Text(
+                                    "輸入專屬開通序號 (如 PRO-XXXX-XXXX-XXXX)",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = emailInput,
+                            onValueChange = { emailInput = it },
+                            placeholder = {
+                                Text(
+                                    "輸入註冊的 Email (必填，與序號綁定)",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -159,8 +248,8 @@ fun PasscodeUnlockDialog(
                             onClick = {
                                 val intent = Intent(Intent.ACTION_SENDTO).apply {
                                     data = Uri.parse("mailto:jimmy910824@gmail.com")
-                                    putExtra(Intent.EXTRA_SUBJECT, "Reater Pro 啟用碼申請")
-                                    putExtra(Intent.EXTRA_TEXT, "您好，我想申請 Reater Pro 啟用金鑰檔案 / 密碼。\nEmail: $emailInput")
+                                    putExtra(Intent.EXTRA_SUBJECT, "Reater Pro 授權申請")
+                                    putExtra(Intent.EXTRA_TEXT, "您好，我想申請 Reater Pro 授權憑證 / 密碼。\nEmail: $emailInput")
                                 }
                                 runCatching { context.startActivity(intent) }
                                     .onFailure { Toast.makeText(context, "請手動寄信至 jimmy910824@gmail.com", Toast.LENGTH_LONG).show() }
@@ -177,7 +266,7 @@ fun PasscodeUnlockDialog(
                             Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "聯絡作者信箱",
+                                "聯繫作者信箱",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
@@ -187,19 +276,34 @@ fun PasscodeUnlockDialog(
 
                         Button(
                             onClick = {
+                                val targetCode: String
+                                val targetEmail: String
+                                if (isLinkMode) {
+                                    val parsed = parseUnlockLink(linkInput)
+                                    if (parsed == null) {
+                                        Toast.makeText(context, "無法解析連結，請確認格式（需含 email 與 code 參數）或切換雙欄手動輸入", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    targetEmail = parsed.first
+                                    targetCode = parsed.second
+                                } else {
+                                    targetEmail = emailInput
+                                    targetCode = passcode
+                                }
+
                                 isVerifying = true
                                 coroutineScope.launch {
-                                    val success = viewModel.unlockWithPasscode(passcode, emailInput)
+                                    val success = viewModel.unlockWithPasscode(targetCode, targetEmail)
                                     isVerifying = false
                                     if (success) {
                                         Toast.makeText(context, "Reater Pro 已成功解鎖！", Toast.LENGTH_LONG).show()
                                         onDismiss()
                                     } else {
-                                        Toast.makeText(context, "啟用碼或密碼不正確，請確認後重試或寄信聯繫管理者。", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "授權碼或密碼不正確，請確認後重試或聯繫作者。", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             },
-                            enabled = passcode.isNotBlank() && !isVerifying,
+                            enabled = (if (isLinkMode) linkInput.isNotBlank() else passcode.isNotBlank()) && !isVerifying,
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 42.dp),
@@ -210,7 +314,7 @@ fun PasscodeUnlockDialog(
                             )
                         ) {
                             Text(
-                                if (isVerifying) "驗證中" else "驗證並啟用",
+                                if (isVerifying) "驗證中..." else "驗證並開通",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
@@ -223,7 +327,7 @@ fun PasscodeUnlockDialog(
 
                     // Google Play Purchase Section
                     Text(
-                        "或透過 Google Play 一次性購買",
+                        "透過 Google Play 一次性購買",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         lineHeight = 19.sp,
@@ -232,7 +336,7 @@ fun PasscodeUnlockDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "價格：${billingState.price ?: "連線取得中"}",
+                        "價格：${billingState.price ?: "讀取中..."}",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
@@ -243,7 +347,6 @@ fun PasscodeUnlockDialog(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // 最底部按鈕：左右排列 + 方形按鈕 (RoundedCornerShape(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -258,7 +361,7 @@ fun PasscodeUnlockDialog(
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                "還原既有購買",
+                                "恢復已購項目",
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
@@ -268,7 +371,7 @@ fun PasscodeUnlockDialog(
                         Button(
                             onClick = {
                                 if (activity != null) viewModel.buyPro(activity)
-                                else Toast.makeText(context, "無法開啟 Google Play 購買流程。", Toast.LENGTH_SHORT).show()
+                                else Toast.makeText(context, "無法啟動 Google Play 購買流程", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier
                                 .weight(1f)

@@ -748,6 +748,34 @@ fun SettingsDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // ---------- 解除安裝與資料保留 ----------
+                    SettingsSectionTitle("解除安裝與資料保留")
+                    Spacer(modifier = Modifier.height(6.dp))
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "解除安裝時保留紀錄選項",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "已啟用 Android 原生保留資料技術 (hasFragileUserData)。\n當您從手機解除安裝 Reater 時，系統會主動彈出選項詢問是否「保留應用程式資料」——勾選即可保留所有儲存貼文與分類，取消勾選則完整清除乾淨。",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.outline,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
                     // 底部儲存 AI 設定
                     Row(
                         modifier = Modifier.fillMaxWidth(),
