@@ -1,6 +1,21 @@
 package com.reater.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -182,9 +197,13 @@ fun ReaterDropdownPanel(
         exit = ReaterDropdownMotion.panelExit,
         modifier = modifier.fillMaxWidth()
     ) {
+        val scale by transition.animateFloat(transitionSpec = { tween(ReaterDropdownMotion.ExpandMs) }, label = "dropdownScaleY") {
+            if (it == EnterExitState.Visible) 1f else 0f
+        }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .graphicsLayer { scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }
                 .shadow(8.dp, RoundedCornerShape(12.dp)),
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -305,6 +324,44 @@ fun ReaterDropdownNumberInput(
                 modifier = Modifier.heightIn(min = 44.dp)
             ) {
                 Text("套用", fontSize = 13.sp, maxLines = 1, softWrap = false)
+            }
+        }
+    }
+}
+
+/** Keep the popup alive through the reverse animation; native popup handles outside tap and Back. */
+@Composable
+fun AnimatedDropdownPopup(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val visible = remember { MutableTransitionState(false) }
+    SideEffect { visible.targetState = expanded }
+    if (visible.currentState || visible.targetState) {
+        Popup(
+            popupPositionProvider = remember {
+                object : PopupPositionProvider {
+                    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
+                        layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset = IntOffset(
+                        anchorBounds.left.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                        anchorBounds.bottom.coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                    )
+                }
+            },
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = true)
+        ) {
+            AnimatedVisibility(visibleState = visible,
+                enter = ReaterDropdownMotion.panelEnter, exit = ReaterDropdownMotion.panelExit) {
+                val scale by transition.animateFloat(transitionSpec = { tween(ReaterDropdownMotion.ExpandMs) }, label = "popupScaleY") {
+                    if (it == EnterExitState.Visible) 1f else 0f
+                }
+                Surface(shape = RoundedCornerShape(12.dp), shadowElevation = 8.dp,
+                    modifier = Modifier.widthIn(max = 420.dp).padding(horizontal = 16.dp)
+                        .graphicsLayer { scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }) {
+                    Column(content = content)
+                }
             }
         }
     }

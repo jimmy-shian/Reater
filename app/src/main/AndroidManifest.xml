@@ -48,6 +48,7 @@
         <!-- Share Receiver Activity for Sharesheet -->
         <activity
             android:name=".ui.share.ShareSaveActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Reater.Dialog">

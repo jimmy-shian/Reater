@@ -1,5 +1,12 @@
 package com.reater.app.ui.settings
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.window.DialogProperties
 import android.Manifest
 import android.os.Build
 import android.widget.Toast
@@ -81,6 +88,7 @@ import androidx.compose.material.icons.filled.Lock
 import com.reater.app.ui.AvatarIcons
 import com.reater.app.ui.components.UserAvatarView
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsDialog(
     viewModel: MainViewModel,
@@ -92,6 +100,7 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val isPro by viewModel.isProUnlocked.collectAsState()
     val customAvatarId by viewModel.customAvatarId.collectAsState()
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
@@ -104,13 +113,6 @@ fun SettingsDialog(
     val nudgeDelay by viewModel.unreadNudgeDelayMin.collectAsState()
     val digestEnabled by viewModel.reviewDigestEnabled.collectAsState()
     val digestHour by viewModel.reviewDigestHour.collectAsState()
-
-    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            viewModel.setCustomAvatarUri(uri.toString())
-            Toast.makeText(context, "已成功套用自訂頭像照片", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     var apiKeyInput by remember { mutableStateOf("") }
     var baseUrlInput by remember { mutableStateOf(currentBaseUrl) }
@@ -134,7 +136,14 @@ fun SettingsDialog(
     val settingsScrollState = rememberScrollState()
     DismissFocusOnScroll(settingsScrollState, focusManager)
 
-    Dialog(onDismissRequest = { dismissWithApply() }) {
+    Dialog(onDismissRequest = { dismissWithApply() }, properties = DialogProperties(dismissOnBackPress = false)) {
+        val imeVisible = WindowInsets.isImeVisible
+        BackHandler {
+            if (imeVisible) {
+                focusManager.clearFocus()
+                keyboard?.hide()
+            } else dismissWithApply()
+        }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -142,7 +151,7 @@ fun SettingsDialog(
                 .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().imePadding().navigationBarsPadding().dismissFocusOnTap(focusManager)) {
                 // 固定頂欄
                 DialogHeader(
                     title = "系統設定",
@@ -290,13 +299,13 @@ fun SettingsDialog(
                                         )
                                     }
                                     Button(
-                                        onClick = { photoPickerLauncher.launch("image/*") },
+                                        onClick = onOpenIconGallery,
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            "相簿自訂上傳",
+                                            "自訂頭像",
                                             fontSize = 12.sp,
                                             maxLines = 1,
                                             softWrap = false,
@@ -760,13 +769,13 @@ fun SettingsDialog(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                text = "解除安裝時保留紀錄選項",
+                                text = "解除安裝時預設保留 Reater 資料",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "已啟用 Android 原生保留資料技術 (hasFragileUserData)。\n當您從手機解除安裝 Reater 時，系統會主動彈出選項詢問是否「保留應用程式資料」——勾選即可保留所有儲存貼文與分類，取消勾選則完整清除乾淨。",
+                                text = "重新安裝後可繼續使用保留的紀錄。",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 lineHeight = 16.sp
@@ -776,7 +785,7 @@ fun SettingsDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // 底部儲存 AI 設定
+                    // 底部儲存設定
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
@@ -789,7 +798,7 @@ fun SettingsDialog(
                             },
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("儲存 AI 設定")
+                            Text("儲存設定")
                         }
                     }
                 }

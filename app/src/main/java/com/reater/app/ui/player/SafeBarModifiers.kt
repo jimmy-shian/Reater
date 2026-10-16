@@ -23,6 +23,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -69,6 +71,16 @@ fun applyDialogWindowImmersive(window: Window?) {
     }
 }
 
+/** 隱藏控制列時讓系統列一同進入沉浸模式，邊緣滑動仍可暫時叫出。 */
+fun setFullscreenSystemBarsVisible(window: Window?, visible: Boolean) {
+    if (window == null) return
+    WindowCompat.getInsetsController(window, window.decorView).apply {
+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (visible) show(WindowInsetsCompat.Type.systemBars())
+        else hide(WindowInsetsCompat.Type.systemBars())
+    }
+}
+
 /**
  * 取得影片真實寬高（考慮 EXIF/MP4 轉向角度）。
  * 若轉向為 90 或 270 度，寬高對調。
@@ -98,68 +110,35 @@ fun getVideoDimensions(localPath: String): Pair<Int, Int>? {
     }
 }
 
-/**
- * 直向 / 橫向全螢幕頂部列樣式。
- *
- * 直向全螢幕：左右均衡，頂部保證在狀態列之下。
- * - top = max(實際 top inset + 8dp, 44dp)
- * - start/end = max(實際左右 inset + 16dp, 16dp)
- *
- * 橫向全螢幕：右側充分讓出導覽列返回鍵與相機切角。
- * - top = max(實際 top inset + 8dp, 28dp)
- * - start = max(實際 left inset + 12dp, 16dp)
- * - end = max(實際 right inset + 24dp, 52dp)
- */
+/** 控制列只加實際安全 Insets 與內容間距，不猜系統列高度。 */
 @Composable
-fun fullscreenTopBarModifier(isLandscape: Boolean): Modifier {
-    val safe = WindowInsets.safeDrawing.asPaddingValues()
-    val layoutDirection = LocalLayoutDirection.current
-    val topInset = safe.calculateTopPadding()
-    val leftInset = safe.calculateLeftPadding(layoutDirection)
-    val rightInset = safe.calculateRightPadding(layoutDirection)
-    return if (isLandscape) {
-        val top = maxOf(topInset + 8.dp, 28.dp)
-        val left = maxOf(leftInset + 12.dp, 16.dp)
-        val right = maxOf(rightInset + 24.dp, 52.dp)
-        Modifier.padding(top = top, bottom = 8.dp, start = left, end = right)
-    } else {
-        val top = maxOf(topInset + 8.dp, 44.dp)
-        val left = maxOf(leftInset + 16.dp, 16.dp)
-        val right = maxOf(rightInset + 16.dp, 16.dp)
-        Modifier.padding(top = top, bottom = 8.dp, start = left, end = right)
+fun fullscreenTopBarModifier(isLandscape: Boolean): Modifier =
+    WindowInsets.safeDrawing.asPaddingValues().let { safe ->
+        val direction = LocalLayoutDirection.current
+        Modifier.padding(start = safe.calculateLeftPadding(direction) + 16.dp,
+            end = safe.calculateRightPadding(direction) + 16.dp,
+            top = safe.calculateTopPadding() + 4.dp, bottom = 4.dp)
     }
-}
 
-/**
- * 直向 / 橫向全螢幕底部控制列樣式。
- *
- * 直向全螢幕：保證在三鍵導覽列 (48dp) 或手勢條之上，預留舒適呼吸空間。
- * - bottom = max(實際 bottom inset + 20dp 呼吸, 68dp 保底)
- * - start/end = max(實際左右 inset + 16dp, 16dp)
- *
- * 橫向全螢幕：
- * - bottom = max(實際 bottom inset + 20dp, 40dp) 上抬避免貼邊
- * - start = max(實際 left inset + 12dp, 16dp)
- * - end = max(實際 right inset + 24dp, 52dp) 充分避開三鍵導覽列
- */
 @Composable
 fun fullscreenBottomBarModifier(isLandscape: Boolean): Modifier {
     val safe = WindowInsets.safeDrawing.asPaddingValues()
-    val layoutDirection = LocalLayoutDirection.current
-    val bottomInset = safe.calculateBottomPadding()
-    val leftInset = safe.calculateLeftPadding(layoutDirection)
-    val rightInset = safe.calculateRightPadding(layoutDirection)
-    return if (isLandscape) {
-        val bottom = maxOf(bottomInset + 20.dp, 40.dp)
-        val left = maxOf(leftInset + 12.dp, 16.dp)
-        val right = maxOf(rightInset + 24.dp, 52.dp)
-        Modifier.padding(start = left, end = right, top = 4.dp, bottom = bottom)
-    } else {
-        val bottom = maxOf(bottomInset + 20.dp, 68.dp)
-        val left = maxOf(leftInset + 16.dp, 16.dp)
-        val right = maxOf(rightInset + 16.dp, 16.dp)
-        Modifier.padding(start = left, end = right, top = 4.dp, bottom = bottom)
+    val direction = LocalLayoutDirection.current
+    return Modifier.padding(
+        start = safe.calculateLeftPadding(direction) + 16.dp,
+        end = safe.calculateRightPadding(direction) + 16.dp,
+        bottom = safe.calculateBottomPadding() + 12.dp,
+        top = 4.dp
+    )
+}
+
+fun Context.findPlayerActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
     }
+    return current as? Activity
 }
 
 /**
@@ -294,4 +273,3 @@ private fun downloadToTemp(context: Context, url: String, isVideo: Boolean): Fil
         null
     }
 }
-

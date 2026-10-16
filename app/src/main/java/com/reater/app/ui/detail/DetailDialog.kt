@@ -1,5 +1,31 @@
 package com.reater.app.ui.detail
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -62,6 +88,7 @@ import com.reater.app.ui.components.ThreadsStatsRow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -307,6 +334,7 @@ private fun getAvatarColor(name: String): Color {
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DetailDialog(
     item: ItemDetail,
@@ -325,13 +353,30 @@ fun DetailDialog(
         }
     }
     var isSummarizing by remember { mutableStateOf(false) }
-    var currentSummary by remember { mutableStateOf(item.manualSummary) }
+    var currentSummary by remember(item.item.id) { mutableStateOf(item.aiSummary) }
+    var manualNote by rememberSaveable(item.item.id) { mutableStateOf(item.manualNote) }
+    val latestNote by rememberUpdatedState(manualNote)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val detailScroll = rememberScrollState()
+    val dismissCallback by rememberUpdatedState(onDismiss)
+    val dragState = remember(item.item.id) { DetailDragState(detailScroll) { dismissCallback() } }
+    DisposableEffect(lifecycleOwner, item.item.id) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.updateManualNote(item.item.id, latestNote)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.updateManualNote(item.item.id, latestNote)
+        }
+    }
     var showAiConsent by remember { mutableStateOf(false) }
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
     // 全螢幕媒體檢視器下標（null = 關閉；索引對應「祖先在前、主文在後」的扁平有序，與存檔合併順序一致）
-    var viewerIndex by remember { mutableStateOf<Int?>(null) }
+    var viewerIndex by rememberSaveable(item.item.id) { mutableStateOf<Int?>(null) }
+    var selectedMediaUrl by rememberSaveable(item.item.id) { mutableStateOf("") }
     // 左上 ... 溢位選單 + 改分類編輯器
     var showOverflow by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
@@ -340,29 +385,13 @@ fun DetailDialog(
         com.reater.app.data.remote.MediaDedup.distinctEntities(item.media.sortedBy { it.position })
     }
 
-    if (viewerIndex != null) {
-        MediaViewerDialog(
-            media = viewerSortedMedia.map { ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath) },
-            startIndex = (viewerIndex ?: 0).coerceIn(0, maxOf(0, viewerSortedMedia.size - 1)),
-            onDismiss = { viewerIndex = null }
-        )
-    }
-
     // 留言內建圖片/影片的全螢幕檢視器（點留言圖片放大）
     var commentViewerMedia by remember { mutableStateOf<List<ViewerMedia>?>(null) }
     var commentViewerIndex by remember { mutableStateOf(0) }
-    if (commentViewerMedia != null) {
-        MediaViewerDialog(
-            media = commentViewerMedia ?: emptyList(),
-            startIndex = commentViewerIndex,
-            onDismiss = { commentViewerMedia = null }
-        )
-    }
-
     fun runAiSummary() {
         isSummarizing = true
         coroutineScope.launch {
-            val result = viewModel.summarizeItemWithAi(item)
+            val result = viewModel.summarizeItemWithAi(item, manualNote)
             isSummarizing = false
             result.onSuccess {
                 currentSummary = it
@@ -404,11 +433,26 @@ fun DetailDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
+        usePlatformDefaultWidth = false, decorFitsSystemWindows = false
+    )) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(
+            alpha = (0.6f * (1f - abs(dragState.offset) / dragState.containerHeight)).coerceIn(0f, 0.6f)
+        )).systemBarsPadding().imePadding().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+        val noteFocusManager = LocalFocusManager.current
+        val noteKeyboard = LocalSoftwareKeyboardController.current
+        val noteImeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        BackHandler(enabled = noteImeOpen) {
+            noteFocusManager.clearFocus()
+            noteKeyboard?.hide()
+        }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .fillMaxHeight(0.96f)
+                .onSizeChanged { dragState.containerHeight = it.height.toFloat().coerceAtLeast(1f) }
+                .graphicsLayer { translationY = dragState.offset }
+                .nestedScroll(dragState)
                 .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
@@ -483,7 +527,10 @@ fun DetailDialog(
                     }
                     CategoryBadge(
                         category = category,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.weight(1f, fill = false).clickable {
+                            viewModel.openCategory(category?.id)
+                            onDismiss()
+                        }.padding(vertical = 12.dp)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
@@ -519,7 +566,7 @@ fun DetailDialog(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(detailScroll)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                 // 改分類編輯器（由 ... 選單展開）：下拉篩選 + 即時生效
@@ -698,51 +745,11 @@ fun DetailDialog(
                             // 祖先區塊媒體（母文圖歸母文：銀晝戰績/裝備/排行在此顯示，不再掛到子文下）
                             if (aMedia.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                aMedia.forEach { am ->
-                                    val aSource = if (am.localPath.isNotBlank() && File(am.localPath).exists()) {
-                                        File(am.localPath)
-                                    } else {
-                                        am.remoteUrl
-                                    }
-                                    val aIsVideo = am.kind.equals("VIDEO", ignoreCase = true)
-                                    // viewer 下標需映射回頂層 viewerSortedMedia（正規化比對，避免多變體 URL 錯位）
-                                    val aKey = com.reater.app.data.remote.MediaDedup.normalizeKey(am.remoteUrl)
-                                    val globalIdx = viewerSortedMedia.indexOfFirst {
-                                        com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == aKey
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(190.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                                            .then(
-                                                if (aIsVideo) Modifier
-                                                else Modifier.clickable {
-                                                    if (globalIdx >= 0) viewerIndex = globalIdx
-                                                }
-                                            )
-                                    ) {
-                                        if (aIsVideo) {
-                                            InlineVideoPlayer(
-                                                remoteUrl = am.remoteUrl,
-                                                localPath = am.localPath,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        } else {
-                                            AsyncImage(
-                                                model = aSource,
-                                                contentDescription = "母文圖片",
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .clickable {
-                                                        if (globalIdx >= 0) viewerIndex = globalIdx
-                                                    },
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                DetailMediaPager(aMedia, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }) { media ->
+                                    val key = com.reater.app.data.remote.MediaDedup.normalizeKey(media.remoteUrl)
+                                    viewerIndex = viewerSortedMedia.indexOfFirst {
+                                        com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == key
+                                    }.takeIf { it >= 0 }
                                 }
                             }
 
@@ -827,13 +834,12 @@ fun DetailDialog(
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = formatSavedTime(item.item.sourceFetchedAt),
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.outline
-                            )
                         }
+                        Text(
+                            text = formatSavedTime(item.item.sourceFetchedAt),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
                         Spacer(modifier = Modifier.height(4.dp))
 
@@ -876,54 +882,11 @@ fun DetailDialog(
                         // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
                         if (mainMediaList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            mainMediaList.forEach { m ->
-                                val mKey = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
-                                val globalIdx = viewerSortedMedia.indexOfFirst {
-                                    com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == mKey
-                                }
-                                val imageSource = if (m.localPath.isNotBlank() && File(m.localPath).exists()) {
-                                    File(m.localPath)
-                                } else {
-                                    m.remoteUrl
-                                }
-                                val isVideo = m.kind.equals("VIDEO", ignoreCase = true)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(190.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .then(
-                                            if (isVideo) Modifier
-                                            else Modifier.clickable {
-                                                if (globalIdx >= 0) viewerIndex = globalIdx
-                                                else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
-                                                    .takeIf { it >= 0 }
-                                            }
-                                        )
-                                ) {
-                                    if (isVideo) {
-                                        InlineVideoPlayer(
-                                            remoteUrl = m.remoteUrl,
-                                            localPath = m.localPath,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    } else {
-                                        AsyncImage(
-                                            model = imageSource,
-                                            contentDescription = "Media",
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable {
-                                                    if (globalIdx >= 0) viewerIndex = globalIdx
-                                                    else viewerIndex = item.media.indexOfFirst { it.remoteUrl == m.remoteUrl }
-                                                        .takeIf { it >= 0 }
-                                                },
-                                            contentScale = ContentScale.Fit
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
+                            DetailMediaPager(mainMediaList, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }) { media ->
+                                val key = com.reater.app.data.remote.MediaDedup.normalizeKey(media.remoteUrl)
+                                viewerIndex = viewerSortedMedia.indexOfFirst {
+                                    com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == key
+                                }.takeIf { it >= 0 }
                             }
                         }
 
@@ -967,6 +930,31 @@ fun DetailDialog(
                     }
                 }
 
+                // 人工筆記與 AI 輸出使用不同欄位，編輯即交由 ViewModel 持久化。
+                Spacer(Modifier.height(14.dp))
+                Text("人工筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                val noteBringIntoView = remember { BringIntoViewRequester() }
+                var noteFocused by remember { mutableStateOf(false) }
+                val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+                LaunchedEffect(imeBottom, noteFocused) {
+                    if (noteFocused) noteBringIntoView.bringIntoView()
+                }
+                OutlinedTextField(
+                    value = manualNote,
+                    onValueChange = {
+                        manualNote = it
+                        viewModel.updateManualNote(item.item.id, it)
+                    },
+                    placeholder = { Text("寫下你的想法…") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth().bringIntoViewRequester(noteBringIntoView)
+                        .onFocusChanged { state ->
+                            noteFocused = state.isFocused
+                            if (state.isFocused) coroutineScope.launch { noteBringIntoView.bringIntoView() }
+                            else viewModel.updateManualNote(item.item.id, manualNote)
+                        }
+                )
+
                 // AI 摘要
                 if (currentSummary.isNotBlank()) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -978,7 +966,7 @@ fun DetailDialog(
                     ) {
                         Column {
                             Text(
-                                text = "✨ AI 智能摘要",
+                                text = "AI 摘要",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -992,14 +980,6 @@ fun DetailDialog(
                             )
                         }
                     }
-                }
-
-                // 個人筆記
-                if (item.manualNote.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(text = "個人筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = item.manualNote, fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
                 }
 
                 // 3. 精華留言區塊（以圖3 串文風格：左側頭像軌＋垂直連接線，右側帳號＋內容＋媒體＋讚數列）
@@ -1091,43 +1071,21 @@ fun DetailDialog(
                                 // 留言媒體
                                 if (commentMedia.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    commentMedia.forEachIndexed { ci, cm ->
-                                        val cmIsVideo = cm.kind.equals("VIDEO", ignoreCase = true)
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(180.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        ) {
-                                            if (cmIsVideo) {
-                                                InlineVideoPlayer(
-                                                    remoteUrl = cm.remoteUrl,
-                                                    localPath = cm.localPath,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            } else {
-                                                val cmSource = if (cm.localPath.isNotBlank() && File(cm.localPath).exists()) {
-                                                    File(cm.localPath)
-                                                } else {
-                                                    cm.remoteUrl
-                                                }
-                                                AsyncImage(
-                                                    model = cmSource,
-                                                    contentDescription = "留言圖片",
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clickable {
-                                                            commentViewerMedia = commentMedia.map { m ->
-                                                                ViewerMedia(kind = m.kind, remoteUrl = m.remoteUrl, localPath = m.localPath)
-                                                            }
-                                                            commentViewerIndex = ci
-                                                        },
-                                                    contentScale = ContentScale.Fit
-                                                )
-                                            }
+                                    val entries = remember(commentMedia) {
+                                        commentMedia.mapIndexed { position, media ->
+                                            com.reater.app.data.local.entity.MediaEntity(
+                                                itemId = item.item.id, kind = media.kind,
+                                                remoteUrl = media.remoteUrl, localPath = media.localPath,
+                                                position = position
+                                            )
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                    DetailMediaPager(entries, selectedMediaUrl, { selectedMediaUrl = it },
+                                        { dragState.pagerDragging = it }) { selected ->
+                                        commentViewerMedia = commentMedia.map {
+                                            ViewerMedia(it.kind, it.remoteUrl, it.localPath)
+                                        }
+                                        commentViewerIndex = entries.indexOf(selected).coerceAtLeast(0)
                                     }
                                 }
 
@@ -1189,4 +1147,24 @@ fun DetailDialog(
             }
         }
     }
+    }
+
+    if (viewerIndex != null) {
+        MediaViewerDialog(
+            media = viewerSortedMedia.map { ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath) },
+            startIndex = (viewerIndex ?: 0).coerceIn(0, maxOf(0, viewerSortedMedia.size - 1)),
+            onPageChanged = { index -> selectedMediaUrl = viewerSortedMedia[index].remoteUrl },
+            onDismiss = { viewerIndex = null }
+        )
+    }
+
+    if (commentViewerMedia != null) {
+        MediaViewerDialog(
+            media = commentViewerMedia ?: emptyList(),
+            startIndex = commentViewerIndex,
+            onPageChanged = { page -> commentViewerMedia?.getOrNull(page)?.let { selectedMediaUrl = it.remoteUrl } },
+            onDismiss = { commentViewerMedia = null }
+        )
+    }
+
 }

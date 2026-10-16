@@ -53,5 +53,8 @@ data class ItemDetail(
         get() = userEdit?.manualNote.orEmpty()
 
     val manualSummary: String
-        get() = userEdit?.manualSummary.orEmpty()
+        get() = aiSummary
+
+    val aiSummary: String
+        get() = userEdit?.aiSummary.orEmpty()
 }

@@ -1,8 +1,12 @@
 <resources>
     <style name="Theme.Reater" parent="android:Theme.Material.Light.NoActionBar">
     </style>
-    <style name="Theme.Reater.Dialog" parent="android:Theme.Material.Light.Dialog">
-        <item name="android:windowIsFloating">true</item>
+    <!-- Share UI owns its panel and scrim; a full window gives IME stable resize/inset bounds. -->
+    <style name="Theme.Reater.Dialog" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 </resources>

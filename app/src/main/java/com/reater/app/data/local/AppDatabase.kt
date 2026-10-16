@@ -40,7 +40,7 @@ import com.reater.app.data.local.entity.UserEditEntity
         SavedCollectionEntity::class,
         SavedQueryEntity::class
     ],
-    version = 7,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -53,6 +53,16 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun proDao(): ProDao
 
     companion object {
+        val MIGRATION_7_8: Migration = Migration(7, 8) { connection ->
+            connection.execSql("ALTER TABLE `saved_collections` ADD COLUMN `isEnabled` INTEGER NOT NULL DEFAULT 1")
+        }
+
+        val MIGRATION_8_9: Migration = Migration(8, 9) { connection ->
+            connection.execSql("ALTER TABLE `user_edits` ADD COLUMN `aiSummary` TEXT NOT NULL DEFAULT ''")
+            // 舊版 AI 輸出存於 manualSummary；人工筆記始終保留於 manualNote。
+            connection.execSql("UPDATE `user_edits` SET `aiSummary` = `manualSummary`")
+        }
+
         private fun androidx.sqlite.SQLiteConnection.execSql(sql: String) {
             prepare(sql).use { it.step() }
         }

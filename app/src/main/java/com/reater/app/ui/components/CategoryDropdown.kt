@@ -1,247 +1,97 @@
 package com.reater.app.ui.components
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.input.ImeAction
 import com.reater.app.data.local.entity.CategoryEntity
-import com.reater.app.ui.AvatarIcons
 
-/**
- * 分享頁分類下拉選單：輸入即篩選 + 一鍵新增。
- * - 自訂分類再多也不會橫向爆版
- * - 輸入關鍵字即時過濾；無命中時提供「新增「xxx」」入口
- * - 已選分類顯示圖示 + 名稱，右側 X 可清空回未分類
- */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Editable combobox: the editor retains its identity and focus as results change. */
 @Composable
 fun CategoryDropdown(
     categories: List<CategoryEntity>,
     selectedCategoryId: Long?,
     onSelect: (Long?) -> Unit,
-    onRequestCreate: (prefill: String) -> Unit,
-    modifier: Modifier = Modifier
+    onRequestCreate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    categoryQuery: String? = null,
+    onQueryChange: ((String) -> Unit)? = null,
+    dropdownExpanded: Boolean? = null,
+    onExpandedChange: ((Boolean) -> Unit)? = null,
+    onFieldFocused: ((Boolean) -> Unit)? = null
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var filterText by remember { mutableStateOf("") }
-    val focusManager = LocalFocusManager.current
-
+    var localQuery by rememberSaveable { mutableStateOf("") }
+    var localExpanded by rememberSaveable { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val expanded = dropdownExpanded ?: localExpanded
+    val queryText = categoryQuery ?: localQuery
     val selected = categories.firstOrNull { it.id == selectedCategoryId }
-    val query = filterText.trim()
-    val filtered = remember(categories, query) {
-        if (query.isBlank()) categories
-        else categories.filter { it.name.contains(query, ignoreCase = true) }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun expand(value: Boolean) { localExpanded = value; onExpandedChange?.invoke(value) }
+    fun query(value: String) { localQuery = value; onQueryChange?.invoke(value) }
+    fun select(id: Long?) {
+        query(categories.firstOrNull { it.id == id }?.name.orEmpty())
+        onSelect(id)
+        expand(false)
+        focusManager.clearFocus()
+        keyboard?.hide()
     }
-    val exactMatch = query.isNotBlank() &&
-        categories.any { it.name.equals(query, ignoreCase = true) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier.fillMaxWidth()
-    ) {
+    val normalized = queryText.trim()
+    val filtered = categories.filter { normalized.isBlank() || it.name.contains(normalized, true) }
+    val canCreate = normalized.isNotBlank() && normalized != "未分類" &&
+        normalized.length <= 80 && normalized.none { it.isISOControl() } &&
+        categories.none { it.name.trim().equals(normalized, true) }
+    BackHandler(enabled = expanded) { expand(false); focusManager.clearFocus(); keyboard?.hide() }
+    Column(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
-            value = if (expanded) filterText else (selected?.name ?: "未分類"),
-            onValueChange = {
-                filterText = it
-                expanded = true
-            },
-            readOnly = false,
-            label = { Text("選擇分類（可輸入篩選）") },
-            placeholder = { Text("輸入關鍵字篩選，或新增分類") },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(
-                        id = AvatarIcons.getDrawableRes(selected?.avatarIcon ?: "life")
-                    ),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = Color.Unspecified
-                )
-            },
-            trailingIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (selectedCategoryId != null && !expanded) {
-                        IconButton(
-                            onClick = { onSelect(null) },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Clear,
-                                contentDescription = "清除分類",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                    ReaterDropdownArrow(expanded = expanded)
-                }
-            },
+            value = if (focused || expanded) queryText else selected?.name.orEmpty(),
+            onValueChange = { query(it); expand(true) },
+            label = { Text(if (focused) "搜尋或輸入新分類…" else "選擇分類") },
+            placeholder = { Text("未分類") },
             singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(
-                    type = androidx.compose.material3.MenuAnchorType.PrimaryEditable,
-                    enabled = true
-                )
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = {
-                expanded = false
-                filterText = ""
-            }
-        ) {
-            DropdownMenuItem(
-                text = { Text("未分類") },
-                trailingIcon = {
-                    if (selectedCategoryId == null) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+            trailingIcon = {
+                Row {
+                    if (queryText.isNotEmpty() || selectedCategoryId != null) {
+                        IconButton(onClick = { query(""); expand(true) }) {
+                            Icon(Icons.Default.Clear, "清除分類")
+                        }
                     }
-                },
-                onClick = {
-                    onSelect(null)
-                    expanded = false
-                    filterText = ""
+                    IconButton(onClick = { expand(!expanded) }) { ReaterDropdownArrow(expanded) }
                 }
-            )
-            filtered.forEach { cat ->
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(
-                                    id = AvatarIcons.getDrawableRes(cat.avatarIcon)
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.Unspecified
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                cat.name,
-                                maxLines = 1,
-                                fontSize = 14.sp
-                            )
-                            if (cat.isDefault) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "內建",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-                    },
-                    trailingIcon = {
-                        if (selectedCategoryId == cat.id) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelect(cat.id)
-                        expanded = false
-                        filterText = ""
-                    }
-                )
+            },
+            modifier = Modifier.fillMaxWidth().onFocusChanged {
+                focused = it.isFocused
+                onFieldFocused?.invoke(it.isFocused)
+                if (it.isFocused) expand(true) else expand(false)
             }
-            // 無命中或想新增：提供建立入口（把輸入文字帶入新建對話框）
-            if (query.isNotBlank() && !exactMatch) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("新增「$query」", color = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        filterText = ""
-                        onRequestCreate(query)
-                    }
-                )
-            } else {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("新增分類…", color = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        filterText = ""
-                        onRequestCreate(query)
-                    }
-                )
-            }
-            if (categories.isNotEmpty()) {
-                val defaultCount = categories.count { it.isDefault }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = if (defaultCount > 0) "共 ${categories.size} 個分類（內建 $defaultCount）"
-                        else "共 ${categories.size} 個分類",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+        )
+        ReaterDropdownPanel(expanded) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                ReaterDropdownOption("未分類", selectedCategoryId == null, { select(null) })
+                if (filtered.isEmpty()) Text("找不到相符分類", Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (normalized.isNotBlank()) Text("符合分類", Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+                filtered.forEach { category ->
+                    ReaterDropdownOption(category.name, selectedCategoryId == category.id, { select(category.id) })
+                }
+                if (canCreate) {
+                    HorizontalDivider()
+                    ReaterDropdownOption("＋ 新增「$normalized」", false, {
+                        onRequestCreate(normalized)
+                        expand(false)
+                        focusManager.clearFocus()
+                        keyboard?.hide()
+                    })
                 }
             }
         }

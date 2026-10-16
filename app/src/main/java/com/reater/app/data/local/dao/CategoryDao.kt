@@ -4,6 +4,7 @@ import androidx.room3.Dao
 import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
+import androidx.room3.Transaction
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.KeywordEntity
 import kotlinx.coroutines.flow.Flow
@@ -20,11 +21,28 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")
     suspend fun getCategoryById(id: Long): CategoryEntity?
 
-    @Query("SELECT * FROM categories WHERE name = :name COLLATE NOCASE LIMIT 1")
-    suspend fun getCategoryByName(name: String): CategoryEntity?
+    // Kotlin normalization also handles Unicode whitespace/case, unlike SQLite NOCASE/TRIM.
+    suspend fun getCategoryByName(name: String): CategoryEntity? =
+        getAllCategories().firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
 
     @Query("DELETE FROM keywords WHERE categoryId = :categoryId")
     suspend fun clearKeywordsForCategory(categoryId: Long)
+
+    /** Normalize at the transaction boundary so concurrent creators reuse one category. */
+    @Transaction
+    suspend fun getOrCreateCategory(category: CategoryEntity): Long {
+        val name = category.name.trim()
+        require(name.isNotEmpty() && name != "未分類" && name.length <= 80 && name.none { it.isISOControl() })
+        return getCategoryByName(name)?.id ?: insertCategory(category.copy(name = name))
+    }
+
+    @Query("UPDATE categories SET sort = :sort WHERE id = :id")
+    suspend fun updateSort(id: Long, sort: Int)
+
+    @Transaction
+    suspend fun reorderCategories(ids: List<Long>) {
+        ids.forEachIndexed { index, id -> updateSort(id, index) }
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: CategoryEntity): Long

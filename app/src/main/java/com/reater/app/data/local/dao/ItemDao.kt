@@ -92,7 +92,7 @@ interface ItemDao {
             OR items.authorHandle LIKE '%' || :query || '%'
             OR items.authorDisplayName LIKE '%' || :query || '%'
             OR user_edits.manualNote LIKE '%' || :query || '%'
-            OR user_edits.manualSummary LIKE '%' || :query || '%'
+            OR user_edits.aiSummary LIKE '%' || :query || '%'
             OR EXISTS (
                  SELECT 1 FROM comments
                  WHERE comments.itemId = items.id

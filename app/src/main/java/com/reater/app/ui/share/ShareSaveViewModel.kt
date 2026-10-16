@@ -1,6 +1,7 @@
 package com.reater.app.ui.share
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.reater.app.data.local.dao.CategoryDao
@@ -37,6 +38,9 @@ data class ShareSaveUiState(
     val commentsText: String = "",
     val manualNote: String = "",
     val selectedCategoryId: Long? = null,
+    val categoryQuery: String = "",
+    val isCategoryDropdownExpanded: Boolean = false,
+    val categoryFieldFocused: Boolean = false,
     /** 自動預選依據：""＝無，"topic"＝同主題紀錄，"author"＝同作者紀錄（供 UI 提示用） */
     val suggestedBasis: String = "",
     val isFavorite: Boolean = false,
@@ -59,6 +63,7 @@ data class ShareSaveUiState(
 
 @HiltViewModel
 class ShareSaveViewModel @Inject constructor(
+    private val savedStateHandle: SavedStateHandle,
     private val repository: ThreadPostRepository,
     private val graphQLClient: ThreadsGraphQLClient,
     private val categoryDao: CategoryDao,
@@ -66,7 +71,11 @@ class ShareSaveViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ShareSaveUiState())
+    private val _uiState = MutableStateFlow(ShareSaveUiState(
+        manualNote = savedStateHandle["manualNote"] ?: "",
+        selectedCategoryId = savedStateHandle["selectedCategoryId"],
+        categoryQuery = savedStateHandle["categoryQuery"] ?: ""
+    ))
     val uiState: StateFlow<ShareSaveUiState> = _uiState.asStateFlow()
 
     // 兩條抓取路徑各自保存結果，最後 merge（HTTP 失敗但 WebView 成功也算成功）
@@ -76,7 +85,7 @@ class ShareSaveViewModel @Inject constructor(
     private var webDone = false
     private var lastAppliedComments = ""
     /** 使用者是否已手動選過分類（手動選擇後，歷史預選不再覆蓋） */
-    private var userPickedCategory = false
+    private var userPickedCategory: Boolean = savedStateHandle["userPickedCategory"] ?: false
     private var suggestionJob: Job? = null
 
     val categories: StateFlow<List<CategoryEntity>> = categoryDao.observeAllCategories()
@@ -95,13 +104,14 @@ class ShareSaveViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val lastId = settingsRepository.lastSelectedCategoryId.first()
-            if (lastId != null && _uiState.value.selectedCategoryId == null) {
+            if (!userPickedCategory && lastId != null && _uiState.value.selectedCategoryId == null) {
                 _uiState.update { it.copy(selectedCategoryId = lastId) }
             }
         }
     }
 
     fun processIncomingText(sharedText: String) {
+        if (_uiState.value.rawText == sharedText && _uiState.value.targetUrl.isNotBlank()) return
         _uiState.update { it.copy(rawText = sharedText) }
         val extractedUrl = UrlParser.extractFirstThreadsUrl(sharedText) ?: sharedText.trim()
         val parsed = UrlParser.parseAndCanonicalize(extractedUrl)
@@ -130,7 +140,7 @@ class ShareSaveViewModel @Inject constructor(
         httpDone = false
         webDone = false
         lastAppliedComments = ""
-        userPickedCategory = false
+        // Restored editing and explicit selection survive Activity recreation.
         suggestionJob?.cancel()
         suggestionJob = null
 
@@ -424,12 +434,33 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     fun onNoteChanged(text: String) {
+        savedStateHandle["manualNoteEdited"] = true
+        savedStateHandle["manualNote"] = text
         _uiState.update { it.copy(manualNote = text) }
+    }
+
+    fun onCategoryQueryChanged(query: String) {
+        userPickedCategory = true
+        savedStateHandle["userPickedCategory"] = true
+        suggestionJob?.cancel()
+        savedStateHandle["categoryQuery"] = query
+        savedStateHandle["selectedCategoryId"] = null
+        _uiState.update { it.copy(categoryQuery = query, selectedCategoryId = null, isCategoryDropdownExpanded = true, suggestedBasis = "") }
+    }
+
+    fun setCategoryExpanded(expanded: Boolean) {
+        _uiState.update { it.copy(isCategoryDropdownExpanded = expanded) }
+    }
+
+    fun setCategoryFocused(focused: Boolean) {
+        _uiState.update { it.copy(categoryFieldFocused = focused) }
     }
 
     fun onCategorySelected(categoryId: Long?) {
         userPickedCategory = true
+        savedStateHandle["userPickedCategory"] = true
         suggestionJob?.cancel()
+        savedStateHandle["selectedCategoryId"] = categoryId
         _uiState.update { it.copy(selectedCategoryId = categoryId, suggestedBasis = "") }
         viewModelScope.launch {
             settingsRepository.setLastSelectedCategoryId(categoryId)
@@ -449,34 +480,23 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     fun createCategory(name: String, avatarIcon: String) {
-        if (name.isBlank()) return
-        val currentCategories = categories.value
-        val isPro = isProUnlocked.value
-
-        // 免費版最多 3 個自訂分類（內建 8 分類不計入）
-        val customCount = currentCategories.count { !it.isDefault }
-        if (!isPro && customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
-            _uiState.update { it.copy(showProLimitNotice = true, showCreateCategoryDialog = false) }
-            return
-        }
-
+        val normalized = name.trim()
+        if (normalized.isBlank() || normalized == "未分類" || normalized.length > 80 || normalized.any { it.isISOControl() }) return
         viewModelScope.launch {
-            val newCat = CategoryEntity(
-                name = name.trim(),
-                colorArgb = 0xFF5C6BC0.toInt(),
-                avatarIcon = avatarIcon.ifBlank { "life" }
-            )
-            val newId = categoryDao.insertCategory(newCat)
-            settingsRepository.setLastSelectedCategoryId(newId)
-            userPickedCategory = true
-            suggestionJob?.cancel()
-            _uiState.update {
-                it.copy(
-                    selectedCategoryId = newId,
-                    suggestedBasis = "",
-                    showCreateCategoryDialog = false
-                )
+            val existing = categoryDao.getCategoryByName(normalized)
+            val customCount = categoryDao.getAllCategories().count { !it.isDefault }
+            if (existing == null && !settingsRepository.isProUnlocked.first() &&
+                customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
+                _uiState.update { it.copy(showProLimitNotice = true, showCreateCategoryDialog = false) }
+                return@launch
             }
+            val newId = existing?.id ?: categoryDao.getOrCreateCategory(CategoryEntity(
+                name = normalized, colorArgb = 0xFF5C6BC0.toInt(), avatarIcon = avatarIcon.ifBlank { "life" }
+            ))
+            onCategorySelected(newId)
+            savedStateHandle["categoryQuery"] = normalized
+            _uiState.update { it.copy(categoryQuery = normalized, isCategoryDropdownExpanded = false,
+                showCreateCategoryDialog = false) }
         }
     }
 
@@ -495,6 +515,8 @@ class ShareSaveViewModel @Inject constructor(
                     manualNote = state.manualNote,
                     manualSummary = "",
                     categoryId = state.selectedCategoryId,
+                    categoryExplicitlySelected = userPickedCategory,
+                    manualNoteEdited = savedStateHandle["manualNoteEdited"] ?: false,
                     fetchedResult = state.fetchedResult,
                     isFavorite = state.isFavorite
                 )

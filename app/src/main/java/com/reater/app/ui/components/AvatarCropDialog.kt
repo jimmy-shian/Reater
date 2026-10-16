@@ -37,6 +37,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -81,12 +84,16 @@ fun AvatarCropDialog(
     initialScale: Float = 1f,
     initialNormOffsetX: Float = 0f,
     initialNormOffsetY: Float = 0f,
-    onConfirm: (cropped: Bitmap, scale: Float, normOffsetX: Float, normOffsetY: Float) -> Unit,
+    initialRotation: Float = 0f,
+    onConfirm: (cropped: Bitmap, scale: Float, normOffsetX: Float, normOffsetY: Float, rotation: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var userScale by remember(source, initialScale) {
+    var rotation by rememberSaveable { mutableFloatStateOf(initialRotation) }
+    var userScale by rememberSaveable {
         mutableFloatStateOf(initialScale.coerceIn(1f, 4f))
     }
+    var savedNormX by rememberSaveable { mutableFloatStateOf(initialNormOffsetX) }
+    var savedNormY by rememberSaveable { mutableFloatStateOf(initialNormOffsetY) }
     var offset by remember(source) { mutableStateOf(Offset.Zero) }
     var displayPx by remember { mutableFloatStateOf(0f) }
     var hasAppliedInitialOffset by remember(source) { mutableStateOf(false) }
@@ -100,15 +107,18 @@ fun AvatarCropDialog(
 
     fun clampOffset(scale: Float, raw: Offset): Offset {
         val t = baseScale() * scale
-        val dispW = source.width * t
-        val dispH = source.height * t
+        val quarterTurn = rotation.toInt() % 180 != 0
+        val dispW = (if (quarterTurn) source.height else source.width) * t
+        val dispH = (if (quarterTurn) source.width else source.height) * t
         // cover 時限制邊緣不露出空白；fit（letterbox）時允許在空白範圍內平移但不出框
         val maxX = (abs(dispW - displayPx) / 2).coerceAtLeast(0f)
         val maxY = (abs(dispH - displayPx) / 2).coerceAtLeast(0f)
-        return Offset(
-            raw.x.coerceIn(-maxX, maxX),
-            raw.y.coerceIn(-maxY, maxY)
-        )
+        val clamped = Offset(raw.x.coerceIn(-maxX, maxX), raw.y.coerceIn(-maxY, maxY))
+        if (displayPx > 0f) {
+            savedNormX = clamped.x / displayPx
+            savedNormY = clamped.y / displayPx
+        }
+        return clamped
     }
 
     Dialog(
@@ -127,6 +137,7 @@ fun AvatarCropDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -175,10 +186,10 @@ fun AvatarCropDialog(
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .onSizeChanged {
                             val px = it.width.toFloat()
+                            val previousPx = displayPx
                             displayPx = px
-                            if (!hasAppliedInitialOffset && px > 0f) {
-                                val initRaw = Offset(initialNormOffsetX * px, initialNormOffsetY * px)
-                                offset = clampOffset(userScale, initRaw)
+                            if (px > 0f && (!hasAppliedInitialOffset || px != previousPx)) {
+                                offset = clampOffset(userScale, Offset(savedNormX * px, savedNormY * px))
                                 hasAppliedInitialOffset = true
                             }
                         }
@@ -238,6 +249,7 @@ fun AvatarCropDialog(
                                     scaleY = userScale
                                     translationX = offset.x
                                     translationY = offset.y
+                                    rotationZ = rotation
                                 }
                         )
                     }
@@ -258,6 +270,10 @@ fun AvatarCropDialog(
                     }
                 }
 
+                OutlinedButton(onClick = {
+                    rotation = (rotation + 90f) % 360f
+                    offset = clampOffset(userScale, offset)
+                }) { Text("旋轉 90°") }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -277,10 +293,10 @@ fun AvatarCropDialog(
                     }
                     Button(
                         onClick = {
-                            cropSquare(source, userScale, offset, displayPx, baseScale())?.let { cropped ->
+                            cropSquare(source, userScale, offset, displayPx, baseScale(), rotation)?.let { cropped ->
                                 val normX = if (displayPx > 0f) offset.x / displayPx else 0f
                                 val normY = if (displayPx > 0f) offset.y / displayPx else 0f
-                                onConfirm(cropped, userScale, normX, normY)
+                                onConfirm(cropped, userScale, normX, normY, rotation)
                             }
                         },
                         shape = RoundedCornerShape(10.dp),
@@ -311,15 +327,14 @@ fun cropSquare(
     userScale: Float,
     offsetPx: Offset,
     displayPx: Float,
-    baseScale: Float
+    baseScale: Float,
+    rotation: Float = 0f
 ): Bitmap? {
     return try {
         val t = baseScale * userScale.coerceIn(1f, 4f)
         if (t <= 0f || displayPx <= 0) return null
         val dispW = source.width * t
         val dispH = source.height * t
-        val left = (displayPx / 2 + offsetPx.x) - dispW / 2
-        val top = (displayPx / 2 + offsetPx.y) - dispH / 2
         val outSize = AvatarStorage.OUTPUT_SIZE
         val out = Bitmap.createBitmap(
             outSize,
@@ -331,13 +346,14 @@ fun cropSquare(
         val canvas = Canvas(out)
         val paint = Paint().apply { isFilterBitmap = true; isAntiAlias = true }
         val k = outSize / displayPx
-        val dst = RectF(
-            left * k,
-            top * k,
-            (left + dispW) * k,
-            (top + dispH) * k
-        )
-        canvas.drawBitmap(source, null, dst, paint)
+        canvas.translate(offsetPx.x * k, offsetPx.y * k)
+        canvas.rotate(rotation, outSize / 2f, outSize / 2f)
+        canvas.drawBitmap(source, null, RectF(
+            (displayPx / 2f - dispW / 2f) * k,
+            (displayPx / 2f - dispH / 2f) * k,
+            (displayPx / 2f + dispW / 2f) * k,
+            (displayPx / 2f + dispH / 2f) * k
+        ), paint)
         out
     } catch (_: Exception) {
         null

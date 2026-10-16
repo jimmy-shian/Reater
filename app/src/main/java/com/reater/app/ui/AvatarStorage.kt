@@ -15,7 +15,7 @@ import java.io.File
  * - 每次匯入（含裁切後存檔）都產生唯一檔名 custom_avatar_<millis>.jpg，
  *   DataStore 寫入不同字串 -> Flow 一定發出新值，Compose 內外同步重組；
  *   Coil 也不會命中同一路徑的舊快取（根治「換圖不刷新」）。
- * - 保留最近 MAX_HISTORY 張，可在「自訂相片頭貼」頁簽回選過往圖片。
+ * - 保留歷史頭像，由使用者確認後刪除，可在「自訂頭像」頁籤回選過往圖片。
  * - 切回內建圖示只清除 current，不刪檔（歷史保留）。
  */
 object AvatarStorage {
@@ -30,7 +30,9 @@ object AvatarStorage {
     data class CropTransform(
         val scale: Float,
         val normOffsetX: Float,
-        val normOffsetY: Float
+        val normOffsetY: Float,
+        val rotation: Float = 0f,
+        val cropViewport: Float = 1f
     )
 
     fun avatarDir(context: Context): File =
@@ -41,11 +43,32 @@ object AvatarStorage {
         File(avatarDir(context), LEGACY_FILE_NAME)
 
     fun isAvatarFile(f: File): Boolean {
-        if (f.name == LEGACY_FILE_NAME) return true
-        if (f.name.startsWith(ORIG_PREFIX)) return true
-        if (f.name.startsWith(CROP_PREFIX)) return true
-        if (!f.name.startsWith(PREFIX)) return false
-        return f.name.endsWith(".jpg") || f.name.endsWith(".png")
+        return isBackupFileName(f.name)
+    }
+
+    fun isBackupFileName(name: String): Boolean =
+        name == LEGACY_FILE_NAME ||
+            Regex("custom_avatar_(?:orig_)?[0-9]+\\.(?:jpg|png)").matches(name) ||
+            Regex("custom_avatar_crop_[0-9]+\\.txt").matches(name)
+
+    fun canDeleteHistory(path: String, currentPath: String?): Boolean = path != currentPath
+
+    fun deleteHistory(context: Context, path: String, currentPath: String?): Boolean {
+        if (!canDeleteHistory(path, currentPath)) return false
+        val file = File(path)
+        if (file.canonicalFile.parentFile != avatarDir(context).canonicalFile || !isDisplayFile(file)) return false
+        return deletePath(path)
+    }
+
+    fun encodeTransform(transform: CropTransform): String =
+        "${transform.scale},${transform.normOffsetX},${transform.normOffsetY},${transform.rotation},${transform.cropViewport}"
+
+    fun decodeTransform(content: String): CropTransform? {
+        val parts = content.trim().split(',')
+        if (parts.size < 3) return null
+        val values = parts.map { it.toFloatOrNull() ?: return null }
+        if (values.any { !it.isFinite() } || values[0] !in 1f..4f || values.getOrElse(4) { 1f } <= 0f) return null
+        return CropTransform(values[0], values[1], values[2], values.getOrElse(3) { 0f }, values.getOrElse(4) { 1f })
     }
 
     /** 是否為原始檔（完整保留、不可直接當頭像顯示，只供裁切器讀取）。 */
@@ -78,7 +101,8 @@ object AvatarStorage {
     fun extractTs(name: String): Long? {
         return try {
             var core = name
-            if (core.startsWith(ORIG_PREFIX)) core = core.removePrefix(ORIG_PREFIX)
+            if (core.startsWith(CROP_PREFIX)) core = core.removePrefix(CROP_PREFIX)
+            else if (core.startsWith(ORIG_PREFIX)) core = core.removePrefix(ORIG_PREFIX)
             else if (core.startsWith(PREFIX)) core = core.removePrefix(PREFIX)
             else if (core == LEGACY_FILE_NAME) return null
             else return null
@@ -128,7 +152,7 @@ object AvatarStorage {
             } ?: return null
             if (dest.exists() && dest.length() > 0) {
                 dest.setLastModified(System.currentTimeMillis())
-                pruneOverflow(dir)
+                // 歷史由使用者確認刪除，不能在新增時刪掉目前套用的舊頭像。
                 dest.absolutePath
             } else null
         } catch (_: Exception) {
@@ -146,7 +170,7 @@ object AvatarStorage {
             }
             if (dest.exists() && dest.length() > 0) {
                 dest.setLastModified(System.currentTimeMillis())
-                pruneOverflow(dir)
+                // 歷史由使用者管理，保留所有已使用的頭像。
                 dest.absolutePath
             } else null
         } catch (_: Exception) {
@@ -194,7 +218,7 @@ object AvatarStorage {
                 // 原始檔時間同步，避免被誤判為孤兒
                 File(dir, "$ORIG_PREFIX$ts.jpg").takeIf { it.exists() }?.setLastModified(ts)
                 File(dir, "$ORIG_PREFIX$ts.png").takeIf { it.exists() }?.setLastModified(ts)
-                prunePairsOverflow(dir)
+                // 不自動裁掉歷史，避免刪除目前使用的原始圖。
                 dest.absolutePath
             } else null
         } catch (_: Exception) {
@@ -388,12 +412,14 @@ object AvatarStorage {
         ts: Long,
         scale: Float,
         normOffsetX: Float,
-        normOffsetY: Float
+        normOffsetY: Float,
+        rotation: Float = 0f,
+        cropViewport: Float = 1f
     ) {
         runCatching {
             val dir = avatarDir(context)
             val file = File(dir, "$CROP_PREFIX$ts.txt")
-            file.writeText("$scale,$normOffsetX,$normOffsetY")
+            file.writeText(encodeTransform(CropTransform(scale, normOffsetX, normOffsetY, rotation, cropViewport)))
         }
     }
 
@@ -405,14 +431,7 @@ object AvatarStorage {
             val ts = extractTs(f.name) ?: pathOrTs.toLongOrNull() ?: return null
             val file = File(avatarDir(context), "$CROP_PREFIX$ts.txt")
             if (!file.exists() || file.length() <= 0) return null
-            val content = file.readText().trim()
-            val parts = content.split(",")
-            if (parts.size >= 3) {
-                val scale = parts[0].toFloatOrNull() ?: 1f
-                val normX = parts[1].toFloatOrNull() ?: 0f
-                val normY = parts[2].toFloatOrNull() ?: 0f
-                CropTransform(scale, normX, normY)
-            } else null
+            decodeTransform(file.readText())
         } catch (_: Exception) {
             null
         }

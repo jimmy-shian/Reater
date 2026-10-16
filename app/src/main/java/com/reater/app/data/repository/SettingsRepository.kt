@@ -19,6 +19,10 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.reater.app.ui.AvatarStorage
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val Context.dataStore by preferencesDataStore(name = "reater_settings")
 
@@ -157,9 +161,22 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun setCustomAvatarUri(uri: String?) {
+        val persistentPath = if (uri?.startsWith("content://") == true) {
+            withContext(Dispatchers.IO) {
+                val ts = System.currentTimeMillis()
+                val original = AvatarStorage.saveOriginal(context, Uri.parse(uri), ts)
+                    ?: error("無法將頭像複製至 App 儲存空間")
+                val image = AvatarStorage.decodeFile(original) ?: error("無法讀取頭像圖片")
+                try {
+                    AvatarStorage.saveCroppedWithTs(context, image, ts)?.also {
+                        AvatarStorage.saveCropTransform(context, ts, 1f, 0f, 0f)
+                    } ?: error("無法儲存頭像圖片")
+                } finally { image.recycle() }
+            }
+        } else uri
         context.dataStore.edit { prefs ->
-            if (uri != null) {
-                prefs[KEY_CUSTOM_AVATAR_URI] = uri
+            if (persistentPath != null) {
+                prefs[KEY_CUSTOM_AVATAR_URI] = persistentPath
             } else {
                 prefs.remove(KEY_CUSTOM_AVATAR_URI)
             }

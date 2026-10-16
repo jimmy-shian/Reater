@@ -29,7 +29,7 @@ class ThreadsLiveFetchTest {
         println("LIVE_bodyLen=${parsed.bodyText.length}")
         println("LIVE_body=[${parsed.bodyText}]")
         println("LIVE_media=${parsed.media}")
-        println("LIVE_replyCount=${parsed.replyCount} repostCount=${parsed.repostCount} like=${parsed.likeCount}")
+        println("LIVE_comments=${parsed.comments.size} like=${parsed.likeCount}")
         println("LIVE_comments=${parsed.comments.size}")
 
         assertTrue("no html fetched", fetched.html.isNotBlank())

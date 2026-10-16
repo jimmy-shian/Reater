@@ -16,6 +16,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +65,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.key
+import androidx.compose.material3.Button
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -112,15 +119,15 @@ private object VideoSpeedPrefs {
  * 內嵌式與全螢幕影片播放器（依循 Android 系統規範與 YouTube Mobile 播放器規範設計）
  *
  * 核心規範與設計點：
- * 1. 放大全螢幕時以真實轉向切換（Activity.requestedOrientation），直/橫向影片皆自然填滿；
- *    Manifest 有 configChanges，不會重建 Activity。關閉還原直向。
+ * 1. 放大全螢幕時以真實轉向切換（Activity.requestedOrientation），直/橫向影片皆依比例完整顯示；
+ *    Manifest 有 configChanges，不會重建 Activity。關閉還原進入前方向。
  * 2. 全螢幕內部提供直橫向切換按鈕，可自由在「直向全螢幕」與「橫向全螢幕」間切換。
- * 3. 安全邊界採 Compose 狀態化 insets（Dialog attach 後自動重算）＋保底值：
+ * 3. 安全邊界採 Compose 狀態化 insets（Dialog attach 後自動重算）：
  *    頂部貼緊狀態列，底部控制列保證位於系統導覽列之上。
  * 4. 仿 YouTube 播放體驗：
  *    - 點選畫面叫出控制列，播放中 3.5 秒自動淡出。
  *    - 中央支援：快退 10 秒、大圓形播放/暫停、快進 10 秒；左/右半部雙擊快退/快進 10 秒。
- *    - 底部高對比紅/白進度條，拖曳時顯示精確時間氣泡。
+ *    - 底部高對比紫/白進度條，拖曳時顯示精確時間氣泡。
  *    - 支援 0.75x ~ 2.0x 播放倍速切換與靜音一鍵切換。
  */
 @Composable
@@ -131,14 +138,17 @@ fun InlineVideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val playerId = remember { java.util.UUID.randomUUID().toString() }
-    var isPlaying by remember { mutableStateOf(false) }
+    var isPlaying by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
     var isPrepared by remember { mutableStateOf(false) }
-    var isFullscreen by remember { mutableStateOf(false) }
-    var isMuted by remember { mutableStateOf(true) }
+    var playbackError by remember { mutableStateOf(false) }
+    var retryAttempt by remember { mutableIntStateOf(0) }
+    var isFullscreen by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
+    var fullscreenWasPlaying by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
+    var isMuted by rememberSaveable(remoteUrl, localPath) { mutableStateOf(true) }
     var videoView by remember { mutableStateOf<VideoView?>(null) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
-    var position by remember { mutableIntStateOf(0) }
+    var position by rememberSaveable(remoteUrl, localPath) { mutableIntStateOf(0) }
     var duration by remember { mutableIntStateOf(0) }
 
     // 預先取得本機影片真實尺寸（含旋轉校正）
@@ -214,7 +224,7 @@ fun InlineVideoPlayer(
                 remoteUrl = remoteUrl,
                 localPath = localPath,
                 startPosition = position,
-                startPlaying = isPlaying,
+                startPlaying = fullscreenWasPlaying,
                 startMuted = isMuted,
                 initialVideoWidth = videoWidth,
                 initialVideoHeight = videoHeight,
@@ -249,6 +259,7 @@ fun InlineVideoPlayer(
             .clickable { toggleInlinePlay() },
         contentAlignment = Alignment.Center
     ) {
+        key(retryAttempt) {
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
@@ -257,29 +268,34 @@ fun InlineVideoPlayer(
                     } else remoteUrl
                     when (src) {
                         is File -> setVideoPath(src.absolutePath)
-                        is String -> if (src.isNotBlank()) setVideoURI(Uri.parse(src))
+                        is String -> if (src.isNotBlank()) setVideoURI(Uri.parse(src)) else {
+                            playbackError = true
+                            isBuffering = false
+                        }
                     }
                     setOnPreparedListener { mp ->
                         mediaPlayerRef = mp
                         isPrepared = true
+                        playbackError = false
                         isBuffering = false
                         duration = mp.duration
                         val w = mp.videoWidth
                         val h = mp.videoHeight
-                        if (w > 0 && h > 0) {
+                        if (fileDims == null && w > 0 && h > 0) {
                             videoWidth = w
                             videoHeight = h
                         }
                         runCatching {
                             mp.setOnVideoSizeChangedListener { _, newW, newH ->
-                                if (newW > 0 && newH > 0) {
+                                if (fileDims == null && newW > 0 && newH > 0) {
                                     videoWidth = newW
                                     videoHeight = newH
                                 }
                             }
                         }
                         applyInlineMute(mp, isMuted)
-                        if (autoPlay) {
+                        if (position > 0) runCatching { seekTo(position) }
+                        if (autoPlay || isPlaying) {
                             VideoPlaybackManager.onPlayStarted(playerId) {
                                 videoView?.let { if (it.isPlaying) it.pause() }
                                 isPlaying = false
@@ -287,7 +303,7 @@ fun InlineVideoPlayer(
                             mp.start()
                             isPlaying = true
                         } else {
-                            runCatching { seekTo(1) }
+                            runCatching { seekTo(position.coerceAtLeast(1)) }
                             isPlaying = false
                         }
                     }
@@ -305,6 +321,8 @@ fun InlineVideoPlayer(
                         seekTo(0)
                     }
                     setOnErrorListener { _, _, _ ->
+                        playbackError = true
+                        isPrepared = false
                         isBuffering = false
                         isPlaying = false
                         true
@@ -317,13 +335,28 @@ fun InlineVideoPlayer(
                     runCatching { vv.seekTo(position) }
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            onRelease = { released ->
+                runCatching { position = released.currentPosition }
+                released.stopPlayback()
+            }
         )
+        }
+        if (playbackError) {
+            Column(Modifier.background(Color.Black.copy(alpha = .85f)).padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("影片無法播放", color = Color.White)
+                Button(onClick = {
+                    isPrepared = false; isBuffering = true; playbackError = false; isPlaying = true
+                    retryAttempt++
+                }) { Text("重新嘗試") }
+            }
+        }
 
         if (isBuffering && !isPrepared) {
             CircularProgressIndicator(
                 color = Color.White,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(48.dp)
             )
         } else if (!isPlaying) {
             Box(
@@ -353,7 +386,7 @@ fun InlineVideoPlayer(
             IconButton(
                 onClick = { toggleInlinePlay() },
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .background(Color.Black.copy(alpha = 0.6f), CircleShape)
             ) {
                 Icon(
@@ -366,7 +399,7 @@ fun InlineVideoPlayer(
             IconButton(
                 onClick = { toggleInlineMute() },
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .background(Color.Black.copy(alpha = 0.6f), CircleShape)
             ) {
                 Icon(
@@ -381,6 +414,7 @@ fun InlineVideoPlayer(
         // 放大全螢幕按鈕（右上角，點擊放大轉橫向）
         IconButton(
             onClick = {
+                fullscreenWasPlaying = isPlaying
                 videoView?.let { vv ->
                     position = vv.currentPosition
                     if (vv.isPlaying) {
@@ -394,7 +428,7 @@ fun InlineVideoPlayer(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(8.dp)
-                .size(36.dp)
+                .size(48.dp)
                 .background(Color.Black.copy(alpha = 0.6f), CircleShape)
         ) {
             Icon(
@@ -409,13 +443,14 @@ fun InlineVideoPlayer(
 
 /**
  * 仿 YouTube 全螢幕播放檢視器（真實轉向版）
- * - 放大進入時預設切橫向（改 Activity.requestedOrientation），關閉還原直向
+ * - 放大進入時依影片比例選擇方向（改 Activity.requestedOrientation），關閉還原進入前方向
  * - Manifest 已宣告 configChanges，不會重建 Activity，只會重算版面
- * - 直向 / 橫向影片皆可正常填滿，不再用假旋轉（graphicsLayer）避免裁切與觸控錯位
+ * - 直向 / 橫向影片皆依比例完整呈現，不再用假旋轉（graphicsLayer）避免裁切與觸控錯位
  * - 底部控制列保證位於系統導覽列之上，完全避開遮擋
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FullscreenVideoViewer(
+fun FullscreenVideoViewer(
     remoteUrl: String,
     localPath: String,
     startPosition: Int,
@@ -431,12 +466,14 @@ private fun FullscreenVideoViewer(
     val coroutineScope = rememberCoroutineScope()
 
     val fullscreenPlayerId = remember { java.util.UUID.randomUUID().toString() }
-    var isPlaying by remember { mutableStateOf(startPlaying) }
-    var isMuted by remember { mutableStateOf(startMuted) }
+    var isPlaying by rememberSaveable(remoteUrl, localPath) { mutableStateOf(startPlaying) }
+    var isMuted by rememberSaveable(remoteUrl, localPath) { mutableStateOf(startMuted) }
     var isPrepared by remember { mutableStateOf(false) }
-    var isBuffering by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf(false) }
+    var retryAttempt by remember { mutableIntStateOf(0) }
+    var isBuffering by remember { mutableStateOf(true) }
     var duration by remember { mutableIntStateOf(0) }
-    var position by remember { mutableIntStateOf(startPosition) }
+    var position by rememberSaveable(remoteUrl, localPath) { mutableIntStateOf(startPosition) }
     var progress by remember { mutableFloatStateOf(0f) }
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
@@ -448,19 +485,20 @@ private fun FullscreenVideoViewer(
     // 若初進入時尺寸未知，預設為 false (直向全螢幕)，避免手機縱向瀏覽時突然強行橫置。
     val initialLandscape = remember {
         if (initialVideoWidth > 0 && initialVideoHeight > 0) {
-            initialVideoWidth >= initialVideoHeight
+            initialVideoWidth > initialVideoHeight
         } else {
-            getVideoDimensions(localPath)?.let { (w, h) -> w >= h }
+            getVideoDimensions(localPath)?.let { (w, h) -> w > h }
         }
     }
-    var orientationDecided by remember { mutableStateOf(initialLandscape != null) }
-    var isLandscape by remember { mutableStateOf<Boolean?>(initialLandscape ?: false) }
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var orientationDecided by rememberSaveable(remoteUrl, localPath) { mutableStateOf(initialLandscape != null) }
+    var isLandscape by rememberSaveable(remoteUrl, localPath) { mutableStateOf<Boolean?>(initialLandscape ?: false) }
+    var playbackSpeed by rememberSaveable(remoteUrl, localPath) { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
 
     // 真實轉向：切換 Activity.requestedOrientation（Manifest 有 configChanges，不會重建）
-    val activity = context as? android.app.Activity
+    val activity = context.findPlayerActivity()
+    val previousOrientation = remember(activity) { activity?.requestedOrientation }
     LaunchedEffect(isLandscape) {
         if (isLandscape == null) return@LaunchedEffect
         runCatching {
@@ -483,7 +521,9 @@ private fun FullscreenVideoViewer(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             mediaPlayerRef?.let { mp ->
                 runCatching {
+                    val wasPlaying = isPlaying
                     mp.playbackParams = mp.playbackParams.setSpeed(speed)
+                    if (!wasPlaying) mp.pause()
                 }
             }
         }
@@ -493,17 +533,19 @@ private fun FullscreenVideoViewer(
     val dialogWindow = remember(view) { findDialogWindow(view) }
     SideEffect {
         applyDialogWindowImmersive(dialogWindow)
+        setFullscreenSystemBarsVisible(dialogWindow, controlsVisible || playbackError)
     }
 
     // 退出時釋放播放器並還原直向
     DisposableEffect(fullscreenPlayerId) {
         onDispose {
+            setFullscreenSystemBarsVisible(dialogWindow, true)
             VideoPlaybackManager.unregister(fullscreenPlayerId)
             vvRef?.stopPlayback()
             vvRef = null
             mediaPlayerRef = null
             runCatching {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                activity?.requestedOrientation = previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }
         }
     }
@@ -554,8 +596,10 @@ private fun FullscreenVideoViewer(
     }
 
     fun handleClose() {
-        onClose(position, isPlaying, isMuted)
+        val finalPosition = vvRef?.let { runCatching { it.currentPosition }.getOrNull() } ?: position
+        onClose(finalPosition, isPlaying, isMuted)
     }
+    BackHandler { handleClose() }
 
     Box(
         modifier = Modifier
@@ -564,6 +608,7 @@ private fun FullscreenVideoViewer(
         contentAlignment = Alignment.Center
     ) {
         // 影片本體：真實轉向後直接填滿即可，直/橫向影片皆由 VideoView 依比例呈現
+        key(retryAttempt) {
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
@@ -572,12 +617,16 @@ private fun FullscreenVideoViewer(
                     } else remoteUrl
                     when (src) {
                         is File -> setVideoPath(src.absolutePath)
-                        is String -> if (src.isNotBlank()) setVideoURI(Uri.parse(src))
+                        is String -> if (src.isNotBlank()) setVideoURI(Uri.parse(src)) else {
+                            playbackError = true
+                            isBuffering = false
+                        }
                     }
                     setOnPreparedListener { mp ->
                         mediaPlayerRef = mp
                         duration = mp.duration
                         isPrepared = true
+                        playbackError = false
                         isBuffering = false
                         // 依影片實際寬高比自動決定直/橫向（僅進場時判斷一次）
                         if (!orientationDecided) {
@@ -585,14 +634,14 @@ private fun FullscreenVideoViewer(
                             val h = mp.videoHeight
                             if (w > 0 && h > 0) {
                                 orientationDecided = true
-                                isLandscape = (w >= h)
+                                isLandscape = (w > h)
                             }
                         }
                         runCatching {
                             mp.setOnVideoSizeChangedListener { _, w, h ->
                                 if (!orientationDecided && w > 0 && h > 0) {
                                     orientationDecided = true
-                                    isLandscape = (w >= h)
+                                    isLandscape = (w > h)
                                 }
                             }
                         }
@@ -604,16 +653,18 @@ private fun FullscreenVideoViewer(
                                 mp.playbackParams = mp.playbackParams.setSpeed(playbackSpeed)
                             }
                         }
-                        if (startPosition > 0) {
-                            runCatching { seekTo(startPosition) }
+                        if (position > 0) {
+                            runCatching { seekTo(position) }
                         }
-                        if (startPlaying) {
+                        if (isPlaying) {
                             VideoPlaybackManager.onPlayStarted(fullscreenPlayerId) {
                                 vvRef?.let { if (it.isPlaying) it.pause() }
                                 isPlaying = false
                             }
                             mp.start()
                             isPlaying = true
+                        } else {
+                            runCatching { mp.pause() }
                         }
                     }
                     setOnInfoListener { _, what, _ ->
@@ -626,6 +677,8 @@ private fun FullscreenVideoViewer(
                         controlsVisible = true
                     }
                     setOnErrorListener { _, _, _ ->
+                        playbackError = true
+                        isPrepared = false
                         isPlaying = false
                         isBuffering = false
                         true
@@ -633,8 +686,14 @@ private fun FullscreenVideoViewer(
                     vvRef = this
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            onRelease = { released ->
+                runCatching { position = released.currentPosition }
+                released.stopPlayback()
+            }
         )
+        }
+
 
         // 觸控手勢感應層（單擊切換控制列，左/右雙擊快退/快進 10 秒）
         Box(
@@ -658,10 +717,21 @@ private fun FullscreenVideoViewer(
                 modifier = Modifier.size(48.dp)
             )
         }
+        if (playbackError) {
+            Column(Modifier.background(Color.Black.copy(alpha = .85f)).padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("影片無法播放", color = Color.White)
+                Button(onClick = {
+                    isPrepared = false; isBuffering = true; playbackError = false; isPlaying = true
+                    retryAttempt++
+                }) { Text("重新嘗試") }
+                Button(onClick = { handleClose() }) { Text("關閉") }
+            }
+        }
 
         // 控制器覆蓋層（YouTube 風格平滑淡入淡出）
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !playbackError,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -697,7 +767,7 @@ private fun FullscreenVideoViewer(
                         IconButton(
                             onClick = { handleClose() },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(48.dp)
                                 .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                         ) {
                             Icon(
@@ -706,13 +776,7 @@ private fun FullscreenVideoViewer(
                                 tint = Color.White
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = if (isLandscape == true) "橫向全螢幕" else "直向全螢幕",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+
                     }
 
                     // 頂部旋轉切換膠囊按鈕
@@ -720,13 +784,14 @@ private fun FullscreenVideoViewer(
                         shape = RoundedCornerShape(16.dp),
                         color = Color.White.copy(alpha = 0.22f),
                         modifier = Modifier.clickable {
+                            orientationDecided = true
                             isLandscape = !(isLandscape ?: true)
                             controlsVisible = true
                             lastInteractionTime = System.currentTimeMillis()
                         }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -737,7 +802,7 @@ private fun FullscreenVideoViewer(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (isLandscape == true) "切換直向" else "切換橫向",
+                                text = "切換",
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -793,7 +858,7 @@ private fun FullscreenVideoViewer(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "暫停" else "播放",
                             tint = Color.White,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(48.dp)
                         )
                     }
 
@@ -865,19 +930,19 @@ private fun FullscreenVideoViewer(
                             .fillMaxWidth()
                             .height(26.dp),
                         colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFFFF2020),
-                            activeTrackColor = Color(0xFFFF2020),
+                            thumbColor = Color(0xFFB39DDB),
+                            activeTrackColor = Color(0xFFB39DDB),
                             inactiveTrackColor = Color.White.copy(alpha = 0.28f)
                         )
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // 時間與功能控制列
-                    Row(
+                    // 一般字級同列；小螢幕或大字級自動換行，避免擠壓控制按鈕。
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // 左側：時間顯示 (01:23 / 03:45)
                         Text(
@@ -901,7 +966,7 @@ private fun FullscreenVideoViewer(
                                 }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -931,7 +996,7 @@ private fun FullscreenVideoViewer(
                                 }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -965,39 +1030,11 @@ private fun FullscreenVideoViewer(
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
 
-                            // 旋轉按鈕（直向 ⇄ 橫向）
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable {
-                                    isLandscape = !(isLandscape ?: true)
-                                    controlsVisible = true
-                                    lastInteractionTime = System.currentTimeMillis()
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ScreenRotation,
-                                        contentDescription = "切換螢幕方向",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isLandscape == true) "直向" else "橫向",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
+
                         }
                     }
                 }
@@ -1031,7 +1068,7 @@ private fun FullscreenVideoViewer(
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 availableSpeeds.forEach { speed ->
@@ -1058,7 +1095,7 @@ private fun FullscreenVideoViewer(
                                     ) {
                                         Text(
                                             text = if (speed == 1.0f) "1.0x (正常)" else "${speed}x",
-                                            color = if (isSelected) Color(0xFFFF4D4D) else Color.White,
+                                            color = if (isSelected) Color(0xFFB39DDB) else Color.White,
                                             fontSize = 14.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -1066,7 +1103,7 @@ private fun FullscreenVideoViewer(
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "已選擇",
-                                                tint = Color(0xFFFF4D4D),
+                                                tint = Color(0xFFB39DDB),
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }

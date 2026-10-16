@@ -1,5 +1,6 @@
 package com.reater.app.domain
 
+import com.reater.app.data.repository.SettingsRepository
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.ProDao
 import com.reater.app.data.local.entity.ItemDetail
@@ -12,6 +13,7 @@ import javax.inject.Singleton
 
 @Serializable
 data class CollectionRule(
+    val enabled: Boolean = true,
     val categoryId: Long? = null,
     val isRead: Boolean? = null,
     val isFavorite: Boolean? = null,
@@ -24,18 +26,22 @@ data class CollectionRule(
 @Singleton
 class SmartCollectionEngine @Inject constructor(
     private val itemDao: ItemDao,
-    private val proDao: ProDao
+    private val proDao: ProDao,
+    private val settingsRepository: SettingsRepository
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun evaluateCollection(rulesJson: String): List<ItemDetail> {
-        val all = itemDao.observeAllItemDetails().first()
+    suspend fun evaluateCollection(rulesJson: String, isEnabled: Boolean = true): List<ItemDetail> {
+        if (!isEnabled) return emptyList()
+        if (!settingsRepository.isProUnlocked.first()) return emptyList()
         val rule = try {
             json.decodeFromString(CollectionRule.serializer(), rulesJson)
         } catch (e: Exception) {
             return emptyList()
         }
 
+        if (!rule.enabled) return emptyList()
+        val all = itemDao.observeAllItemDetails().first()
         return all.filter { item ->
             var pass = true
             if (rule.categoryId != null && item.userEdit?.categoryId != rule.categoryId) {
@@ -63,7 +69,17 @@ class SmartCollectionEngine @Inject constructor(
         }
     }
 
+    fun parseRule(rulesJson: String): CollectionRule? = runCatching {
+        json.decodeFromString(CollectionRule.serializer(), rulesJson)
+    }.getOrNull()
+
+    suspend fun updateRule(collection: SavedCollectionEntity, rule: CollectionRule) {
+        if (!settingsRepository.isProUnlocked.first()) return
+        proDao.insertCollection(collection.copy(isEnabled = rule.enabled, rulesJson = json.encodeToString(CollectionRule.serializer(), rule)))
+    }
+
     suspend fun seedDefaultProCollectionsIfEmpty() {
+        if (!settingsRepository.isProUnlocked.first()) return
         val existing = proDao.observeAllCollections().first()
         if (existing.isNotEmpty()) return
 

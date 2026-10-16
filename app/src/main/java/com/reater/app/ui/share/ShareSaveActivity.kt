@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -13,6 +14,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -179,6 +190,7 @@ class ShareSaveActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShareSaveScreen(
     viewModel: ShareSaveViewModel,
@@ -193,7 +205,17 @@ fun ShareSaveScreen(
 
     // 主內容捲動狀態提升：內容區垂直滑動即收鍵盤（多行框內拖曳不受影響）
     val shareContentScrollState = rememberScrollState()
-    DismissFocusOnScroll(shareContentScrollState, focusManager)
+    val keyboard = LocalSoftwareKeyboardController.current
+    val imeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val noteIntoView = remember { BringIntoViewRequester() }
+    var noteFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(noteFocused, imeOpen) {
+        if (noteFocused && imeOpen) { delay(100); noteIntoView.bringIntoView() }
+    }
+    BackHandler {
+        if (imeOpen) { focusManager.clearFocus(); keyboard?.hide() }
+        else onDismiss()
+    }
 
     LaunchedEffect(state.isSaved) {
         if (state.isSaved) {
@@ -268,14 +290,16 @@ fun ShareSaveScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.55f))
-            .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 20.dp)
+            .safeDrawingPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .dismissFocusOnTap(focusManager),
         contentAlignment = Alignment.TopCenter
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .fillMaxHeight()
                 .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -330,7 +354,6 @@ fun ShareSaveScreen(
                         .weight(1f)
                         .verticalScroll(shareContentScrollState)
                         .dismissFocusOnTap(focusManager)
-                        .imePadding()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                 if (state.targetUrl.isNotBlank()) {
@@ -400,10 +423,12 @@ fun ShareSaveScreen(
                     categories = categories,
                     selectedCategoryId = state.selectedCategoryId,
                     onSelect = { viewModel.onCategorySelected(it) },
-                    onRequestCreate = { prefill ->
-                        createPrefill = prefill
-                        viewModel.setShowCreateCategoryDialog(true)
-                    }
+                    onRequestCreate = { prefill -> viewModel.createCategory(prefill, "life") },
+                    categoryQuery = state.categoryQuery,
+                    onQueryChange = viewModel::onCategoryQueryChanged,
+                    dropdownExpanded = state.isCategoryDropdownExpanded,
+                    onExpandedChange = viewModel::setCategoryExpanded,
+                    onFieldFocused = viewModel::setCategoryFocused
                 )
                 // 歷史預選提示：同主題/同作者過往最常用分類（手動更改後消失）
                 AnimatedVisibility(visible = state.suggestedBasis.isNotBlank()) {
@@ -736,15 +761,18 @@ fun ShareSaveScreen(
                     placeholder = { Text(stringResource(R.string.note_placeholder)) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 56.dp, max = 140.dp),
+                        .heightIn(min = 56.dp, max = 140.dp)
+                        .bringIntoViewRequester(noteIntoView)
+                        .onFocusChanged { noteFocused = it.isFocused },
                     shape = RoundedCornerShape(8.dp)
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                } // Scrollable body; actions remain above IME and navigation insets.
                 // Action buttons
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
                     OutlinedButton(
@@ -761,7 +789,6 @@ fun ShareSaveScreen(
                     ) {
                         Text(stringResource(R.string.save))
                     }
-                }
                 }
             }
         }

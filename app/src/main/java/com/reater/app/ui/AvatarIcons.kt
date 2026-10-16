@@ -9,7 +9,16 @@ data class AvatarIconItem(
     val desc: String,
     @DrawableRes val resId: Int,
     val isPro: Boolean = false
-)
+) {
+    val category: String get() = when (id) {
+        "tech", "rocket", "shield" -> "科技"
+        "study", "sparkles" -> "閱讀"
+        "finance", "diamond", "crown" -> "財經"
+        "travel", "compass", "globe" -> "旅行"
+        "palette" -> "創意"
+        else -> "生活"
+    }
+}
 
 object AvatarIcons {
     /**

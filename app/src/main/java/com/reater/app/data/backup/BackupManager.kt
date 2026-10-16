@@ -12,6 +12,11 @@ import com.reater.app.data.local.entity.SavedCollectionEntity
 import com.reater.app.data.local.entity.TagEntity
 import com.reater.app.data.local.entity.UserEditEntity
 import com.reater.app.data.repository.SettingsRepository
+import android.content.Context
+import android.util.Base64
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.reater.app.ui.AvatarStorage
+import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -40,6 +45,9 @@ data class ExportedSettings(
 )
 
 @Serializable
+data class ExportedAvatarFile(val name: String, val contentBase64: String)
+
+@Serializable
 data class ReaterExportV1(
     val version: String = "v1",
     val fileFormat: String = "reater",
@@ -48,7 +56,10 @@ data class ReaterExportV1(
     val settings: ExportedSettings? = null,
     val items: List<ExportedItem>,
     val categories: List<ExportedCategory> = emptyList(),
-    val collections: List<ExportedCollection> = emptyList()
+    val collections: List<ExportedCollection> = emptyList(),
+    val avatarFiles: List<ExportedAvatarFile> = emptyList(),
+    val avatarHistory: List<String> = emptyList(),
+    val currentAvatarReference: String? = null
 )
 
 @Serializable
@@ -56,7 +67,8 @@ data class ExportedCollection(
     val name: String,
     val iconName: String = "life",
     val rulesJson: String,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    val isEnabled: Boolean = true
 )
 
 @Serializable
@@ -70,6 +82,7 @@ data class ExportedItem(
     val commentsText: String,
     val manualNote: String,
     val manualSummary: String,
+    val aiSummary: String? = null,
     val isRead: Boolean,
     val isFavorite: Boolean,
     val tags: List<String> = emptyList(),
@@ -124,7 +137,8 @@ data class ExportedKeyword(
 @Singleton
 class BackupManager @Inject constructor(
     private val database: AppDatabase,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context
 ) {
 
     private val itemDao get() = database.itemDao()
@@ -157,6 +171,7 @@ class BackupManager @Inject constructor(
                 commentsText = detail.item.commentsText,
                 manualNote = detail.manualNote,
                 manualSummary = detail.manualSummary,
+                aiSummary = detail.userEdit?.aiSummary ?: detail.manualSummary,
                 isRead = detail.isRead,
                 isFavorite = detail.isFavorite,
                 tags = detail.tags.map { it.name },
@@ -201,7 +216,8 @@ class BackupManager @Inject constructor(
                 name = col.name,
                 iconName = col.iconName,
                 rulesJson = col.rulesJson,
-                sortOrder = col.sortOrder
+                sortOrder = col.sortOrder,
+                isEnabled = col.isEnabled
             )
         }
 
@@ -224,14 +240,28 @@ class BackupManager @Inject constructor(
             )
         }.getOrNull()
 
+        val avatarHistory = AvatarStorage.listHistoryFiles(context)
+        val avatarAssets = avatarHistory.flatMap { display ->
+            val ts = AvatarStorage.extractTs(display.name)
+            listOfNotNull(display, AvatarStorage.pairedOriginalFile(context, display.absolutePath),
+                ts?.let { File(AvatarStorage.avatarDir(context), "custom_avatar_crop_$it.txt") }?.takeIf { it.isFile })
+        }.distinctBy { it.name }
+        require(avatarAssets.sumOf { it.length() } <= MAX_IMPORT_BYTES.toLong() * 3 / 4) {
+            "備份含頭像超過 50MB，請先刪除不需要的歷史頭像"
+        }
         val exportData = ReaterExportV1(
             items = exportList,
             categories = exportedCategories,
             collections = exportedCollections,
-            settings = currentSettings
+            settings = currentSettings,
+            avatarFiles = avatarAssets.map { ExportedAvatarFile(it.name, Base64.encodeToString(it.readBytes(), Base64.NO_WRAP)) },
+            avatarHistory = avatarHistory.map { it.name },
+            currentAvatarReference = currentSettings?.customAvatarUri?.let { File(it).name }
         )
         val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
-        outputStream.write(jsonString.toByteArray(StandardCharsets.UTF_8))
+        val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
+        require(encoded.size <= MAX_IMPORT_BYTES) { "備份含頭像超過 50MB，請先刪除不需要的歷史頭像" }
+        outputStream.write(encoded)
         outputStream.flush()
     }
 
@@ -291,24 +321,40 @@ class BackupManager @Inject constructor(
             require(imported.fileFormat == "reater") { "非法的 .reater 專屬格式" }
             require(imported.version == "v1") { "不支援的備份版本：${imported.version}" }
             require(imported.items.size <= MAX_IMPORT_ITEMS) { "備份檔項目過多（超過上限）" }
+            require(imported.items.all { it.canonicalUrl.isNotBlank() }) { "匯入資料缺少有效 URL" }
 
-            imported.settings?.let { s ->
-                settingsRepository.setThemeMode(s.themeMode)
-                settingsRepository.setFontScale(s.fontScale)
-                settingsRepository.setUnreadNudgeEnabled(s.unreadNudgeEnabled)
-                settingsRepository.setUnreadNudgeDelayMin(s.unreadNudgeDelayMin)
-                settingsRepository.setReviewDigestEnabled(s.reviewDigestEnabled)
-                settingsRepository.setReviewDigestHour(s.reviewDigestHour)
-                settingsRepository.setSelectedModel(s.selectedModel)
-                settingsRepository.setCustomBaseUrl(s.customBaseUrl)
-                settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
-                settingsRepository.setCustomAvatarId(s.customAvatarId)
-                if (s.customAvatarUri != null) {
-                    settingsRepository.setCustomAvatarUri(s.customAvatarUri)
+            // Validate every asset before changing settings or writing files. Never trust backup paths.
+            val assets = imported.avatarFiles.map { asset ->
+                require(asset.name == File(asset.name).name && !asset.name.contains('\\') && !asset.name.contains('/')) { "頭像備份檔名無效" }
+                require(AvatarStorage.isBackupFileName(asset.name)) { "頭像備份格式無效" }
+                val decoded = Base64.decode(asset.contentBase64, Base64.DEFAULT)
+                require(decoded.isNotEmpty()) { "頭像備份檔案為空" }
+                if (asset.name.endsWith(".txt")) require(AvatarStorage.decodeTransform(decoded.toString(Charsets.UTF_8)) != null) { "頭像裁切資料無效" }
+                asset.name to decoded
+            }
+            require(assets.map { it.first }.distinct().size == assets.size) { "頭像備份檔名重複" }
+            val avatarDir = AvatarStorage.avatarDir(context)
+            // New ids preserve local history and avoid overwriting an image with an equal timestamp.
+            val importedTimes = assets.mapNotNull { AvatarStorage.extractTs(it.first) }.distinct().sorted()
+            var nextTs = maxOf(System.currentTimeMillis(),
+                avatarDir.listFiles().orEmpty().mapNotNull { AvatarStorage.extractTs(it.name) }.maxOrNull()?.plus(1) ?: 0)
+            val timeMap = importedTimes.associateWith { nextTs++ }
+            val restoredNames = assets.associate { (name, _) ->
+                val ts = AvatarStorage.extractTs(name)
+                name to if (ts != null) name.replace(ts.toString(), timeMap.getValue(ts).toString())
+                    else "custom_avatar_${nextTs++}.jpg"
+            }
+            val restoredFiles = mutableListOf<File>()
+            try {
+                for ((name, bytes) in assets) {
+                    val destination = File(avatarDir, restoredNames.getValue(name))
+                    check(destination.canonicalFile.parentFile == avatarDir.canonicalFile)
+                    destination.writeBytes(bytes)
+                    restoredFiles += destination
                 }
-                if (s.isProLicensed || !s.proLicenseCode.isNullOrBlank()) {
-                    settingsRepository.restoreProLicense(s.proLicenseEmail, s.proLicenseCode)
-                }
+            } catch (error: Exception) {
+                restoredFiles.forEach { it.delete() }
+                throw error
             }
 
             var count = 0
@@ -343,7 +389,8 @@ class BackupManager @Inject constructor(
                             name = col.name,
                             iconName = col.iconName,
                             rulesJson = col.rulesJson,
-                            sortOrder = col.sortOrder
+                            sortOrder = col.sortOrder,
+                            isEnabled = col.isEnabled
                         )
                     )
                 }
@@ -380,14 +427,14 @@ class BackupManager @Inject constructor(
                         itemDao.updateItem(entity)
                         existing.id
                     }
-                    val oldEdit = itemDao.getUserEditByItemId(itemId)
-                    itemDao.insertUserEdit(
+                                        itemDao.insertUserEdit(
                         UserEditEntity(
                             itemId = itemId,
                             userBodyOverride = null,
                             manualNote = item.manualNote,
                             manualSummary = item.manualSummary,
-                            categoryId = item.categoryName?.let(importedCategoryIds::get) ?: oldEdit?.categoryId,
+                            aiSummary = item.aiSummary ?: item.manualSummary,
+                            categoryId = item.categoryName?.let(importedCategoryIds::get),
                             isRead = item.isRead,
                             isFavorite = item.isFavorite,
                             openCount = item.openCount,
@@ -428,6 +475,30 @@ class BackupManager @Inject constructor(
                     count++
                 }
             }
+            imported.settings?.let { s ->
+                settingsRepository.setThemeMode(s.themeMode)
+                settingsRepository.setFontScale(s.fontScale)
+                settingsRepository.setUnreadNudgeEnabled(s.unreadNudgeEnabled)
+                settingsRepository.setUnreadNudgeDelayMin(s.unreadNudgeDelayMin)
+                settingsRepository.setReviewDigestEnabled(s.reviewDigestEnabled)
+                settingsRepository.setReviewDigestHour(s.reviewDigestHour)
+                settingsRepository.setSelectedModel(s.selectedModel)
+                settingsRepository.setCustomBaseUrl(s.customBaseUrl)
+                settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
+                settingsRepository.setCustomAvatarId(s.customAvatarId)
+                val reference = imported.currentAvatarReference ?: s.customAvatarUri?.let { File(it).name }
+                val restoredAvatar = reference?.let(restoredNames::get)?.let { File(avatarDir, it) }
+                // Old backups carried a device-specific path only; restore it only if it is still readable.
+                val legacyAvatar = s.customAvatarUri?.takeIf {
+                    val file = File(it)
+                    file.canonicalFile.parentFile == avatarDir.canonicalFile && AvatarStorage.isStoredValid(context, it)
+                }
+                settingsRepository.setCustomAvatarUri(restoredAvatar?.absolutePath ?: legacyAvatar)
+                if (s.isProLicensed || !s.proLicenseCode.isNullOrBlank()) {
+                    settingsRepository.restoreProLicense(s.proLicenseEmail, s.proLicenseCode)
+                }
+            }
+
             Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
@@ -447,6 +518,7 @@ class BackupManager @Inject constructor(
             detail.userEdit?.userBodyOverride.orEmpty(),
             detail.manualNote,
             detail.manualSummary,
+            detail.userEdit?.aiSummary.orEmpty(),
             detail.item.authorHandle,
             detail.item.authorDisplayName,
             detail.tags.joinToString(" ") { it.name },

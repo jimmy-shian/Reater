@@ -28,6 +28,8 @@ data class UserEditEntity(
     val userBodyOverride: String? = null,
     val manualNote: String = "",
     val manualSummary: String = "",
+    @androidx.room3.ColumnInfo(defaultValue = "''")
+    val aiSummary: String = "",
     val categoryId: Long? = null,
     val isRead: Boolean = false,
     val isFavorite: Boolean = false,

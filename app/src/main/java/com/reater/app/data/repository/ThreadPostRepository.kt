@@ -78,7 +78,9 @@ class ThreadPostRepository @Inject constructor(
         manualSummary: String,
         categoryId: Long?,
         fetchedResult: FetchedPostResult? = null,
-        isFavorite: Boolean = false
+        isFavorite: Boolean = false,
+        categoryExplicitlySelected: Boolean = false,
+        manualNoteEdited: Boolean = false
     ): Long = database.withWriteTransaction {
         // 子串分享（母文存在時）：免 DB 遷移，把母文前綴進 body、母文媒體排前面合併存檔。
         // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧；媒體 = 母圖 + 子（子無圖則只有母圖）。
@@ -181,7 +183,7 @@ class ThreadPostRepository @Inject constructor(
         }
 
         // Auto-classification if categoryId is null
-        val resolvedCategoryId = categoryId ?: run {
+        val resolvedCategoryId = if (categoryExplicitlySelected) categoryId else categoryId ?: run {
             val classResult = classifier.classify(
                 titleScope = authorHandle + " " + bodyText.take(60),
                 bodyScope = bodyText + " " + commentsText
@@ -193,9 +195,10 @@ class ThreadPostRepository @Inject constructor(
         val existingEdit = itemDao.getUserEditByItemId(itemId)
         val userEdit = existingEdit?.copy(
             userBodyOverride = if (fetchedResult != null && bodyText != combinedBody) bodyText else existingEdit.userBodyOverride,
-            manualNote = manualNote.ifBlank { existingEdit.manualNote },
+            manualNote = if (manualNoteEdited) manualNote else manualNote.ifBlank { existingEdit.manualNote },
             manualSummary = manualSummary.ifBlank { existingEdit.manualSummary },
-            categoryId = resolvedCategoryId ?: existingEdit.categoryId,
+            aiSummary = manualSummary.ifBlank { existingEdit.aiSummary },
+            categoryId = if (categoryExplicitlySelected) categoryId else resolvedCategoryId ?: existingEdit.categoryId,
             isFavorite = if (isFavorite) true else existingEdit.isFavorite,
             editedAt = System.currentTimeMillis()
         ) ?: UserEditEntity(
@@ -203,6 +206,7 @@ class ThreadPostRepository @Inject constructor(
             userBodyOverride = fetchedResult?.let { if (bodyText != combinedBody) bodyText else null },
             manualNote = manualNote,
             manualSummary = manualSummary,
+            aiSummary = manualSummary,
             categoryId = resolvedCategoryId,
             isRead = false,
             isFavorite = isFavorite
@@ -361,6 +365,13 @@ class ThreadPostRepository @Inject constructor(
         }
     }
 
+    /** 筆記更新只修改人工欄位，避免 AI 與閱讀狀態更新互相覆蓋。 */
+    suspend fun updateManualNote(itemId: Long, note: String) = database.withWriteTransaction {
+        val current = itemDao.getUserEditByItemId(itemId) ?: UserEditEntity(itemId = itemId)
+        itemDao.insertUserEdit(current.copy(manualNote = note, editedAt = System.currentTimeMillis()))
+        refreshSearchIndex(itemId)
+    }
+
     /** 詳情頁改分類：保留既有 UserEdit，僅更新 categoryId */
     suspend fun updateCategory(itemId: Long, categoryId: Long?) = database.withWriteTransaction {
         val current = itemDao.getUserEditByItemId(itemId)
@@ -446,7 +457,7 @@ class ThreadPostRepository @Inject constructor(
         val current = itemDao.getUserEditByItemId(itemId) ?: UserEditEntity(itemId = itemId)
         itemDao.insertUserEdit(
             current.copy(
-                manualSummary = analysis.summary,
+                aiSummary = analysis.summary,
                 categoryId = categoryId ?: current.categoryId,
                 editedAt = System.currentTimeMillis(),
                 editSource = "AI"
@@ -485,7 +496,7 @@ class ThreadPostRepository @Inject constructor(
               detail.item.commentsText,
             detail.userEdit?.userBodyOverride.orEmpty(),
             detail.manualNote,
-            detail.manualSummary,
+            detail.aiSummary,
             detail.item.authorHandle,
             detail.item.authorDisplayName,
             tags,

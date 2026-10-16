@@ -29,7 +29,7 @@ class ThreadsSjsParserRealHtmlTest {
         if (res != null) {
             println("BODY=[${res.bodyText}]")
             println("HANDLE=${res.authorHandle}")
-            println("LIKE=${res.likeCount} REPLY=${res.replyCount} REPOST=${res.repostCount}")
+            println("LIKE=${res.likeCount} COMMENTS=${res.comments.size}")
             println("MEDIA=${res.media}")
             println("COMMENTS=${res.comments.size}")
             println("PARENT=${res.parent}")

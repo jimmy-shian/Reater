@@ -70,7 +70,11 @@ object NotifyCenter {
             .setContentIntent(openAppIntent(context))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(1000 + (itemId % 100000).toInt(), note)
+        try {
+            NotificationManagerCompat.from(context).notify(1000 + (itemId % 100000).toInt(), note)
+        } catch (_: SecurityException) {
+            // 權限可能在檢查後被撤回；略過通知，讓背景工作正常結束。
+        }
     }
 
     fun postReviewDigest(context: Context, unreadCount: Int) {
@@ -83,7 +87,11 @@ object NotifyCenter {
             .setContentIntent(openAppIntent(context))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(9999, note)
+        try {
+            NotificationManagerCompat.from(context).notify(9999, note)
+        } catch (_: SecurityException) {
+            // 權限可能在檢查後被撤回；略過通知，讓背景工作正常結束。
+        }
     }
 
     /** 儲存後延遲提醒：唯一工作，重复儲存會取代 */
