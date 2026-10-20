@@ -2,8 +2,10 @@ package com.reater.app.ui
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -27,6 +29,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -83,21 +87,81 @@ fun MediaViewerDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false
     )) {
+        val dismissCallback by rememberUpdatedState(onDismiss)
+        // 向下滑動關閉：whole-viewer 共用位移，圖片未放大 / 影片皆可觸發
+        var dismissOffsetY by remember { mutableFloatStateOf(0f) }
+        var dismissHeightPx by remember { mutableIntStateOf(1) }
+        var dismissSettling by remember { mutableStateOf(false) }
+        fun updateDismissDrag(delta: Float) {
+            if (dismissSettling) return
+            val resistance = 1f + abs(dismissOffsetY) / (dismissHeightPx * 0.5f).coerceAtLeast(1f)
+            dismissOffsetY += delta / resistance
+        }
+        fun endDismissDrag(velocityY: Float = 0f) {
+            if (dismissSettling) return
+            // 支援「向上」與「向下」滑動關閉檢視器
+            val shouldDismissDown = dismissOffsetY > dismissHeightPx * 0.18f ||
+                (dismissOffsetY > dismissHeightPx * 0.06f && velocityY > 1200f)
+            val shouldDismissUp = dismissOffsetY < -dismissHeightPx * 0.18f ||
+                (dismissOffsetY < -dismissHeightPx * 0.06f && velocityY < -1200f)
+            val shouldDismiss = shouldDismissDown || shouldDismissUp
+
+            if (!shouldDismiss && abs(dismissOffsetY) <= 0.5f) {
+                dismissOffsetY = 0f
+                return
+            }
+            dismissSettling = true
+            scope.launch {
+                try {
+                    val anim = Animatable(dismissOffsetY)
+                    if (shouldDismiss) {
+                        val target = if (shouldDismissDown) dismissHeightPx.toFloat() else -dismissHeightPx.toFloat()
+                        anim.animateTo(target, tween(220)) { dismissOffsetY = value }
+                        dismissCallback()
+                    } else {
+                        anim.animateTo(0f, spring(dampingRatio = 0.82f)) { dismissOffsetY = value }
+                    }
+                } finally {
+                    dismissSettling = false
+                }
+            }
+        }
+        val dismissAlpha = (1f - abs(dismissOffsetY) / dismissHeightPx.toFloat() * 1.6f).coerceIn(0f, 1f)
         val view = LocalView.current
+        // B方案動態：橫向強制多留側邊，縱/橫向旋轉即時重算
+        val viewerIsLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val window = remember(view) { findDialogWindow(view) }
+        val safeInsets = rememberMediaViewerSafeInsets(window, view, controlsVisible)
         SideEffect {
             applyDialogWindowImmersive(window)
-            if (!media[pager.currentPage].isVideo) setFullscreenSystemBarsVisible(window, controlsVisible)
+            if (!media[pager.currentPage].isVideo) setFullscreenSystemBarsVisible(window, controlsVisible, activity)
         }
-        DisposableEffect(window) { onDispose { setFullscreenSystemBarsVisible(window, true) } }
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
-            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), key = { it }) { page ->
+        DisposableEffect(window, activity) { onDispose { setFullscreenSystemBarsVisible(window, true, activity) } }
+        Box(Modifier.fillMaxSize()
+            .onSizeChanged { dismissHeightPx = it.height.coerceAtLeast(1) }
+            .background(Color.Black.copy(alpha = dismissAlpha))) {
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer {
+                        translationY = dismissOffsetY
+                        // 下滑/上滑時微微縮小，提示可放手關閉
+                        val s = (1f - abs(dismissOffsetY) / dismissHeightPx.toFloat() * 0.12f).coerceIn(0.88f, 1f)
+                        scaleX = s; scaleY = s
+                        alpha = dismissAlpha
+                    },
+                userScrollEnabled = !dismissSettling && dismissOffsetY == 0f,
+                key = { it }) { page ->
                 val item = media[page]
                 if (item.isVideo && pager.currentPage == page) {
                     FullscreenVideoViewer(
-                        remoteUrl = item.remoteUrl, localPath = item.localPath,
-                        startPosition = 0, startPlaying = true,
-                        onClose = { _, _, _ -> onDismiss() }
+                        remoteUrl = item.remoteUrl,
+                        localPath = item.localPath,
+                        startPosition = 0,
+                        startPlaying = true,
+                        onDismissDrag = { updateDismissDrag(it) },
+                        onDismissEnd = { endDismissDrag(it) },
+                        onClose = { _, _, _ -> dismissCallback() }
                     )
                 } else if (!item.isVideo) {
                     var edgeDrag by remember { mutableFloatStateOf(0f) }
@@ -112,14 +176,16 @@ fun MediaViewerDialog(
                             } else page
                             scope.launch { pager.animateScrollToPage(target) }
                             edgeDrag = 0f
-                        })
+                        },
+                        onDismissDrag = { updateDismissDrag(it) },
+                        onDismissEnd = { endDismissDrag(it) })
                 }
             }
             if (!media[pager.currentPage].isVideo) {
                 AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(),
                     modifier = Modifier.align(Alignment.TopCenter)) {
                     Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .45f))
-                        .then(fullscreenTopBarModifier(false)),
+                        .then(fullscreenTopBarModifier(safeInsets)),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Text("${pager.currentPage + 1} / ${media.size}", color = Color.White)
@@ -129,11 +195,15 @@ fun MediaViewerDialog(
                 AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(),
                     modifier = Modifier.align(Alignment.BottomCenter)) {
                     Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .45f))
-                        .then(fullscreenBottomBarModifier(false)), horizontalArrangement = Arrangement.Center) {
-                        OutlinedButton(onClick = { scope.launch {
+                        .then(fullscreenBottomBarModifier(safeInsets)), horizontalArrangement = Arrangement.Center) {
+                        OutlinedButton(
+                            onClick = { scope.launch {
                             val item = media[pager.currentPage]
                             saveMediaToGalleryWithFeedback(context, false, item.localPath, item.remoteUrl)
-                        } }) {
+                            } },
+                            modifier = Modifier.height(48.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                        ) {
                             Icon(Icons.Default.Download, "下載圖片", tint = Color.White)
                             Spacer(Modifier.width(6.dp))
                             Text("下載圖片", color = Color.White)
@@ -145,12 +215,15 @@ fun MediaViewerDialog(
     }
 }
 
+
 @Composable
 private fun ZoomableViewerImage(
     media: ViewerMedia,
     onTap: () -> Unit,
     onEdgeDrag: (Float) -> Unit,
-    onEdgeEnd: () -> Unit
+    onEdgeEnd: () -> Unit,
+    onDismissDrag: (Float) -> Unit = {},
+    onDismissEnd: (Float) -> Unit = {}
 ) {
     var scale by rememberSaveable { mutableFloatStateOf(1f) }
     var offsetX by rememberSaveable { mutableFloatStateOf(0f) }
@@ -178,7 +251,9 @@ private fun ZoomableViewerImage(
         } }
     }
     LaunchedEffect(viewport, imageSize) { settle() }
-    Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }
+    // B方案動態：本體縮到安全區，導覽列出現/隱藏時自動變化，邊邊不再被蓋
+    val imgIsLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    Box(Modifier.fillMaxSize().then(fullscreenContentModifier(imgIsLandscape)).onSizeChanged { viewport = it }
         .pointerInput(Unit) {
             detectTapGestures(onTap = { onTap() }, onDoubleTap = { tap ->
                 val target = if (scale > 1.05f) 1f else 2.5f
@@ -204,6 +279,10 @@ private fun ZoomableViewerImage(
                 var totalZoom = 1f
                 var transforming = false
                 var edge = false
+                var dismissDragging = false
+                // 簡易速度估算：最後一段垂直位移 / 時間
+                var lastTime = 0L
+                var dismissVelocity = 0f
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val zoom = event.calculateZoom()
@@ -213,7 +292,31 @@ private fun ZoomableViewerImage(
                     totalZoom *= zoom
                     val zoomMotion = abs(1 - totalZoom) * size.width / 2f
                     val moved = totalPan.getDistance() > viewConfiguration.touchSlop || zoomMotion > viewConfiguration.touchSlop
-                    if ((pointers > 1 || scale > 1.01f || transforming) && (moved || transforming)) {
+                    // 放大中或多指一律走縮放/平移，不觸發下滑關閉
+                    if (dismissDragging && pointers > 1) {
+                        // 轉為縮放時先回彈下滑位移，避免跳動
+                        dismissDragging = false
+                        onDismissEnd(0f)
+                    }
+                    if (!transforming && !dismissDragging && scale <= 1.01f && pointers == 1 && moved) {
+                        // 垂直主導才進入下滑關閉；水平主導留給 HorizontalPager 翻頁
+                        if (abs(totalPan.y) > viewConfiguration.touchSlop &&
+                            abs(totalPan.y) > abs(totalPan.x) * 1.2f) {
+                            dismissDragging = true
+                            lastTime = System.currentTimeMillis()
+                            dismissVelocity = 0f
+                        }
+                    }
+                    if (dismissDragging && pointers == 1 && scale <= 1.01f) {
+                        val now = System.currentTimeMillis()
+                        val dt = (now - lastTime).coerceAtLeast(1)
+                        // px/sec
+                        dismissVelocity = (pan.y / dt * 1000f * 0.6f + dismissVelocity * 0.4f)
+                            .coerceIn(-6000f, 6000f)
+                        lastTime = now
+                        onDismissDrag(pan.y)
+                        event.changes.forEach { it.consume() }
+                    } else if ((pointers > 1 || scale > 1.01f || transforming) && (moved || transforming)) {
                         val old = scale
                         scale = (scale * zoom).coerceIn(1f, 5f)
                         val center = event.calculateCentroid(useCurrent = false) - Offset(size.width / 2f, size.height / 2f)
@@ -234,8 +337,12 @@ private fun ZoomableViewerImage(
                         if (transforming) event.changes.forEach { it.consume() }
                     }
                 } while (event.changes.any { it.pressed })
-                settle()
-                if (edge) onEdgeEnd()
+                if (dismissDragging) {
+                    onDismissEnd(dismissVelocity)
+                } else {
+                    settle()
+                    if (edge) onEdgeEnd()
+                }
             }
         }, contentAlignment = Alignment.Center) {
         val context = LocalContext.current

@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +17,7 @@ import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
 import com.reater.app.data.local.entity.MediaEntity
 import com.reater.app.ui.player.rememberMediaImageLoader
+import com.reater.app.ui.player.InlineVideoPlayer
 import java.io.File
 import kotlinx.coroutines.flow.drop
 
@@ -53,10 +52,12 @@ internal fun DetailMediaPager(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { onOpen(entry) }, contentAlignment = Alignment.Center) {
                 if (entry.kind.equals("VIDEO", ignoreCase = true)) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.PlayArrow, "播放影片", Modifier.size(48.dp))
-                        Text("點擊播放影片")
-                    }
+                    InlineVideoPlayer(
+                        remoteUrl = entry.remoteUrl,
+                        localPath = entry.localPath,
+                        autoPlay = false,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
                     var retry by remember(entry.remoteUrl) { mutableIntStateOf(0) }
                     SubcomposeAsyncImage(

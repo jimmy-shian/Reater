@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.defaultMinSize
 import com.reater.app.domain.defaultCollectionDisplayName
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -229,10 +230,11 @@ private fun MainThemedScreen(
                 val isDark = themeMode == "dark" ||
                     (themeMode == "system" && !darkIcons)
                 androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-                    ?.let {
+                    .let {
                         it.isAppearanceLightStatusBars = darkIcons
                         it.isAppearanceLightNavigationBars = darkIcons
                     }
+                @Suppress("DEPRECATION")
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
                     window.navigationBarColor = if (isDark) android.graphics.Color.BLACK
@@ -1215,10 +1217,52 @@ fun MainScreen(
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } },
                     text = { Text(stringResource(R.string.tab_all)) }
                 )
+                val isUnreadSelected = pagerState.currentPage == 1
+                val unreadCount = unreadPosts.size
+                val unreadBadgeText = when {
+                    unreadCount <= 0 -> null
+                    unreadCount > 99 -> "99+"
+                    else -> unreadCount.toString()
+                }
                 Tab(
-                    selected = pagerState.currentPage == 1,
+                    selected = isUnreadSelected,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(1) } },
-                    text = { Text(stringResource(R.string.tab_unread)) }
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.tab_unread),
+                                fontWeight = if (isUnreadSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                            if (unreadBadgeText != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 22.dp)
+                                        .height(20.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (isUnreadSelected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                        .padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = unreadBadgeText,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            lineHeight = 11.sp
+                                        ),
+                                        color = if (isUnreadSelected) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 )
                 Tab(
                     selected = pagerState.currentPage == 2,

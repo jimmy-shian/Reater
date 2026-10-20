@@ -71,13 +71,13 @@ import java.io.File
 
 /**
  * 格式化單一貼文分享文字：
- * "網址: 我的說明摘要 or AI摘要 or 空著"
+ * "網址 我的說明摘要 or AI摘要"
  * 網址一律去除 ?xmt= / ?slof= 等追蹤參數後再輸出。
  */
 fun formatPostShareText(itemDetail: ItemDetail): String {
     val url = com.reater.app.domain.UrlParser.stripTrackingParams(itemDetail.item.canonicalUrl)
     val summary = itemDetail.manualSummary.ifBlank { itemDetail.manualNote }.trim()
-    return if (summary.isNotBlank()) "$url: $summary" else "$url: "
+    return if (summary.isNotBlank()) "$url $summary" else url
 }
 
 @Composable

@@ -3,9 +3,15 @@ package com.reater.app.ui.detail
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import com.reater.app.ui.components.dismissFocusOnTap
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -75,6 +81,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -97,6 +104,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.heightIn
+import com.reater.app.ui.player.applyDialogWindowImmersive
+import com.reater.app.ui.player.findDialogWindow
+import com.reater.app.ui.player.rememberMediaViewerSafeInsets
 import coil.compose.AsyncImage
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.CommentEntity
@@ -444,12 +456,27 @@ fun DetailDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false
     )) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(
-            alpha = (0.6f * (1f - abs(dragState.offset) / dragState.containerHeight)).coerceIn(0f, 0.6f)
-        )).systemBarsPadding().imePadding().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+        val view = LocalView.current
+        val dialogWindow = remember(view) { findDialogWindow(view) }
+        // 與全螢幕檢視器同一套 Safe Insets 計算：
+        // systemBarsPadding() 依賴 Dialog 子視窗「單次 insets 分發」，
+        // One UI 上首幀 nav inset 常為 0 → 卡片底部延伸進導覽列被遮擋；
+        // 共用計算式會在旋轉與系統列顯隱時重算，並含資源保底。
+        val safeInsets = rememberMediaViewerSafeInsets(dialogWindow, view, controlsVisible = true)
         val noteFocusManager = LocalFocusManager.current
         val noteKeyboard = LocalSoftwareKeyboardController.current
         val noteImeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        SideEffect {
+            applyDialogWindowImmersive(dialogWindow)
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(
+            alpha = (0.6f * (1f - abs(dragState.offset) / dragState.containerHeight)).coerceIn(0f, 0.6f)
+        )).padding(
+            top = safeInsets.top,
+            bottom = safeInsets.bottom + 8.dp,
+            start = safeInsets.left,
+            end = safeInsets.right
+        ).imePadding().padding(horizontal = 12.dp).dismissFocusOnTap(noteFocusManager), contentAlignment = Alignment.Center) {
         BackHandler(enabled = noteImeOpen) {
             noteFocusManager.clearFocus()
             noteKeyboard?.hide()
@@ -578,6 +605,14 @@ fun DetailDialog(
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (item.item.canonicalUrl.isNotBlank()) {
+                            IconButton(onClick = {
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW,
+                                    Uri.parse(com.reater.app.domain.UrlParser.stripTrackingParams(item.item.canonicalUrl)))) }
+                            }, modifier = Modifier.size(40.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, "在 Threads / 瀏覽器開啟", modifier = Modifier.size(20.dp))
+                            }
+                        }
                         IconButton(
                             onClick = {
                                 val shareText = formatPostShareText(item)
@@ -612,6 +647,7 @@ fun DetailDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(detailScroll)
+                        .dismissFocusOnTap(noteFocusManager)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                 // 詳細檢視內建新建分類 Dialog（與 PRO Tab / 儲存頁同源：圖示選擇 + 配額提示 + Done 建完即套用）
@@ -646,33 +682,6 @@ fun DetailDialog(
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
-
-                // External Link Button（去除追蹤參數後再開啟）
-                if (item.item.canonicalUrl.isNotBlank()) {
-                    OutlinedButton(
-                        onClick = {
-                            runCatching {
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(com.reater.app.domain.UrlParser.stripTrackingParams(item.item.canonicalUrl))
-                                )
-                                context.startActivity(intent)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "在 Threads / 瀏覽器開啟",
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
 
                 // 拆解螺紋鏈：母文 →(中間分享/回覆層)…→ 主文；留言的留言會展開成 N 個區塊
                 val threadChain = remember(item.displayBody, item.item.authorHandle) {
@@ -998,9 +1007,11 @@ fun DetailDialog(
 
                 // 人工筆記與 AI 輸出使用不同欄位，編輯即交由 ViewModel 持久化。
                 Spacer(Modifier.height(14.dp))
-                Text("人工筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 val noteBringIntoView = remember { BringIntoViewRequester() }
                 var noteFocused by remember { mutableStateOf(false) }
+                // 筆記高度限制為精巧可見高度（上限 160.dp，約 5-6 行），超出版面在框內滑動捲動，不撐爆對話框
+                val maxNoteHeight = 160.dp
                 val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
                 LaunchedEffect(imeBottom, noteFocused) {
                     if (noteFocused) noteBringIntoView.bringIntoView()
@@ -1012,8 +1023,36 @@ fun DetailDialog(
                         viewModel.updateManualNote(item.item.id, it)
                     },
                     placeholder = { Text("寫下你的想法…") },
+                    singleLine = false,
                     minLines = 3,
-                    modifier = Modifier.fillMaxWidth().bringIntoViewRequester(noteBringIntoView)
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        autoCorrectEnabled = true,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Default
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            // 攔截輸入法完成/送出動作，絕不呼叫 clearFocus()，避免鍵盤縮回；保持純換行行為
+                        },
+                        onSend = {},
+                        onGo = {},
+                        onNext = {},
+                        onPrevious = {}
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 88.dp, max = maxNoteHeight)
+                        .bringIntoViewRequester(noteBringIntoView)
                         .onFocusChanged { state ->
                             noteFocused = state.isFocused
                             if (state.isFocused) coroutineScope.launch { noteBringIntoView.bringIntoView() }

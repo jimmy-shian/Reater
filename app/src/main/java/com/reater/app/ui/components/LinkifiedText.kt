@@ -2,7 +2,7 @@ package com.reater.app.ui.components
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -11,7 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
 
 private val UrlRegex = Regex("""https?://[^\s<>"'）」』】]+""")
@@ -38,21 +38,29 @@ fun LinkifiedText(
         buildAnnotatedString {
             var last = 0
             UrlRegex.findAll(text).forEach { m ->
-                var url = m.value.trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
+                val rawUrl = m.value.trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
                     .trimEnd('。', '，', '、', '！', '？', '；', '：', '「', '」', '『', '』', '【', '】', '…')
-                if (url.isBlank()) return@forEach
-                // 在原文中的實際起點
+                if (rawUrl.isBlank()) return@forEach
                 val start = text.indexOf(m.value, last)
                 if (start < 0) return@forEach
                 if (start > last) append(text.substring(last, start))
-                pushStringAnnotation(tag = "URL", annotation = url)
-                withStyle(SpanStyle(color = linkColor)) {
-                    append(url)
+
+                val link = androidx.compose.ui.text.LinkAnnotation.Url(
+                    url = rawUrl,
+                    styles = androidx.compose.ui.text.TextLinkStyles(
+                        style = SpanStyle(color = linkColor)
+                    )
+                ) { annotation ->
+                    val urlStr = (annotation as? androidx.compose.ui.text.LinkAnnotation.Url)?.url ?: rawUrl
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urlStr)))
+                    }
                 }
-                pop()
+                withLink(link) {
+                    append(rawUrl)
+                }
                 last = start + m.value.length
-                // 若剔除了尾端標點，把標點補回為普通文字
-                val strippedTail = m.value.substring(url.length)
+                val strippedTail = m.value.substring(rawUrl.length)
                 if (strippedTail.isNotEmpty()) {
                     append(strippedTail)
                 }
@@ -60,27 +68,34 @@ fun LinkifiedText(
             if (last < text.length) append(text.substring(last))
         }
     }
-    ClickableText(
-        text = annotated,
-        modifier = modifier,
-        style = androidx.compose.ui.text.TextStyle(
-            fontSize = fontSize,
-            lineHeight = lineHeight,
-            color = color
-        ),
-        maxLines = maxLines,
-        overflow = overflow,
-        softWrap = softWrap,
-        onClick = { offset ->
-            val hit = annotated.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                .firstOrNull()
-            if (hit != null) {
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(hit.item)))
-                }
-            } else {
-                onNeutralClick?.invoke()
-            }
-        }
+
+    val textStyle = androidx.compose.ui.text.TextStyle(
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        color = color
     )
+
+    if (onNeutralClick != null) {
+        androidx.compose.foundation.text.BasicText(
+            text = annotated,
+            modifier = modifier.clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                onClick = onNeutralClick
+            ),
+            style = textStyle,
+            maxLines = maxLines,
+            overflow = overflow,
+            softWrap = softWrap
+        )
+    } else {
+        androidx.compose.foundation.text.BasicText(
+            text = annotated,
+            modifier = modifier,
+            style = textStyle,
+            maxLines = maxLines,
+            overflow = overflow,
+            softWrap = softWrap
+        )
+    }
 }

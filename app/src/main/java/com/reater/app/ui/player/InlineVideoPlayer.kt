@@ -11,16 +11,27 @@ import android.provider.MediaStore
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.abs
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,8 +57,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -220,36 +231,96 @@ fun InlineVideoPlayer(
                 decorFitsSystemWindows = false
             )
         ) {
-            FullscreenVideoViewer(
-                remoteUrl = remoteUrl,
-                localPath = localPath,
-                startPosition = position,
-                startPlaying = fullscreenWasPlaying,
-                startMuted = isMuted,
-                initialVideoWidth = videoWidth,
-                initialVideoHeight = videoHeight,
-                onClose = { finalPos, finalPlaying, finalMuted ->
-                    isFullscreen = false
-                    position = finalPos
-                    isMuted = finalMuted
-                    applyInlineMute(mediaPlayerRef, finalMuted)
-                    videoView?.let { vv ->
-                        runCatching { vv.seekTo(finalPos) }
-                        if (finalPlaying) {
-                            VideoPlaybackManager.onPlayStarted(playerId) {
-                                videoView?.let { if (it.isPlaying) it.pause() }
-                                isPlaying = false
-                            }
-                            vv.start()
-                            isPlaying = true
-                        } else {
-                            if (vv.isPlaying) vv.pause()
+            var dismissOffsetY by remember { mutableFloatStateOf(0f) }
+            var dismissHeightPx by remember { mutableIntStateOf(1) }
+            var dismissSettling by remember { mutableStateOf(false) }
+            val fullscreenScope = rememberCoroutineScope()
+
+            fun closeFullscreen(finalPos: Int = position, finalPlaying: Boolean = isPlaying, finalMuted: Boolean = isMuted) {
+                isFullscreen = false
+                position = finalPos
+                isMuted = finalMuted
+                applyInlineMute(mediaPlayerRef, finalMuted)
+                videoView?.let { vv ->
+                    runCatching { vv.seekTo(finalPos) }
+                    if (finalPlaying) {
+                        VideoPlaybackManager.onPlayStarted(playerId) {
+                            videoView?.let { if (it.isPlaying) it.pause() }
                             isPlaying = false
-                            VideoPlaybackManager.onPlayStopped(playerId)
                         }
+                        vv.start()
+                        isPlaying = true
+                    } else {
+                        if (vv.isPlaying) vv.pause()
+                        isPlaying = false
+                        VideoPlaybackManager.onPlayStopped(playerId)
                     }
                 }
-            )
+            }
+
+            fun updateDismissDrag(delta: Float) {
+                if (dismissSettling) return
+                val resistance = 1f + abs(dismissOffsetY) / (dismissHeightPx * 0.5f).coerceAtLeast(1f)
+                dismissOffsetY += delta / resistance
+            }
+
+            fun endDismissDrag(velocityY: Float = 0f) {
+                if (dismissSettling) return
+                val shouldDismissDown = dismissOffsetY > dismissHeightPx * 0.18f ||
+                    (dismissOffsetY > dismissHeightPx * 0.06f && velocityY > 1200f)
+                val shouldDismissUp = dismissOffsetY < -dismissHeightPx * 0.18f ||
+                    (dismissOffsetY < -dismissHeightPx * 0.06f && velocityY < -1200f)
+                val shouldDismiss = shouldDismissDown || shouldDismissUp
+
+                if (!shouldDismiss && abs(dismissOffsetY) <= 0.5f) {
+                    dismissOffsetY = 0f
+                    return
+                }
+                dismissSettling = true
+                fullscreenScope.launch {
+                    try {
+                        val anim = Animatable(dismissOffsetY)
+                        if (shouldDismiss) {
+                            val target = if (shouldDismissDown) dismissHeightPx.toFloat() else -dismissHeightPx.toFloat()
+                            anim.animateTo(target, tween(220)) { dismissOffsetY = value }
+                            closeFullscreen()
+                        } else {
+                            anim.animateTo(0f, spring(dampingRatio = 0.82f)) { dismissOffsetY = value }
+                        }
+                    } finally {
+                        dismissSettling = false
+                    }
+                }
+            }
+
+            val dismissAlpha = (1f - abs(dismissOffsetY) / dismissHeightPx.toFloat() * 1.6f).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { dismissHeightPx = it.height.coerceAtLeast(1) }
+                    .background(Color.Black.copy(alpha = dismissAlpha))
+                    .graphicsLayer {
+                        translationY = dismissOffsetY
+                        val s = (1f - abs(dismissOffsetY) / dismissHeightPx.toFloat() * 0.12f).coerceIn(0.88f, 1f)
+                        scaleX = s; scaleY = s
+                        alpha = dismissAlpha
+                    }
+            ) {
+                FullscreenVideoViewer(
+                    remoteUrl = remoteUrl,
+                    localPath = localPath,
+                    startPosition = position,
+                    startPlaying = fullscreenWasPlaying,
+                    startMuted = isMuted,
+                    initialVideoWidth = videoWidth,
+                    initialVideoHeight = videoHeight,
+                    onDismissDrag = { updateDismissDrag(it) },
+                    onDismissEnd = { endDismissDrag(it) },
+                    onClose = { finalPos, finalPlaying, finalMuted ->
+                        closeFullscreen(finalPos, finalPlaying, finalMuted)
+                    }
+                )
+            }
         }
     }
 
@@ -403,7 +474,7 @@ fun InlineVideoPlayer(
                     .background(Color.Black.copy(alpha = 0.6f), CircleShape)
             ) {
                 Icon(
-                    imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     contentDescription = if (isMuted) "取消靜音" else "靜音",
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
@@ -458,6 +529,8 @@ fun FullscreenVideoViewer(
     startMuted: Boolean = true,
     initialVideoWidth: Int = 0,
     initialVideoHeight: Int = 0,
+    onDismissDrag: (Float) -> Unit = {},
+    onDismissEnd: (Float) -> Unit = {},
     onClose: (finalPosition: Int, isPlaying: Boolean, isMuted: Boolean) -> Unit
 ) {
     val view = LocalView.current
@@ -480,6 +553,9 @@ fun FullscreenVideoViewer(
     var controlsVisible by remember { mutableStateOf(true) }
     var showSpeedMenu by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    var lastTapPosition by remember { mutableStateOf(Offset.Zero) }
+    var pendingSingleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // 預設方向：依影片實際寬高比自動判斷（寬 >= 高 → 橫向，寬 < 高 → 直向）。
     // 若初進入時尺寸未知，預設為 false (直向全螢幕)，避免手機縱向瀏覽時突然強行橫置。
@@ -531,15 +607,16 @@ fun FullscreenVideoViewer(
 
     // 設定 Dialog Window 透明系統列
     val dialogWindow = remember(view) { findDialogWindow(view) }
+    val safeInsets = rememberMediaViewerSafeInsets(dialogWindow, view, controlsVisible)
     SideEffect {
         applyDialogWindowImmersive(dialogWindow)
-        setFullscreenSystemBarsVisible(dialogWindow, controlsVisible || playbackError)
+        setFullscreenSystemBarsVisible(dialogWindow, controlsVisible || playbackError, activity)
     }
 
     // 退出時釋放播放器並還原直向
     DisposableEffect(fullscreenPlayerId) {
         onDispose {
-            setFullscreenSystemBarsVisible(dialogWindow, true)
+            setFullscreenSystemBarsVisible(dialogWindow, true, activity)
             VideoPlaybackManager.unregister(fullscreenPlayerId)
             vvRef?.stopPlayback()
             vvRef = null
@@ -607,7 +684,7 @@ fun FullscreenVideoViewer(
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        // 影片本體：真實轉向後直接填滿即可，直/橫向影片皆由 VideoView 依比例呈現
+        // 影片本體 B方案動態：縮到安全區，導覽列出現/隱藏時自動變化，橫向左右不再被蓋
         key(retryAttempt) {
         AndroidView(
             factory = { ctx ->
@@ -695,18 +772,71 @@ fun FullscreenVideoViewer(
         }
 
 
-        // 觸控手勢感應層（單擊切換控制列，左/右雙擊快退/快進 10 秒）
+        // 觸控手勢感應層：垂直主導手勢觸發上下滑動關閉檢視器；無拖曳時觸發單擊切換控制列與左右雙擊快退/快進
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { controlsVisible = !controlsVisible },
-                        onDoubleTap = { offset ->
-                            val halfWidth = size.width / 2f
-                            if (offset.x < halfWidth) seekRelative(-10000) else seekRelative(10000)
+                .pointerInput(onDismissDrag, onDismissEnd) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalPan = Offset.Zero
+                        var isDragging = false
+                        var velocityY = 0f
+                        var lastTime = System.currentTimeMillis()
+                        val downPoint = down.position
+
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pan = event.calculatePan()
+                            val pointers = event.changes.count { it.pressed }
+                            totalPan += pan
+
+                            if (!isDragging && pointers == 1) {
+                                if (abs(totalPan.y) > viewConfiguration.touchSlop &&
+                                    abs(totalPan.y) > abs(totalPan.x) * 1.2f) {
+                                    isDragging = true
+                                    lastTime = System.currentTimeMillis()
+                                    velocityY = 0f
+                                    pendingSingleTapJob?.cancel()
+                                    pendingSingleTapJob = null
+                                }
+                            }
+
+                            if (isDragging && pointers == 1) {
+                                val now = System.currentTimeMillis()
+                                val dt = (now - lastTime).coerceAtLeast(1)
+                                velocityY = (pan.y / dt * 1000f * 0.6f + velocityY * 0.4f).coerceIn(-6000f, 6000f)
+                                lastTime = now
+                                onDismissDrag(pan.y)
+                                event.changes.forEach { it.consume() }
+                            }
+                        } while (event.changes.any { it.pressed })
+
+                        if (isDragging) {
+                            onDismissEnd(velocityY)
+                        } else if (totalPan.getDistance() < viewConfiguration.touchSlop) {
+                            val now = System.currentTimeMillis()
+                            val isDoubleTap = (now - lastTapTime < 300) &&
+                                (downPoint - lastTapPosition).getDistance() < viewConfiguration.touchSlop * 2.5f
+
+                            if (isDoubleTap) {
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = null
+                                lastTapTime = 0L
+                                val halfWidth = size.width / 2f
+                                if (downPoint.x < halfWidth) seekRelative(-10000) else seekRelative(10000)
+                            } else {
+                                lastTapTime = now
+                                lastTapPosition = downPoint
+                                pendingSingleTapJob?.cancel()
+                                pendingSingleTapJob = coroutineScope.launch {
+                                    delay(260)
+                                    controlsVisible = !controlsVisible
+                                    lastInteractionTime = System.currentTimeMillis()
+                                }
+                            }
                         }
-                    )
+                    }
                 }
         )
 
@@ -740,26 +870,13 @@ fun FullscreenVideoViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.42f))
-                    // 空白處單擊隱藏控制列（修復：先前此處只設 true，導致點空白關不掉）；
-                    // 雙擊維持快退/快進；按鈕本身會消費事件，不會冒泡到此處
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                controlsVisible = false
-                            },
-                            onDoubleTap = { offset ->
-                                val halfWidth = size.width / 2f
-                                if (offset.x < halfWidth) seekRelative(-10000) else seekRelative(10000)
-                            }
-                        )
-                    }
             ) {
                 // 1. 頂部列：關閉按鈕、狀態標題、直橫向旋轉切換
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .then(fullscreenTopBarModifier(isLandscape == true)),
+                        .then(fullscreenTopBarModifier(safeInsets)),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -882,7 +999,7 @@ fun FullscreenVideoViewer(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .then(fullscreenBottomBarModifier(isLandscape == true))
+                        .then(fullscreenBottomBarModifier(safeInsets))
                 ) {
                     // 拖曳中時間預覽懸浮提示
                     if (scrubbing) {
@@ -961,16 +1078,18 @@ fun FullscreenVideoViewer(
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable {
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .clickable {
                                     toggleFullscreenMute()
-                                }
+                                    }
                             ) {
                                 Row(
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(48.dp).padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                        imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                                         contentDescription = if (isMuted) "取消靜音" else "靜音",
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
@@ -982,7 +1101,9 @@ fun FullscreenVideoViewer(
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable {
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .clickable {
                                     controlsVisible = true
                                     lastInteractionTime = System.currentTimeMillis()
                                     coroutineScope.launch {
@@ -993,10 +1114,10 @@ fun FullscreenVideoViewer(
                                             remoteUrl = remoteUrl
                                         )
                                     }
-                                }
+                                    }
                             ) {
                                 Row(
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(48.dp).padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -1019,19 +1140,27 @@ fun FullscreenVideoViewer(
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = if (showSpeedMenu) Color.White.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier.clickable {
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .clickable {
                                     showSpeedMenu = !showSpeedMenu
                                     controlsVisible = true
                                     lastInteractionTime = System.currentTimeMillis()
-                                }
+                                    }
                             ) {
-                                Text(
-                                    text = "${playbackSpeed}x",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(48.dp)
+                                        .padding(horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${playbackSpeed}x",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
 
 
