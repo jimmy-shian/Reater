@@ -60,6 +60,7 @@ fun CategoryDropdown(
             label = { Text(if (focused) "搜尋或輸入新分類…" else "選擇分類") },
             placeholder = { Text("未分類") },
             singleLine = true,
+            leadingIcon = { CategoryIcon(selected) },
             trailingIcon = {
                 Row {
                     if (queryText.isNotEmpty() || selectedCategoryId != null) {
@@ -82,7 +83,8 @@ fun CategoryDropdown(
                 if (filtered.isEmpty()) Text("找不到相符分類", Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else if (normalized.isNotBlank()) Text("符合分類", Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
                 filtered.forEach { category ->
-                    ReaterDropdownOption(category.name, selectedCategoryId == category.id, { select(category.id) })
+                    ReaterDropdownOption(category.name, selectedCategoryId == category.id, { select(category.id) },
+                        leading = { CategoryIcon(category) })
                 }
                 if (canCreate) {
                     HorizontalDivider()

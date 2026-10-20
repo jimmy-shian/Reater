@@ -24,6 +24,14 @@ import com.reater.app.ui.analytics.AnalyticsScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +50,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import com.reater.app.domain.defaultCollectionDisplayName
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -105,13 +114,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -142,12 +154,14 @@ import com.reater.app.domain.SmartCollectionEngine
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -257,19 +271,50 @@ class MainViewModel @Inject constructor(
         _tabIndex.value = 0
     }
 
+    private val categoryMoveMutex = kotlinx.coroutines.sync.Mutex()
+
     fun moveCategory(category: CategoryEntity, direction: Int) {
         viewModelScope.launch {
-            val ordered = categoryDao.getAllCategories().toMutableList()
-            val index = ordered.indexOfFirst { it.id == category.id }
-            val target = index + direction
-            if (index < 0 || target !in ordered.indices) return@launch
-            java.util.Collections.swap(ordered, index, target)
-            categoryDao.reorderCategories(ordered.map { it.id })
+            categoryMoveMutex.withLock {
+                val ordered = categoryDao.getAllCategories().toMutableList()
+                val index = ordered.indexOfFirst { it.id == category.id }
+                val target = index + direction
+                if (index < 0 || target !in ordered.indices) return@withLock
+                java.util.Collections.swap(ordered, index, target)
+                categoryDao.reorderCategories(ordered.map { it.id })
+            }
+        }
+    }
+
+    fun reorderAllCategories(newOrderedCategories: List<CategoryEntity>) {
+        viewModelScope.launch {
+            categoryMoveMutex.withLock {
+                categoryDao.reorderCategories(newOrderedCategories.map { it.id })
+            }
         }
     }
 
     fun updateCollectionRule(collection: SavedCollectionEntity, rule: CollectionRule) {
         viewModelScope.launch { smartCollectionEngine.updateRule(collection, rule) }
+    }
+
+    fun updateCollection(collection: SavedCollectionEntity, newName: String, newIcon: String, rule: CollectionRule) {
+        viewModelScope.launch {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val updated = collection.copy(
+                name = newName,
+                iconName = newIcon,
+                isEnabled = rule.enabled,
+                rulesJson = json.encodeToString(CollectionRule.serializer(), rule)
+            )
+            proDao.insertCollection(updated)
+        }
+    }
+
+    fun deleteCollection(collection: SavedCollectionEntity) {
+        viewModelScope.launch {
+            proDao.deleteCollection(collection.id)
+        }
     }
 
     fun setProCategoryFilter(id: Long?) {
@@ -455,6 +500,34 @@ class MainViewModel @Inject constructor(
                 )
             )
             _showCreateCategoryDialog.value = false
+        }
+    }
+
+    /**
+     * 詳細檢視內建新建分類：建立後直接套用到指定貼文。
+     * 與 PRO Tab 的 [createCategory] 共用配額/正規化規則，避免三處 UI 行為分叉；
+     * 已存在同名分類則直接套用既有 id（與儲存頁一致）。
+     */
+    fun createCategoryAndAssign(itemId: Long, name: String, avatarIcon: String) {
+        val normalized = name.trim()
+        if (normalized.isBlank() || normalized == "未分類" || normalized.length > 80 || normalized.any { it.isISOControl() }) return
+        viewModelScope.launch {
+            val existing = runCatching { categoryDao.getCategoryByName(normalized) }.getOrNull()
+            val customCount = runCatching { categoryDao.getAllCategories().count { !it.isDefault } }
+                .getOrDefault(categories.value.count { !it.isDefault })
+            if (existing == null && !isProUnlocked.value &&
+                customCount >= com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT) {
+                _showProLimitNotice.value = true
+                return@launch
+            }
+            val newId = existing?.id ?: categoryDao.getOrCreateCategory(
+                CategoryEntity(
+                    name = normalized,
+                    colorArgb = 0xFF5C6BC0.toInt(),
+                    avatarIcon = avatarIcon.ifBlank { "life" }
+                )
+            )
+            runCatching { repository.updateCategory(itemId, newId) }
         }
     }
 
@@ -1295,10 +1368,14 @@ fun MainScreen(
                                 else viewModel.setShowCreateCategoryDialog(true)
                             },
                             collections = collections,
+                            allItems = allPosts,
                             onOpenUnlock = { showUnlockDialog = true },
                             onEditCategory = { viewModel.setEditingCategory(it) },
                             onMoveCategory = viewModel::moveCategory,
-                            onUpdateRule = viewModel::updateCollectionRule
+                            onReorderCategories = viewModel::reorderAllCategories,
+                            onUpdateRule = viewModel::updateCollectionRule,
+                            onSaveCollection = viewModel::updateCollection,
+                            onDeleteCollection = viewModel::deleteCollection
                         )
                     }
                     4 -> {
@@ -1397,46 +1474,80 @@ private fun ProCategoryTabContent(
     isPro: Boolean,
     onAddCategoryClick: () -> Unit,
     collections: List<SavedCollectionEntity>,
+    allItems: List<ItemDetail> = emptyList(),
     onOpenUnlock: () -> Unit,
     onEditCategory: (CategoryEntity) -> Unit,
     onMoveCategory: (CategoryEntity, Int) -> Unit,
-    onUpdateRule: (SavedCollectionEntity, CollectionRule) -> Unit
+    onReorderCategories: (List<CategoryEntity>) -> Unit = {},
+    onUpdateRule: (SavedCollectionEntity, CollectionRule) -> Unit,
+    onSaveCollection: (SavedCollectionEntity, String, String, CollectionRule) -> Unit = { _, _, _, _ -> },
+    onDeleteCollection: ((SavedCollectionEntity) -> Unit)? = null
 ) {
-    var editingRule by remember { mutableStateOf<SavedCollectionEntity?>(null) }
+    var editingRuleCollection by remember { mutableStateOf<SavedCollectionEntity?>(null) }
     val json = remember { kotlinx.serialization.json.Json { ignoreUnknownKeys = true } }
     fun ruleFor(collection: SavedCollectionEntity): CollectionRule = runCatching {
         json.decodeFromString(CollectionRule.serializer(), collection.rulesJson).let { it.copy(enabled = collection.isEnabled and it.enabled) }
     }.getOrDefault(CollectionRule(enabled = collection.isEnabled))
-    editingRule?.let { collection ->
+
+    var orderedCategories by remember(categories) { mutableStateOf(categories) }
+    var draggingCategoryId by remember { mutableStateOf<Long?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val itemSpacingPx = remember(density) { with(density) { 10.dp.toPx() } }
+    var measuredItemHeightPx by remember(density) { mutableFloatStateOf(with(density) { 56.dp.toPx() }) }
+    val slotPitchPx = measuredItemHeightPx + itemSpacingPx
+
+    fun settleDrag() {
+        settleJob?.cancel()
+        val residual = dragOffsetY
+        if (residual == 0f) {
+            draggingCategoryId = null
+            settleJob = null
+            return
+        }
+        settleJob = coroutineScope.launch {
+            animate(initialValue = residual, targetValue = 0f, animationSpec = tween(150)) { value, _ ->
+                dragOffsetY = value
+            }
+            draggingCategoryId = null
+            dragOffsetY = 0f
+        }
+    }
+
+    LaunchedEffect(categories) {
+        if (draggingCategoryId == null) {
+            orderedCategories = categories
+        }
+    }
+
+    editingRuleCollection?.let { collection ->
         val original = ruleFor(collection)
-        var author by remember(collection.id) { mutableStateOf(original.author.orEmpty()) }
-        var tag by remember(collection.id) { mutableStateOf(original.tag.orEmpty()) }
-        var minLikes by remember(collection.id) { mutableStateOf(original.minLikes?.toString().orEmpty()) }
-        var unread by remember(collection.id) { mutableStateOf(original.isRead == false) }
-        var favorite by remember(collection.id) { mutableStateOf(original.isFavorite == true) }
-        var hasMedia by remember(collection.id) { mutableStateOf(original.hasMedia == true) }
-        AlertDialog(
-            onDismissRequest = { editingRule = null },
-            title = { Text("編輯智慧規則") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(author, { author = it }, label = { Text("作者包含") }, singleLine = true)
-                    OutlinedTextField(tag, { tag = it }, label = { Text("標籤") }, singleLine = true)
-                    OutlinedTextField(minLikes, { value -> if (value.all { it.isDigit() }) minLikes = value }, label = { Text("最低讚數") }, singleLine = true)
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("僅未讀", Modifier.weight(1f)); Switch(unread, { unread = it }) }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("僅收藏", Modifier.weight(1f)); Switch(favorite, { favorite = it }) }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("包含媒體", Modifier.weight(1f)); Switch(hasMedia, { hasMedia = it }) }
-                }
+        com.reater.app.ui.components.SmartCollectionRuleDialog(
+            collection = collection,
+            initialRule = original,
+            categories = categories,
+            allItems = allItems,
+            isPro = isPro,
+            onDismiss = { editingRuleCollection = null },
+            onSave = { newName, newIcon, updatedRule ->
+                onSaveCollection(collection, newName, newIcon, updatedRule)
+                editingRuleCollection = null
             },
-            confirmButton = { TextButton(onClick = {
-                onUpdateRule(collection, original.copy(author = author.trim().ifBlank { null }, tag = tag.trim().ifBlank { null },
-                    minLikes = minLikes.toIntOrNull(), isRead = if (unread) false else null,
-                    isFavorite = if (favorite) true else null, hasMedia = if (hasMedia) true else null))
-                editingRule = null
-            }, enabled = isPro) { Text("儲存規則") } },
-            dismissButton = { TextButton(onClick = { editingRule = null }) { Text("取消") } }
+            onDelete = {
+                onDeleteCollection?.invoke(collection)
+                editingRuleCollection = null
+            },
+            onResetToDefault = {
+                val def = SmartCollectionEngine.getDefaultRule(collection.name, collection.iconName)
+                val defName = defaultCollectionDisplayName(collection.name, collection.iconName)
+                onSaveCollection(collection, defName, collection.iconName, def)
+                editingRuleCollection = null
+            }
         )
     }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text("分類管理", style = MaterialTheme.typography.titleMedium)
@@ -1444,16 +1555,95 @@ private fun ProCategoryTabContent(
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = onAddCategoryClick, modifier = Modifier.fillMaxWidth()) { Text("＋ 新增分類") }
         }
-        items(categories, key = { "category_${it.id}" }) { category ->
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        items(orderedCategories, key = { "category_${it.id}" }) { category ->
+            val isDragging = draggingCategoryId == category.id
+            val dragScale by animateFloatAsState(
+                targetValue = if (isDragging) 1.03f else 1f,
+                animationSpec = tween(150),
+                label = "categoryDragScale"
+            )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        val measured = coordinates.size.height.toFloat()
+                        if (measured > 0f && measured != measuredItemHeightPx) {
+                            measuredItemHeightPx = measured
+                        }
+                    }
+                    .then(if (isDragging) Modifier else Modifier.animateItem())
+                    .zIndex(if (isDragging) 10f else 1f)
+                    .graphicsLayer {
+                        if (isDragging) {
+                            translationY = dragOffsetY
+                        }
+                        scaleX = dragScale
+                        scaleY = dragScale
+                    },
+                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isDragging) 8.dp else 1.dp),
+                border = if (isDragging) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    com.reater.app.ui.components.CategoryDragHandle(
+                        id = category.id,
+                        onDragStart = {
+                            settleJob?.cancel()
+                            settleJob = null
+                            draggingCategoryId = category.id
+                            dragOffsetY = 0f
+                        },
+                        onDrag = { deltaY ->
+                            dragOffsetY += deltaY
+                            var currentIndex = orderedCategories.indexOfFirst { it.id == category.id }
+                            while (currentIndex != -1 && dragOffsetY > slotPitchPx / 2f && currentIndex < orderedCategories.lastIndex) {
+                                val mutable = orderedCategories.toMutableList()
+                                java.util.Collections.swap(mutable, currentIndex, currentIndex + 1)
+                                orderedCategories = mutable
+                                dragOffsetY -= slotPitchPx
+                                currentIndex += 1
+                            }
+                            while (currentIndex != -1 && dragOffsetY < -slotPitchPx / 2f && currentIndex > 0) {
+                                val mutable = orderedCategories.toMutableList()
+                                java.util.Collections.swap(mutable, currentIndex, currentIndex - 1)
+                                orderedCategories = mutable
+                                dragOffsetY += slotPitchPx
+                                currentIndex -= 1
+                            }
+                            if (currentIndex == 0 && dragOffsetY < 0f) dragOffsetY = 0f
+                            if (currentIndex == orderedCategories.lastIndex && dragOffsetY > 0f) dragOffsetY = 0f
+                        },
+                        onDragEnd = {
+                            if (orderedCategories != categories) {
+                                onReorderCategories(orderedCategories)
+                            }
+                            settleDrag()
+                        },
+                        onDragCancel = {
+                            if (orderedCategories != categories) {
+                                onReorderCategories(orderedCategories)
+                            }
+                            settleDrag()
+                        },
+                        onAccessibilityMove = { direction ->
+                            val currentIndex = orderedCategories.indexOfFirst { it.id == category.id }
+                            val target = currentIndex + direction
+                            if (currentIndex != -1 && target in orderedCategories.indices) {
+                                val mutable = orderedCategories.toMutableList()
+                                java.util.Collections.swap(mutable, currentIndex, target)
+                                orderedCategories = mutable
+                                onReorderCategories(mutable)
+                            }
+                        }
+                    )
+                    com.reater.app.ui.components.CategoryIcon(category)
+                    Spacer(Modifier.width(8.dp))
                     Text(category.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    IconButton(onClick = { onMoveCategory(category, -1) }, enabled = categories.firstOrNull()?.id != category.id) {
-                        Icon(Icons.Default.KeyboardArrowUp, "向上移動分類")
-                    }
-                    IconButton(onClick = { onMoveCategory(category, 1) }, enabled = categories.lastOrNull()?.id != category.id) {
-                        Icon(Icons.Default.KeyboardArrowDown, "向下移動分類")
-                    }
                     IconButton(onClick = { onEditCategory(category) }) { Icon(Icons.Default.Edit, "編輯分類") }
                 }
             }
@@ -1467,14 +1657,89 @@ private fun ProCategoryTabContent(
         } else {
             items(collections, key = { "rule_${it.id}" }) { collection ->
                 val rule = ruleFor(collection)
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(collection.name, style = MaterialTheme.typography.titleSmall)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (rule.enabled) "規則生效中" else "已停用", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = { editingRule = collection }) { Text("編輯") }
-                            Switch(checked = rule.enabled, onCheckedChange = { onUpdateRule(collection, rule.copy(enabled = it)) })
+                val isRuleEnabled = rule.enabled
+                val hasConditions = rule.hasActiveConditions()
+                val summaryText = SmartCollectionEngine.generateRuleSummary(rule, categories)
+                val matchedCount = remember(rule, allItems, categories) {
+                    if (!hasConditions) 0
+                    else allItems.count { SmartCollectionEngine.matchesItem(rule, it, categories) }
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { editingRuleCollection = collection },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                            alpha = if (isRuleEnabled) 0.45f else 0.22f
+                        )
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 既有/專屬 SVG 向量圖示容器（禁止使用 Emoji）
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isRuleEnabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(AvatarIcons.getDrawableRes(collection.iconName)),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isRuleEnabled) Color.Unspecified else MaterialTheme.colorScheme.outline
+                                )
+                            }
                         }
+
+                        // 資訊層級：智慧分類名稱 -> 規則摘要 -> 符合篇數
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = com.reater.app.domain.defaultCollectionDisplayName(collection.name, collection.iconName),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRuleEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                            )
+
+                            Text(
+                                text = summaryText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isRuleEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Text(
+                                text = if (!isRuleEnabled) "已停用"
+                                else if (hasConditions) "符合 $matchedCount 篇"
+                                else "尚未設定條件",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isRuleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                fontWeight = if (isRuleEnabled) FontWeight.Medium else FontWeight.Normal
+                            )
+                        }
+
+                        // Toggle：只負責啟用 / 停用規則
+                        Switch(
+                            checked = isRuleEnabled,
+                            onCheckedChange = { isChecked ->
+                                onUpdateRule(collection, rule.copy(enabled = isChecked))
+                            },
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
                 }
             }

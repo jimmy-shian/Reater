@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -95,6 +96,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
 import coil.compose.AsyncImage
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.CommentEntity
@@ -374,8 +376,12 @@ fun DetailDialog(
     }
     var showAiConsent by remember { mutableStateOf(false) }
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
+    val isPro by viewModel.isProUnlocked.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
+    // 詳細檢視內建新建分類：與 PRO Tab / 儲存頁共用 CategoryCreateDialog（本地狀態，避免搶全域 Dialog）
+    var showDetailCreateDialog by remember { mutableStateOf(false) }
+    var detailCreatePrefill by remember { mutableStateOf("") }
     // 全螢幕媒體檢視器下標（null = 關閉；索引對應「祖先在前、主文在後」的扁平有序，與存檔合併順序一致）
     var viewerIndex by rememberSaveable(item.item.id) { mutableStateOf<Int?>(null) }
     var selectedMediaUrl by rememberSaveable(item.item.id) { mutableStateOf("") }
@@ -527,13 +533,50 @@ fun DetailDialog(
                             )
                         }
                     }
-                    CategoryBadge(
-                        category = category,
-                        modifier = Modifier.weight(1f, fill = false).clickable {
-                            viewModel.openCategory(category?.id)
-                            onDismiss()
-                        }.padding(vertical = 12.dp)
-                    )
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        CategoryBadge(
+                            category = category,
+                            modifier = Modifier.clickable {
+                                showCategoryEditor = !showCategoryEditor
+                            }.padding(vertical = 12.dp)
+                        )
+                        if (showCategoryEditor) {
+                            // 分類編輯器懸浮在頂欄錨點上，不佔用詳細內容的捲動高度。
+                            Popup(
+                                onDismissRequest = { showCategoryEditor = false },
+                                alignment = Alignment.TopCenter
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .widthIn(min = 280.dp, max = 340.dp)
+                                        .padding(top = 48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    tonalElevation = 8.dp,
+                                    shadowElevation = 8.dp
+                                ) {
+                                    CategoryDropdown(
+                                        categories = categories,
+                                        selectedCategoryId = item.userEdit?.categoryId,
+                                        onSelect = {
+                                            viewModel.updateCategory(item.item.id, it)
+                                            showCategoryEditor = false
+                                            Toast.makeText(
+                                                context,
+                                                if (it == null) "已改為未分類" else "分類已更新",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        },
+                                        onRequestCreate = { prefill ->
+                                            detailCreatePrefill = prefill
+                                            showDetailCreateDialog = true
+                                            showCategoryEditor = false
+                                        },
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = {
@@ -571,25 +614,35 @@ fun DetailDialog(
                         .verticalScroll(detailScroll)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
-                // 改分類編輯器（由 ... 選單展開）：下拉篩選 + 即時生效
-                if (showCategoryEditor) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    CategoryDropdown(
-                        categories = categories,
-                        selectedCategoryId = item.userEdit?.categoryId,
-                        onSelect = {
-                            viewModel.updateCategory(item.item.id, it)
-                            Toast.makeText(
-                                context,
-                                if (it == null) "已改為未分類" else "分類已更新",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        },
-                        onRequestCreate = {
-                            Toast.makeText(context, "請至 PRO 分類以 + 新增分類", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                // 詳細檢視內建新建分類 Dialog（與 PRO Tab / 儲存頁同源：圖示選擇 + 配額提示 + Done 建完即套用）
+                if (showDetailCreateDialog) {
+                    val customCount = categories.count { !it.isDefault }
+                    val quotaText = if (!isPro) {
+                        val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
+                        if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
+                        else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+                    } else null
+                    androidx.compose.runtime.key(detailCreatePrefill) {
+                        com.reater.app.ui.components.CategoryCreateDialog(
+                            initialName = detailCreatePrefill,
+                            quotaText = quotaText,
+                            isPro = isPro,
+                            onProIconLocked = {
+                                Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
+                            },
+                            onDismiss = {
+                                detailCreatePrefill = ""
+                                showDetailCreateDialog = false
+                            },
+                            onConfirm = { name, avatar ->
+                                viewModel.createCategoryAndAssign(item.item.id, name, avatar)
+                                detailCreatePrefill = ""
+                                showDetailCreateDialog = false
+                                showCategoryEditor = false
+                                Toast.makeText(context, "分類已更新", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))

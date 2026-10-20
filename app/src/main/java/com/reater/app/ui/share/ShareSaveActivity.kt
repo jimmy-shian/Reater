@@ -202,6 +202,11 @@ fun ShareSaveScreen(
     val categories by viewModel.categories.collectAsState()
     val isPro by viewModel.isProUnlocked.collectAsState()
     val context = LocalContext.current
+    val newCategoryName = state.categoryQuery.trim()
+    val isNewCategory = newCategoryName.isNotBlank() &&
+        !newCategoryName.equals("未分類", ignoreCase = true) &&
+        state.selectedCategoryId == null &&
+        categories.none { it.name.trim().equals(newCategoryName, ignoreCase = true) }
     if (state.showSaveConflict) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = viewModel::dismissSaveConflict,
@@ -447,7 +452,10 @@ fun ShareSaveScreen(
                     categories = categories,
                     selectedCategoryId = state.selectedCategoryId,
                     onSelect = { viewModel.onCategorySelected(it) },
-                    onRequestCreate = { prefill -> viewModel.createCategory(prefill, "life") },
+                    onRequestCreate = { prefill ->
+                        createPrefill = prefill
+                        viewModel.setShowCreateCategoryDialog(true)
+                    },
                     categoryQuery = state.categoryQuery,
                     onQueryChange = viewModel::onCategoryQueryChanged,
                     dropdownExpanded = state.isCategoryDropdownExpanded,
@@ -807,11 +815,22 @@ fun ShareSaveScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
-                        onClick = { viewModel.savePost() },
+                        onClick = {
+                            if (isNewCategory) {
+                                // 先收起分類輸入框的鍵盤，再開啟既有新建分類視窗，
+                                // 避免 IME 把底部選項頂上來遮住。
+                                focusManager.clearFocus()
+                                keyboard?.hide()
+                                createPrefill = newCategoryName
+                                viewModel.setShowCreateCategoryDialog(true)
+                            } else {
+                                viewModel.savePost()
+                            }
+                        },
                         enabled = !state.isSaving,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(stringResource(R.string.save))
+                        Text(if (isNewCategory) "新建" else stringResource(R.string.save))
                     }
                 }
             }

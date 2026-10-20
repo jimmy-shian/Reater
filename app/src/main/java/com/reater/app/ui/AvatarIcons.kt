@@ -48,10 +48,28 @@ object AvatarIcons {
         AvatarIconItem("trophy", "卓越榮耀", "成就里程碑、菁英典藏與榮譽徽記", R.drawable.ic_avatar_trophy, isPro = true)
     )
 
-    val ALL: List<AvatarIconItem> = FREE + PRO
+    /**
+     * 專門提供智慧規則的 5 款專屬向量圖示
+     */
+    val RULE_ICONS: List<AvatarIconItem> = listOf(
+        AvatarIconItem("smart_hot", "高讚熱門", "按讚互動、熱門推薦規則專用圖示", R.drawable.ic_rule_hot, isPro = true),
+        AvatarIconItem("smart_study", "長期必讀", "收藏未讀、深度必讀規則專用圖示", R.drawable.ic_rule_bookmark, isPro = true),
+        AvatarIconItem("smart_sparkles", "靈感庫", "想法靈感、思維碰撞規則專用圖示", R.drawable.ic_rule_sparkles, isPro = true),
+        AvatarIconItem("smart_filter", "智慧過濾", "自訂條件、智慧分類過濾專用圖示", R.drawable.ic_rule_filter, isPro = true),
+        AvatarIconItem("smart_trending", "趨勢熱點", "指標數據、趨勢動向規則專用圖示", R.drawable.ic_rule_trending, isPro = true)
+    )
+
+    val ALL: List<AvatarIconItem> = FREE + PRO + RULE_ICONS
 
     fun getDrawableRes(id: String?): Int {
         if (id.isNullOrBlank()) return FREE.first().resId
+        when (id.lowercase()) {
+            "smart_hot", "fire" -> return R.drawable.ic_rule_hot
+            "smart_study", "study" -> return R.drawable.ic_rule_bookmark
+            "smart_sparkles", "sparkles" -> return R.drawable.ic_rule_sparkles
+            "smart_filter" -> return R.drawable.ic_rule_filter
+            "smart_trending" -> return R.drawable.ic_rule_trending
+        }
         ALL.firstOrNull { it.id.equals(id, ignoreCase = true) }?.let { return it.resId }
         return FREE.first().resId
     }

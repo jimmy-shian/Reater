@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -53,6 +54,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -62,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -133,7 +137,7 @@ fun ReaterDropdownTrigger(
     contentExtra: (RowScope.() -> Unit)? = null
 ) {
     val elevation by animateDpAsState(
-        targetValue = if (expanded) 10.dp else 2.dp,
+        targetValue = if (expanded) 8.dp else 1.dp,
         animationSpec = tween(ReaterDropdownMotion.ExpandMs, easing = FastOutSlowInEasing),
         label = "dropdownTriggerShadow"
     )
@@ -141,6 +145,7 @@ fun ReaterDropdownTrigger(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .shadow(elevation, RoundedCornerShape(12.dp)),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -149,14 +154,14 @@ fun ReaterDropdownTrigger(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leading?.invoke()
             if (leading != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
@@ -167,7 +172,7 @@ fun ReaterDropdownTrigger(
             if (badge != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = value,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -212,7 +217,7 @@ fun ReaterDropdownPanel(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 6.dp),
+                    .padding(vertical = 4.dp),
                 content = content
             )
         }
@@ -228,11 +233,13 @@ fun ReaterDropdownOption(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    subLabel: String? = null
+    subLabel: String? = null,
+    leading: @Composable (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .background(
                 if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                 else MaterialTheme.colorScheme.surface
@@ -242,14 +249,16 @@ fun ReaterDropdownOption(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 11.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            leading?.invoke()
+            if (leading != null) Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = text,
-                    fontSize = 14.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -259,7 +268,7 @@ fun ReaterDropdownOption(
                 if (subLabel != null) {
                     Text(
                         text = subLabel,
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
                         softWrap = false,
@@ -334,33 +343,64 @@ fun ReaterDropdownNumberInput(
 fun AnimatedDropdownPopup(
     expanded: Boolean,
     onDismiss: () -> Unit,
+    matchAnchorWidth: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val visible = remember { MutableTransitionState(false) }
     SideEffect { visible.targetState = expanded }
     if (visible.currentState || visible.targetState) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        var anchorWidthDp by remember { mutableStateOf<Dp>(0.dp) }
         Popup(
             popupPositionProvider = remember {
                 object : PopupPositionProvider {
-                    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
-                        layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset = IntOffset(
-                        anchorBounds.left.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
-                        anchorBounds.bottom.coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
-                    )
+                    override fun calculatePosition(
+                        anchorBounds: IntRect,
+                        windowSize: IntSize,
+                        layoutDirection: LayoutDirection,
+                        popupContentSize: IntSize
+                    ): IntOffset {
+                        with(density) {
+                            anchorWidthDp = anchorBounds.width.toDp()
+                        }
+                        val x = anchorBounds.left.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                        val y = (anchorBounds.bottom + 4).coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                        return IntOffset(x, y)
+                    }
                 }
             },
             onDismissRequest = onDismiss,
             properties = PopupProperties(focusable = true)
         ) {
-            AnimatedVisibility(visibleState = visible,
-                enter = ReaterDropdownMotion.panelEnter, exit = ReaterDropdownMotion.panelExit) {
-                val scale by transition.animateFloat(transitionSpec = { tween(ReaterDropdownMotion.ExpandMs) }, label = "popupScaleY") {
-                    if (it == EnterExitState.Visible) 1f else 0f
-                }
-                Surface(shape = RoundedCornerShape(12.dp), shadowElevation = 8.dp,
-                    modifier = Modifier.widthIn(max = 420.dp).padding(horizontal = 16.dp)
-                        .graphicsLayer { scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }) {
-                    Column(content = content)
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides density
+            ) {
+                AnimatedVisibility(
+                    visibleState = visible,
+                    enter = ReaterDropdownMotion.panelEnter,
+                    exit = ReaterDropdownMotion.panelExit
+                ) {
+                    val scale by transition.animateFloat(
+                        transitionSpec = { tween(ReaterDropdownMotion.ExpandMs) },
+                        label = "popupScaleY"
+                    ) {
+                        if (it == EnterExitState.Visible) 1f else 0f
+                    }
+                    val surfaceModifier = if (matchAnchorWidth && anchorWidthDp.value > 0f) {
+                        Modifier.width(anchorWidthDp)
+                    } else {
+                        Modifier.widthIn(max = 420.dp).padding(horizontal = 16.dp)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = surfaceModifier
+                            .graphicsLayer { scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }
+                    ) {
+                        Column(content = content)
+                    }
                 }
             }
         }

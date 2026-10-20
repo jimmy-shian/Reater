@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Rule Icon 4: Filter / Smart Rules -->
+    <path
+        android:pathData="M3,4H21V6.5L14,13.5V19L10,21V13.5L3,6.5V4Z"
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#8B5CF6"
+        android:fillAlpha="0.2" />
+</vector>
