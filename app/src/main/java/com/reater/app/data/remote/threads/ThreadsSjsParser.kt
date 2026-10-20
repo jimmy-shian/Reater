@@ -4,6 +4,7 @@ import com.reater.app.data.remote.FetchedComment
 import com.reater.app.data.remote.FetchedMedia
 import org.json.JSONArray
 import org.json.JSONObject
+import com.reater.app.domain.TextAttachmentStore
 
 /**
  * Threads SJS 內嵌 JSON 解析器（主力解析器）。
@@ -51,6 +52,8 @@ object ThreadsSjsParser {
         val comments: List<FetchedComment>,
         /** Threads 主題標籤（pill 欄位優先，否則內文首個 hashtag；供同主題預選分類用） */
         val topicTag: String = "",
+        /** 獨立文字附件：snippet_attachment_info.text_fragments 的完整原文。 */
+        val textAttachment: String = "",
         /** /share/ 留言鏈的母文（主本身 is_reply==true 時回溯；頂層串文為 null） */
         val parent: ParentPost? = null,
         /**
@@ -103,10 +106,12 @@ object ThreadsSjsParser {
         val replyPosts = mutableListOf<JSONObject>()
         val mainCandidates = mutableListOf<JSONObject>()
         val allPosts = mutableListOf<JSONObject>()
+        val payloadRoots = mutableListOf<JSONObject>()
         val seenReplyPk = HashSet<String>()
         for (block in ranked) {
             try {
                 val root = JSONObject(block)
+                payloadRoots.add(root)
                 collectNewShape(root, shortcode, mainCandidates, replyPosts, seenReplyPk, 0)
                 collectPosts(root, legacyPosts, 0)
                 collectAllPosts(root, allPosts, 0)
@@ -114,6 +119,11 @@ object ThreadsSjsParser {
                 continue
             }
             if (replyPosts.size > 200 && mainCandidates.isNotEmpty()) break
+        }
+        // 同一 payload 也可能先出現僅含 ID 的留言區塊。主文候選齊備後再
+        // 比對一次所有區塊，讓組裝不依賴 script 或 JSON 欄位的先後順序。
+        for (root in payloadRoots) {
+            collectNewShape(root, shortcode, mainCandidates, replyPosts, seenReplyPk, 0)
         }
 
         val main = mainCandidates.maxByOrNull { mainScore(it) }
@@ -207,22 +217,23 @@ object ThreadsSjsParser {
         // 新 shape：direct_replies 留言（結構上已保證屬於本串，直接收，含留言媒體）
         for (p in orderedReplies) {
             if (comments.size >= MAX_COMMENTS) break
-            val text = postText(p)
+            val text = commentText(p)
             val pMedia = postMedia(p)
             if (text.isBlank() && pMedia.isEmpty()) continue
             if (text == effBody && pMedia.isEmpty()) continue
             val author = resolveReplyAuthor(p)
             if (author.isBlank()) continue
-            val key = author + "||" + text + "||" + (pMedia.firstOrNull()?.remoteUrl ?: "")
+            val key = p.optString("code").ifBlank { author + "||" + text }
             if (!seen.add(key)) continue
             comments.add(
                 FetchedComment(
-                    externalId = "sjs_r_$idx",
+                    externalId = p.optString("code").ifBlank { "sjs_r_$idx" },
                     author = author,
                     text = text,
                     likeCount = p.optInt("like_count", 0),
                     isPinned = isPinnedReply(p),
-                    media = pMedia
+                    media = pMedia,
+                    authorProfileUrl = p.optJSONObject("user")?.optString("profile_pic_url").orEmpty()
                 )
             )
             idx++
@@ -234,7 +245,7 @@ object ThreadsSjsParser {
             if (p === effectiveMain) continue
             val pCode = p.optString("code")
             if (pCode.isNotBlank() && pCode == shortcode) continue
-            val text = postText(p)
+            val text = commentText(p)
             if (text.isBlank()) continue
             if (text == effBody) continue
             // 必須是真正的回覆：text_post_app_info.is_reply==true 或 reply_to_author 非空。
@@ -247,15 +258,16 @@ object ThreadsSjsParser {
             val author = resolveReplyAuthor(p)
             if (author.isBlank()) continue
             val pMedia = postMedia(p)
-            val key = author + "||" + text.length + "||" + text
+            val key = p.optString("code").ifBlank { author + "||" + text }
             if (!seen.add(key)) continue
             comments.add(
                 FetchedComment(
-                    externalId = "sjs_c_$idx",
+                    externalId = p.optString("code").ifBlank { "sjs_c_$idx" },
                     author = author,
                     text = text,
                     likeCount = p.optInt("like_count", 0),
-                    media = pMedia
+                    media = pMedia,
+                    authorProfileUrl = p.optJSONObject("user")?.optString("profile_pic_url").orEmpty()
                 )
             )
             idx++
@@ -268,11 +280,11 @@ object ThreadsSjsParser {
                 if (p === effectiveMain) continue
                 val pCode = p.optString("code")
                 if (pCode.isNotBlank() && pCode == shortcode) continue
-                val text = postText(p)
+                val text = commentText(p)
                 if (text.isBlank() || text == effBody) continue
                 val author = resolveReplyAuthor(p)
                 if (author.isBlank()) continue
-                val key = author + "||" + text.length + "||" + text
+                val key = p.optString("code").ifBlank { author + "||" + text }
                 if (!seen.add(key)) continue
                 comments.add(
                     FetchedComment(
@@ -280,7 +292,8 @@ object ThreadsSjsParser {
                         author = author,
                         text = text,
                         likeCount = p.optInt("like_count", 0),
-                        media = postMedia(p)
+                        media = postMedia(p),
+                        authorProfileUrl = p.optJSONObject("user")?.optString("profile_pic_url").orEmpty()
                     )
                 )
                 idx++
@@ -314,9 +327,27 @@ object ThreadsSjsParser {
             comments = comments,
             parent = parent,
             parentChain = parentChain,
-            topicTag = TopicTags.resolve(effectiveMain, effBody)
+            topicTag = TopicTags.resolve(effectiveMain, effBody),
+            textAttachment = extractTextAttachment(effectiveMain)
         )
     }
+
+    /** 只依據 Threads 明確標記的 snippet_attachment_info 辨識，不使用字數門檻。 */
+    private fun extractTextAttachment(post: JSONObject): String {
+        val attachment = post.optJSONObject("text_post_app_info")
+            ?.optJSONObject("snippet_attachment_info") ?: return ""
+        val fragments = attachment.optJSONObject("text_fragments")
+            ?.optJSONArray("fragments") ?: return ""
+        return buildString {
+            for (i in 0 until fragments.length()) {
+                val text = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
+                if (text != "null") append(text)
+            }
+        }
+    }
+
+    private fun commentText(post: JSONObject): String =
+        TextAttachmentStore.appendToText(postText(post), extractTextAttachment(post))
 
     private fun isPinnedReply(post: JSONObject): Boolean {
         return post.optJSONObject("text_post_app_info")
@@ -464,10 +495,28 @@ object ThreadsSjsParser {
         if (node == null || depth > MAX_DEPTH) return
         when (node) {
             is JSONObject -> {
-                val dr = node.optJSONObject("direct_replies")
-                if (dr != null) collectReplyEdges(dr, replies, seenReplyPk, depth)
                 if (node.optString("code") == shortcode && mains.none { it === node }) {
                     mains.add(node)
+                }
+                val ownerId = node.optString("id").substringBefore('_')
+                    .ifBlank { node.optString("pk") }
+                val ownsConnections = node.optString("code") == shortcode ||
+                    (ownerId.isNotBlank() && mains.any {
+                        it.optString("id").substringBefore('_').ifBlank { it.optString("pk") } == ownerId
+                    })
+                if (ownsConnections) {
+                    val tpa = node.optJSONObject("text_post_app_info")
+                    tpa?.optJSONObject("direct_replies")?.let {
+                        collectReplyEdges(it, replies, seenReplyPk, depth)
+                    }
+                    // 作者的續串獨立於 direct_replies；文字附件常放在此處。
+                    val selfPosts = tpa?.optJSONObject("self_thread")?.optJSONObject("posts")
+                        ?.optJSONArray("edges")
+                    if (selfPosts != null) for (i in 0 until selfPosts.length()) {
+                        val post = selfPosts.optJSONObject(i)?.optJSONObject("node") ?: continue
+                        val key = post.optString("pk").ifBlank { post.optString("id") }
+                        if (key.isBlank() || seenReplyPk.add(key)) replies.add(post)
+                    }
                 }
                 // 已是留言節點：其子層多為 caption/media 細節，不必再深挖別的 direct_replies
                 val keys = node.keys()
@@ -631,32 +680,80 @@ object ThreadsSjsParser {
         return ""
     }
 
-    /** caption.text 優先；無則拼 text_fragments plaintext（官方欄位，見 EasyDown 文件） */
+    /**
+     * caption.text 優先；無則拼 text_fragments plaintext。
+     *
+     * 純分享連結的留言有時沒有 plaintext，Threads 會把連結放在
+     * link_fragment、linkified_* 或 link_preview_attachment.url；這些欄位
+     * 仍是留言內容，不能因為文字為空而丟掉整則留言。
+     */
     fun postText(post: JSONObject): String {
         val rawCap = post.optJSONObject("caption")?.optString("text").orEmpty()
         val caption = if (rawCap == "null") "" else rawCap
         if (caption.isNotBlank()) return caption.trim()
-        val fragments = post.optJSONObject("text_post_app_info")
-            ?.optJSONObject("text_fragments")
-            ?.optJSONArray("fragments") ?: return ""
+
+        val textInfo = post.optJSONObject("text_post_app_info")
+        val fragments = textInfo?.optJSONObject("text_fragments")?.optJSONArray("fragments")
         val sb = StringBuilder()
-        for (i in 0 until fragments.length()) {
-            val part = fragments.optJSONObject(i)?.optString("plaintext").orEmpty()
-            if (part == "null") continue
-            sb.append(part)
+        if (fragments != null) {
+            for (i in 0 until fragments.length()) {
+                val fragment = fragments.optJSONObject(i) ?: continue
+                val part = fragment.optString("plaintext").takeUnless { it == "null" }.orEmpty()
+                if (part.isNotBlank()) {
+                    sb.append(part)
+                    continue
+                }
+                appendLinkText(sb, fragment.optJSONObject("link_fragment"))
+                appendUrlText(sb, fragment.optString("linkified_web_url"))
+                appendUrlText(sb, fragment.optString("linkified_in_app_url"))
+            }
+        }
+
+        if (sb.isBlank()) {
+            appendUrlText(
+                sb,
+                textInfo?.optJSONObject("link_preview_attachment")?.optString("url")
+            )
         }
         return sb.toString().trim()
     }
 
+    private fun appendLinkText(out: StringBuilder, link: JSONObject?) {
+        if (link == null) return
+        val text = listOf("text", "display_text", "title")
+            .asSequence()
+            .map { link.optString(it) }
+            .firstOrNull { it.isNotBlank() && it != "null" }
+        val url = listOf("url", "uri", "href")
+            .asSequence()
+            .map { link.optString(it) }
+            .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
+        appendUrlText(out, text ?: url)
+    }
+
+    private fun appendUrlText(out: StringBuilder, value: String?) {
+        val text = value.orEmpty().trim()
+        if (text.isNotBlank() && text != "null" && !out.contains(text)) {
+            if (out.isNotEmpty()) out.append(' ')
+            out.append(text)
+        }
+    }
+
     // ---------- 媒體 ----------
 
-    fun postMedia(post: JSONObject): List<FetchedMedia> {
+    fun postMedia(post: JSONObject): List<FetchedMedia> = postMedia(post, emptySet())
+
+    private fun postMedia(post: JSONObject, inheritedExcludedUrls: Set<String>): List<FetchedMedia> {
+        // Threads 的留言物件可能同時帶有作者 profile_pic_url；若只靠 URL
+        // 關鍵字過濾，網址格式變更時會把作者頭像誤當成留言圖片。
+        val excludedUrls = inheritedExcludedUrls + profileImageUrls(post)
+
         // GIF：giphy 直連 .gif
         val gif = post.optJSONObject("giphy_media_info")
             ?.optJSONObject("images")
             ?.optJSONObject("fixed_height")
             ?.optString("url").orEmpty()
-        if (gif.isNotBlank()) {
+        if (gif.isNotBlank() && !isExcludedMediaUrl(gif, excludedUrls)) {
             return listOf(FetchedMedia(kind = "IMAGE", remoteUrl = gif))
         }
 
@@ -666,13 +763,13 @@ object ThreadsSjsParser {
             val out = mutableListOf<FetchedMedia>()
             for (i in 0 until minOf(carousel.length(), 10)) {
                 val item = carousel.optJSONObject(i) ?: continue
-                mediaFromItem(item)?.let { out.add(it) }
+                mediaFromItem(item, excludedUrls)?.let { out.add(it) }
             }
             if (out.isNotEmpty()) return out.take(6)
         }
 
         // 單一媒體
-        mediaFromItem(post)?.let { return listOf(it) }
+        mediaFromItem(post, excludedUrls)?.let { return listOf(it) }
 
         // 轉發包裝：quoted_attachment_post / linked_inline_media（遞迴一層）
         val tpa = post.optJSONObject("text_post_app_info")
@@ -682,19 +779,19 @@ object ThreadsSjsParser {
         )
         for (w in wrappers) {
             if (w == null) continue
-            val inner = postMedia(w)
+            val inner = postMedia(w, excludedUrls)
             if (inner.isNotEmpty()) return inner
         }
         return emptyList()
     }
 
-    private fun mediaFromItem(item: JSONObject): FetchedMedia? {
+    private fun mediaFromItem(item: JSONObject, excludedUrls: Set<String>): FetchedMedia? {
         // video_versions：同檔多版，取首個有效 url（cobalt 同策略）
         val videos = item.optJSONArray("video_versions")
         if (videos != null) {
             for (i in 0 until videos.length()) {
                 val url = videos.optJSONObject(i)?.optString("url").orEmpty()
-                if (url.startsWith("http")) {
+                if (url.startsWith("http") && !isExcludedMediaUrl(url, excludedUrls)) {
                     return FetchedMedia(kind = "VIDEO", remoteUrl = url)
                 }
             }
@@ -705,7 +802,7 @@ object ThreadsSjsParser {
             for (i in 0 until candidates.length()) {
                 val c = candidates.optJSONObject(i) ?: continue
                 val url = c.optString("url")
-                if (url.startsWith("http")) {
+                if (url.startsWith("http") && !isExcludedMediaUrl(url, excludedUrls)) {
                     return FetchedMedia(
                         kind = "IMAGE",
                         remoteUrl = url,
@@ -717,4 +814,21 @@ object ThreadsSjsParser {
         }
         return null
     }
+
+    private fun profileImageUrls(post: JSONObject): Set<String> = buildSet {
+        fun addProfileUrl(owner: JSONObject?) {
+            owner?.optString("profile_pic_url").orEmpty()
+                .takeIf { it.startsWith("http") }
+                ?.let { add(normalizeMediaUrl(it)) }
+        }
+        addProfileUrl(post.optJSONObject("user"))
+        addProfileUrl(post.optJSONObject("owner"))
+        addProfileUrl(post.optJSONObject("author"))
+        addProfileUrl(post.optJSONObject("text_post_app_info")?.optJSONObject("owner"))
+    }
+
+    private fun isExcludedMediaUrl(url: String, excludedUrls: Set<String>): Boolean =
+        normalizeMediaUrl(url) in excludedUrls
+
+    private fun normalizeMediaUrl(url: String): String = url.substringBefore('?').trim()
 }

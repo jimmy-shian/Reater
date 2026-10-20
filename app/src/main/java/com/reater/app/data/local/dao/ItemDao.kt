@@ -23,10 +23,10 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE id = :id LIMIT 1")
     suspend fun getItemById(id: Long): ItemEntity?
 
-    @Query("SELECT * FROM items WHERE canonicalUrl = :canonicalUrl LIMIT 1")
+    @Query("SELECT * FROM items WHERE canonicalUrl = :canonicalUrl ORDER BY isDeleted ASC, id DESC LIMIT 1")
     suspend fun getItemByCanonicalUrl(canonicalUrl: String): ItemEntity?
 
-    @Query("SELECT * FROM items WHERE shortcode = :shortcode LIMIT 1")
+    @Query("SELECT * FROM items WHERE shortcode = :shortcode ORDER BY isDeleted ASC, id DESC LIMIT 1")
     suspend fun getItemByShortcode(shortcode: String): ItemEntity?
 
     @Transaction

@@ -26,6 +26,14 @@ import androidx.room3.Room
 import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_1_2
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_2_3
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_3_4
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_4_5
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_5_6
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_6_7
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_7_8
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_8_9
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_9_10
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_10_11
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.Color
@@ -40,7 +48,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
             AppDatabase::class.java,
             "reater_database.db"
         ).setDriver(BundledSQLiteDriver())
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .build()
 
         val unreadList = try {

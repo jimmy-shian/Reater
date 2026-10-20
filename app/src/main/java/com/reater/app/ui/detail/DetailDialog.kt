@@ -107,6 +107,8 @@ import com.reater.app.ui.ViewerMedia
 import com.reater.app.ui.components.CategoryBadge
 import com.reater.app.ui.components.CategoryDropdown
 import com.reater.app.ui.components.LinkifiedText
+import com.reater.app.ui.components.CopyableTextBlock
+import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.feed.formatPostShareText
 import com.reater.app.ui.player.InlineVideoPlayer
@@ -625,6 +627,9 @@ fun DetailDialog(
                 }
                 val mainBlock = threadChain.last()
                 val ancestorBlocks = threadChain.dropLast(1)
+                val textAttachment = remember(item.item.rawJsonMin) {
+                    TextAttachmentStore.read(item.item.rawJsonMin)
+                }
 
                 // 各區塊媒體歸屬（圖3/圖4 修正：母文圖歸母文，子文圖歸子文；舊資料自動歸位到母文）
                 val blockMediaLists = remember(item.media, item.item.rawJsonMin, threadChain) {
@@ -878,6 +883,14 @@ fun DetailDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
+                        if (textAttachment.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            CopyableTextBlock(
+                                text = textAttachment,
+                                label = "文字附件",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
                         if (mainMediaList.isNotEmpty()) {
@@ -1002,13 +1015,18 @@ fun DetailDialog(
                             )
                         }
                         // 已存舊資料可能混入顯示名/時間/數字列（DOM 未清洗版），顯示時再洗一次免重抓
-                        val displayCommentText = remember(c.text, c.author) {
-                            runCatching {
-                                com.reater.app.data.remote.threads.ThreadsWebResolver
-                                    .sanitizeDomCommentText(c.text, c.author).text
-                                    .ifBlank { c.text.trim() }
-                            }.getOrDefault(c.text.trim())
+                        val commentParts = remember(c.text) {
+                            c.text.split(TextAttachmentStore.INLINE_MARKER, limit = 2)
                         }
+                        val ownCommentText = remember(c.text, c.author) {
+                            val body = commentParts.firstOrNull().orEmpty()
+                            runCatching {
+                                if (commentParts.size > 1) body else
+                                    com.reater.app.data.remote.threads.ThreadsWebResolver
+                                        .sanitizeDomCommentText(body, c.author).text.ifBlank { body }
+                            }.getOrDefault(body)
+                        }
+                        val sharedCommentText = commentParts.getOrNull(1).orEmpty()
 
                         Row(modifier = Modifier.fillMaxWidth()) {
                             // 左側頭像 + 連接線
@@ -1028,6 +1046,15 @@ fun DetailDialog(
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp
+                                    )
+                                    val avatarSource = c.authorProfileLocalPath
+                                        .takeIf { it.isNotBlank() && java.io.File(it).isFile }
+                                        ?.let { java.io.File(it) } ?: c.authorProfileUrl.takeIf { it.isNotBlank() }
+                                    if (avatarSource != null) AsyncImage(
+                                        model = avatarSource,
+                                        contentDescription = "@${c.author} 頭像",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                                 if (!isLastComment) {
@@ -1060,13 +1087,25 @@ fun DetailDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                LinkifiedText(
-                                    text = displayCommentText,
-                                    fontSize = 13.sp,
-                                    lineHeight = 19.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                if (ownCommentText.isNotBlank()) {
+                                    LinkifiedText(
+                                        text = ownCommentText,
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (sharedCommentText.isNotBlank()) {
+                                    if (ownCommentText.isNotBlank()) Spacer(modifier = Modifier.height(6.dp))
+                                    CopyableTextBlock(
+                                        text = sharedCommentText,
+                                        label = "文字附件",
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
 
                                 // 留言媒體
                                 if (commentMedia.isNotEmpty()) {

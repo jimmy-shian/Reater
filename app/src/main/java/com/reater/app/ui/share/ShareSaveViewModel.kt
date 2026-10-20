@@ -56,6 +56,9 @@ data class ShareSaveUiState(
     val isFetchFailed: Boolean = false,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
+    val showSaveConflict: Boolean = false,
+    val conflictIsInTrash: Boolean = false,
+    val saveError: String? = null,
     val showCreateCategoryDialog: Boolean = false,
     val showProLimitNotice: Boolean = false,
     val fetchedResult: FetchedPostResult? = null
@@ -363,14 +366,23 @@ class ShareSaveViewModel @Inject constructor(
     private fun mergeFetched(a: FetchedPostResult?, b: FetchedPostResult?): FetchedPostResult? {
         if (a == null) return b
         if (b == null) return a
-        val primary = if (a.bodyText.length >= b.bodyText.length) a else b
+        val primary = when {
+            a.hasStructuredPost && !b.hasStructuredPost -> a
+            b.hasStructuredPost && !a.hasStructuredPost -> b
+            a.bodyText.length >= b.bodyText.length -> a
+            else -> b
+        }
         val secondary = if (primary === a) b else a
         val body = primary.bodyText.ifBlank { secondary.bodyText }
+        val sources = listOf(a, b).let { values ->
+            values.filter { it.hasStructuredPost }.ifEmpty { values }
+        }
         // 同一內容不同清晰度 URL 只留一份，避免詳情頁出現雙份影片/圖片
-        val media = com.reater.app.data.remote.MediaDedup.distinctFetched(a.media + b.media)
+        val media = com.reater.app.data.remote.MediaDedup.distinctFetched(sources.flatMap { it.media })
         val commentMap = LinkedHashMap<String, com.reater.app.data.remote.FetchedComment>()
-        for (c in (a.comments + b.comments)) {
-            val key = c.author + "\u0000" + c.text.trim()
+        for (c in sources.flatMap { it.comments }) {
+            val key = c.externalId.takeUnless { it.startsWith("dom_") || it.startsWith("sjs_") || it.isBlank() }
+                ?: (c.author + "\u0000" + c.text.substringBefore(com.reater.app.domain.TextAttachmentStore.INLINE_MARKER).trim())
             val prev = commentMap[key]
             if (prev == null || (prev.media.isEmpty() && c.media.isNotEmpty())) {
                 commentMap[key] = c
@@ -414,6 +426,8 @@ class ShareSaveViewModel @Inject constructor(
             resolvedUrl = primary.resolvedUrl.ifBlank { secondary.resolvedUrl },
             postedAt = if (primary.postedAt > 0) primary.postedAt else secondary.postedAt,
             rawJsonMin = primary.rawJsonMin.ifBlank { secondary.rawJsonMin },
+            textAttachment = primary.textAttachment.ifBlank { secondary.textAttachment },
+            hasStructuredPost = a.hasStructuredPost || b.hasStructuredPost,
             parentShortcode = parent.parentShortcode,
             parentAuthorHandle = parent.parentAuthorHandle,
             parentBodyText = parent.parentBodyText,
@@ -427,6 +441,7 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     fun onBodyTextChanged(text: String) {
+        savedStateHandle["bodyTextEdited"] = true
         _uiState.update { it.copy(bodyText = text) }
     }
     fun onCommentsTextChanged(text: String) {
@@ -500,12 +515,38 @@ class ShareSaveViewModel @Inject constructor(
         }
     }
 
-    fun savePost() {
-        val state = _uiState.value
-        _uiState.update { it.copy(isSaving = true) }
+    fun dismissSaveConflict() {
+        _uiState.update { it.copy(showSaveConflict = false) }
+    }
+
+    fun savePost(saveAsNew: Boolean? = null) {
+        if (_uiState.value.isSaving) return
+        _uiState.update { it.copy(isSaving = true, showSaveConflict = false, saveError = null) }
 
         viewModelScope.launch {
             try {
+                // 等待本次分享的 HTTP / WebView 完成，避免儲存早期預覽快照。
+                var state = kotlinx.coroutines.withTimeoutOrNull(180_000) {
+                    uiState.first { !it.isFetching && !it.webResolving }
+                } ?: error("抓取尚未完成，請稍後重試，原有文章尚未變更。")
+                if (saveAsNew == false) {
+                    val fresh = graphQLClient.fetchPostByPostIdOrShortcode(
+                        state.targetUrl, state.shortcode
+                    ).getOrThrow()
+                    check(fresh.status == "COMPLETE" && fresh.hasStructuredPost) {
+                        "尚未重新取得完整貼文資料，原有文章尚未變更，請重試。"
+                    }
+                    val freshBody = if (fresh.parentChain.isNotEmpty()) {
+                        buildThreadDisplayBody(fresh.parentChain, fresh.authorHandle, fresh.bodyText)
+                    } else fresh.bodyText
+                    state = state.copy(
+                        fetchedResult = fresh,
+                        bodyText = if (savedStateHandle.get<Boolean>("bodyTextEdited") == true) state.bodyText else freshBody,
+                        commentsText = fresh.comments.joinToString("\n\n") { "@${it.author}: ${it.text}" },
+                        authorHandle = fresh.authorHandle,
+                        shortcode = fresh.shortcode
+                    )
+                }
                 val itemId = repository.savePost(
                     canonicalUrl = state.targetUrl.ifBlank { "https://www.threads.com/unknown/${System.currentTimeMillis()}" },
                     shortcode = state.shortcode.ifBlank { "sc_${System.currentTimeMillis()}" },
@@ -518,7 +559,9 @@ class ShareSaveViewModel @Inject constructor(
                     categoryExplicitlySelected = userPickedCategory,
                     manualNoteEdited = savedStateHandle["manualNoteEdited"] ?: false,
                     fetchedResult = state.fetchedResult,
-                    isFavorite = state.isFavorite
+                    isFavorite = state.isFavorite,
+                    saveAsNew = saveAsNew == true,
+                    overwriteConfirmed = saveAsNew == false
                 )
                 // 儲存後未讀提醒（設定可調分鐘數 / 開關）
                 runCatching {
@@ -532,8 +575,12 @@ class ShareSaveViewModel @Inject constructor(
                     }
                 }
                 _uiState.update { it.copy(isSaving = false, isSaved = true) }
+            } catch (e: ThreadPostRepository.SaveConflictException) {
+                _uiState.update { it.copy(isSaving = false, showSaveConflict = true,
+                    conflictIsInTrash = e.isInTrash) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false) }
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _uiState.update { it.copy(isSaving = false, saveError = e.localizedMessage ?: "儲存失敗") }
             }
         }
     }

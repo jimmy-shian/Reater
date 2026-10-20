@@ -67,6 +67,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -201,6 +202,29 @@ fun ShareSaveScreen(
     val categories by viewModel.categories.collectAsState()
     val isPro by viewModel.isProUnlocked.collectAsState()
     val context = LocalContext.current
+    if (state.showSaveConflict) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::dismissSaveConflict,
+            title = { Text(if (state.conflictIsInTrash) "這篇文章在垃圾桶中" else "這篇文章已經儲存") },
+            text = { Text(if (state.conflictIsInTrash)
+                "要重新抓取並還原更新這篇文章，還是新建一篇獨立紀錄？"
+                else "要重新抓取並覆蓋更新既有文章，還是另存一篇獨立紀錄？") },
+            confirmButton = { TextButton(onClick = { viewModel.savePost(false) }) {
+                Text(if (state.conflictIsInTrash) "還原更新" else "覆蓋更新")
+            } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = viewModel::dismissSaveConflict) { Text("取消") }
+                    TextButton(onClick = { viewModel.savePost(true) }) {
+                        Text(if (state.conflictIsInTrash) "新建" else "另存新的")
+                    }
+                }
+            }
+        )
+    }
+    LaunchedEffect(state.saveError) {
+        state.saveError?.let { Toast.makeText(context, "儲存失敗：$it", Toast.LENGTH_LONG).show() }
+    }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
     // 主內容捲動狀態提升：內容區垂直滑動即收鍵盤（多行框內拖曳不受影響）

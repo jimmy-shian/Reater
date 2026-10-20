@@ -42,7 +42,8 @@ object ThreadsWebResolver {
         /** 該則留言渲染出的圖/影（排除頭像；kind 為 IMAGE/VIDEO） */
         val media: List<com.reater.app.data.remote.FetchedMedia> = emptyList(),
         /** 從 DOM 尾端數字列解析出的讚數（無則 0） */
-        val likeCount: Int = 0
+        val likeCount: Int = 0,
+        val authorProfileUrl: String = ""
     )
 
     const val DEFAULT_TIMEOUT_MS = 25_000L
@@ -128,12 +129,14 @@ object ThreadsWebResolver {
             "return Math.floor(v);}catch(e){return 0;}}" +
             "for(var ai=0;ai<arts.length&&out.length<50;ai++){" +
             "var a=arts[ai];" +
-            "var links=a.querySelectorAll('a');" +
-            "var author='';" +
+            "var links=a.querySelectorAll('a,[role=link]');" +
+            "var author='';var avatar='';" +
             "for(var li=0;li<links.length;li++){" +
             "var h=links[li].getAttribute('href')||'';" +
             "var mi=h.indexOf('/@');" +
-            "if(mi>=0){author=h.substring(mi+2).split('/')[0].split('?')[0];if(author&&author.length>=2)break;}" +
+            "if(mi>=0){author=h.substring(mi+2).split('/')[0].split('?')[0];" +
+            "var pic=links[li].querySelector('img');if(pic&&h.indexOf('/post/')<0)avatar=pic.currentSrc||pic.src||'';" +
+            "if(author&&author.length>=2&&avatar)break;}" +
             "}" +
             "if(!author){" +
             "var m2=(a.innerText||'').match(/@([A-Za-z0-9_.]{2,})/);" +
@@ -186,14 +189,16 @@ object ThreadsWebResolver {
             "var src=el.getAttribute('src')||'';" +
             "if(!src||src.indexOf('http')!=0)continue;" +
             "if(seenSrc[src])continue;" +
-            "if(src.indexOf('profile_pic')>=0||src.indexOf('s206x206')>=0||src.indexOf('s150x150')>=0||src.indexOf('s320x320')>=0||src.indexOf('s480x480')>=0||src.indexOf('s640x640')>=0||src.indexOf('emoji')>=0||src.indexOf('avatar')>=0)continue;" +
-            "var pa=el.closest?a.closest('a'):null;" +
-            "if(pa){var ph=pa.getAttribute('href')||'';if(ph.indexOf('/@')>=0)continue;}" +
+            "if(src===avatar||(src.indexOf('/t51.')>=0&&src.indexOf('-19/')>=0)||src.indexOf('profile_pic')>=0||src.indexOf('emoji')>=0||src.indexOf('avatar')>=0)continue;" +
+            // 頭像不一定直接放在 a 內，也可能位於 role=link 的作者容器；
+            // 兩種 DOM 都要排除，避免把留言者頭像送進留言媒體。
+            "var pa=el.closest?el.closest('a,[role=link]'):null;" +
+            "if(pa){var ph=pa.getAttribute('href')||'';if(ph.indexOf('/@')>=0&&ph.indexOf('/post/')<0)continue;}" +
             "seenSrc[src]=1;" +
             "var kind=(el.tagName==='VIDEO'||el.tagName==='SOURCE'||src.indexOf('.mp4')>=0)?'VIDEO':'IMAGE';" +
             "med.push({kind:kind,url:src});" +
             "}" +
-            "out.push({author:author,text:body,media:med,likeCount:likeN});" +
+            "out.push({author:author,text:body,media:med,likeCount:likeN,authorProfileUrl:avatar});" +
             "}" +
             "return JSON.stringify(out);" +
             "}catch(e){return '[]';}})()"
@@ -444,7 +449,8 @@ object ThreadsWebResolver {
                             author = a,
                             text = tx,
                             media = media.take(6),
-                            likeCount = if (likeFromJs > 0) likeFromJs else cleaned.likeCount
+                            likeCount = if (likeFromJs > 0) likeFromJs else cleaned.likeCount,
+                            authorProfileUrl = o.optString("authorProfileUrl")
                         )
                     }
                 }

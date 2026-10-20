@@ -36,7 +36,9 @@ object ThreadsHtmlParser {
         /** /share/ 留言鏈母文（SJS 回溯；頂層串文為 null） */
         val parent: ThreadsSjsParser.ParentPost? = null,
         /** 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層） */
-        val parentChain: List<ThreadsSjsParser.ParentPost> = emptyList()
+        val parentChain: List<ThreadsSjsParser.ParentPost> = emptyList(),
+        /** Threads 獨立文字附件的完整原文。 */
+        val textAttachment: String = ""
     )
 
     fun parse(html: String, shortcode: String): ParsedPage {
@@ -54,7 +56,8 @@ object ThreadsHtmlParser {
         } catch (_: Exception) {
             null
         }
-        if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
+        if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() ||
+                sjs.comments.isNotEmpty() || sjs.textAttachment.isNotBlank())) {
             return ParsedPage(
                 bodyText = sjs.bodyText.trim(),
                 authorDisplayName = sjs.authorDisplayName.trim(),
@@ -68,7 +71,8 @@ object ThreadsHtmlParser {
                 fromSjs = true,
                 parent = sjs.parent,
                 parentChain = sjs.parentChain,
-                topicTag = sjs.topicTag
+                topicTag = sjs.topicTag,
+                textAttachment = sjs.textAttachment
             )
         }
         // SJS 有命中但主貼文無內文無媒體（如純轉發）：仍沿用其留言/作者

@@ -104,7 +104,9 @@ data class ExportedComment(
     val parentExternalId: String? = null,
     val depth: Int = 0,
     val sortKey: String = "",
-    val mediaJson: String = ""
+    val mediaJson: String = "",
+    val authorProfileUrl: String = "",
+    val authorProfileLocalPath: String = ""
 )
 
 @Serializable
@@ -184,7 +186,9 @@ class BackupManager @Inject constructor(
                         parentExternalId = it.parentExternalId,
                         depth = it.depth,
                         sortKey = it.sortKey,
-                        mediaJson = it.mediaJson
+                        mediaJson = it.mediaJson,
+                        authorProfileUrl = it.authorProfileUrl,
+                        authorProfileLocalPath = it.authorProfileLocalPath
                     )
                 },
                 categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
@@ -455,7 +459,9 @@ class BackupManager @Inject constructor(
                             parentExternalId = comment.parentExternalId,
                             depth = comment.depth,
                             sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
-                            mediaJson = comment.mediaJson
+                            mediaJson = comment.mediaJson,
+                            authorProfileUrl = comment.authorProfileUrl,
+                            authorProfileLocalPath = comment.authorProfileLocalPath
                         )
                     })
                     database.mediaDao().deleteMediaByItemId(itemId)

@@ -38,5 +38,9 @@ data class CommentEntity(
     val fetchedAt: Long = System.currentTimeMillis(),
     /** 留言自帶圖/影的 JSON（FetchedMedia 陣列；空字串代表無） */
     @ColumnInfo(defaultValue = "")
-    val mediaJson: String = ""
+    val mediaJson: String = "",
+    @ColumnInfo(defaultValue = "")
+    val authorProfileUrl: String = "",
+    @ColumnInfo(defaultValue = "")
+    val authorProfileLocalPath: String = ""
 )

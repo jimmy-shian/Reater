@@ -24,7 +24,9 @@ data class FetchedComment(
     /** Threads 原始 pinned_post_info；沒有欄位時為 false。 */
     val isPinned: Boolean = false,
     /** 留言自帶的圖/影（新 shape direct_replies 每則留言可有 image/video/carousel） */
-    val media: List<FetchedMedia> = emptyList()
+    val media: List<FetchedMedia> = emptyList(),
+    val authorProfileUrl: String = "",
+    val authorProfileLocalPath: String = ""
 )
 
 @Serializable
@@ -80,6 +82,10 @@ data class FetchedPostResult(
     val parentMedia: List<FetchedMedia> = emptyList(),
     /** Threads 主題標籤（pill 欄位優先，否則內文首個 hashtag；供同主題預選分類用） */
     val topicTag: String = "",
+    /** Threads snippet_attachment_info.text_fragments 的完整原文。 */
+    val textAttachment: String = "",
+    /** 短碼匹配成功的 SJS 貼文；覆蓋更新時避免用登入殼／預覽取代舊資料。 */
+    val hasStructuredPost: Boolean = false,
     /**
      * 完整祖先鏈（root → … → 直接父層；「留言的留言」為多層）。
      * parent* 單欄位永遠指向鏈首（母文），維持舊語義；多層存檔/預覽請用此鏈組裝。
@@ -173,7 +179,7 @@ class ThreadsGraphQLClient @Inject constructor(
             val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
             val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
 
-            if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty()) {
+            if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty() || parsed.textAttachment.isNotBlank()) {
                 Result.success(
                     FetchedPostResult(
                         shortcode = extractedShortcode,
@@ -198,7 +204,9 @@ class ThreadsGraphQLClient @Inject constructor(
                         parentPostedAt = parent?.postedAtMs ?: 0L,
                         parentMedia = downloadedParentMedia,
                         parentChain = downloadedChain,
-                        topicTag = parsed.topicTag
+                        topicTag = parsed.topicTag,
+                        textAttachment = parsed.textAttachment,
+                        hasStructuredPost = parsed.fromSjs
                     )
                 )
             } else {
@@ -292,8 +300,13 @@ class ThreadsGraphQLClient @Inject constructor(
     ): List<FetchedComment> {
         var remaining = budget
         var ci = 0
-        return comments.map { c ->
-            if (c.media.isEmpty() || remaining <= 0) return@map c
+        return comments.mapIndexed { index, original ->
+            val c = if (original.authorProfileUrl.startsWith("http")) original.copy(
+                authorProfileLocalPath = mediaDownloader.downloadMedia(
+                    original.authorProfileUrl, shortcode, 8000 + index
+                )
+            ) else original
+            if (c.media.isEmpty() || remaining <= 0) return@mapIndexed c
             val take = c.media.take(remaining)
             val updated = take.mapIndexed { j, m ->
                 val local = mediaDownloader.downloadMedia(m.remoteUrl, shortcode, startIndex + ci * 8 + j)
@@ -339,11 +352,15 @@ class ThreadsGraphQLClient @Inject constructor(
                     author = d.author,
                     text = d.text,
                     likeCount = d.likeCount,
-                    media = d.media.take(6)
+                    media = d.media.take(6),
+                    authorProfileUrl = d.authorProfileUrl
                 )
             }
-            if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty())) {
-                val domClean = domFetched.filter { it.text != sjs.bodyText }.take(50)
+            if (sjs != null && (sjs.bodyText.isNotBlank() || sjs.media.isNotEmpty() || sjs.comments.isNotEmpty() || sjs.textAttachment.isNotBlank())) {
+                // 有結構化留言時採信伺服器限定的留言集合。DOM 含相關貼文與
+                // 文字附件的預覽，不可再次合併成額外留言。
+                val domClean = if (sjs.comments.isNotEmpty()) emptyList() else
+                    domFetched.filter { it.text != sjs.bodyText }.take(50)
                 // SSR 留言 + DOM 留言合併：同一則（author+文字）優先取帶 media 的版本，
                 // DOM 補 SSR 沒帶圖的留言，SSR 補 DOM 沒渲染出來的
                 val mergedComments = if (sjs.comments.isNotEmpty()) {
@@ -386,7 +403,9 @@ class ThreadsGraphQLClient @Inject constructor(
                     parentPostedAt = sjs.parent?.postedAtMs ?: 0L,
                     parentMedia = MediaDedup.distinctFetched(downloadedParentMediaWeb.flatMap { it.media }),
                     parentChain = downloadedParentMediaWeb,
-                    topicTag = sjs.topicTag
+                    topicTag = sjs.topicTag,
+                    textAttachment = sjs.textAttachment,
+                    hasStructuredPost = true
                 )
             )
             }
@@ -442,7 +461,9 @@ class ThreadsGraphQLClient @Inject constructor(
                             parentPostedAt = fromHtml.parent?.postedAtMs ?: 0L,
                             parentMedia = MediaDedup.distinctFetched(downloadedParentMedia2.flatMap { it.media }),
                             parentChain = downloadedParentMedia2,
-                            topicTag = fromHtml.topicTag
+                            topicTag = fromHtml.topicTag,
+                            textAttachment = fromHtml.textAttachment,
+                            hasStructuredPost = fromHtml.fromSjs
                         )
                     )
                 }

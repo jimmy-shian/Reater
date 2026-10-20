@@ -11,6 +11,8 @@ import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_5_6
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_6_7
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_7_8
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_8_9
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_9_10
+import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_10_11
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.AiRunDao
@@ -38,7 +40,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "reater_database.db"
         ).setDriver(BundledSQLiteDriver())
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .build()
     }
 

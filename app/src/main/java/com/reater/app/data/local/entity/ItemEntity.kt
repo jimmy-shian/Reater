@@ -10,7 +10,7 @@ import androidx.room3.PrimaryKey
 @Entity(
     tableName = "items",
     indices = [
-        Index(value = ["canonicalUrl"], unique = true),
+        Index(value = ["canonicalUrl"]),
         Index(value = ["shortcode"])
     ]
 )

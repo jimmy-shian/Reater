@@ -22,6 +22,7 @@ import com.reater.app.data.remote.OpenAiUsage
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
+import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.data.remote.threads.TopicTags
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -68,6 +69,8 @@ class ThreadPostRepository @Inject constructor(
         return null
     }
 
+    class SaveConflictException(val isInTrash: Boolean) : IllegalStateException("這篇文章已經儲存")
+
     suspend fun savePost(
         canonicalUrl: String,
         shortcode: String,
@@ -80,7 +83,9 @@ class ThreadPostRepository @Inject constructor(
         fetchedResult: FetchedPostResult? = null,
         isFavorite: Boolean = false,
         categoryExplicitlySelected: Boolean = false,
-        manualNoteEdited: Boolean = false
+        manualNoteEdited: Boolean = false,
+        saveAsNew: Boolean = false,
+        overwriteConfirmed: Boolean = false
     ): Long = database.withWriteTransaction {
         // 子串分享（母文存在時）：免 DB 遷移，把母文前綴進 body、母文媒體排前面合併存檔。
         // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧；媒體 = 母圖 + 子（子無圖則只有母圖）。
@@ -128,15 +133,23 @@ class ThreadPostRepository @Inject constructor(
         // 圖3/圖4 錯亂根因：舊版合併後全部掛在子文底下，母文圖（銀晝戰績/裝備/排行）
         // 全跑到「@1yuunu2 黃色盾牌」留言下。此處記錄 chainMedia/mainMedia 的 remoteUrl，
         // 詳情頁用 remoteUrl 反查 MediaEntity（取 localPath）逐塊顯示。
-        val resolvedRawJson: String = if (fetchedResult != null &&
+        val resolvedRawJsonBase: String = if (fetchedResult != null &&
             (fetchedResult.parentChain.isNotEmpty() || fetchedResult.parentMedia.isNotEmpty())
         ) {
             buildChainRawJson(fetchedResult)
         } else {
             fetchedResult?.rawJsonMin.orEmpty()
         }
+        val resolvedRawJson = if (fetchedResult != null) {
+            TextAttachmentStore.withTextAttachment(resolvedRawJsonBase, fetchedResult.textAttachment)
+        } else {
+            resolvedRawJsonBase
+        }
           // Upsert ItemEntity
-          val existing = itemDao.getItemByCanonicalUrl(canonicalUrl)
+          val existing = if (saveAsNew) null else (
+              itemDao.getItemByCanonicalUrl(canonicalUrl) ?: itemDao.getItemByShortcode(shortcode)
+          )
+          if (existing != null && !overwriteConfirmed) throw SaveConflictException(existing.isDeleted)
           // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
           val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
               .ifBlank { TopicTags.firstHashtag(combinedBody) }
@@ -157,7 +170,9 @@ class ThreadPostRepository @Inject constructor(
                 rawJsonMin = resolvedRawJson.ifBlank { existing.rawJsonMin },
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
-                lastFetchAt = System.currentTimeMillis()
+                lastFetchAt = System.currentTimeMillis(),
+                isDeleted = false,
+                deletedAt = null
             )
             itemDao.updateItem(updated)
             existing.id
@@ -194,7 +209,9 @@ class ThreadPostRepository @Inject constructor(
         // Upsert UserEditEntity
         val existingEdit = itemDao.getUserEditByItemId(itemId)
         val userEdit = existingEdit?.copy(
-            userBodyOverride = if (fetchedResult != null && bodyText != combinedBody) bodyText else existingEdit.userBodyOverride,
+            userBodyOverride = if (fetchedResult != null) {
+                bodyText.takeIf { it != combinedBody }
+            } else existingEdit.userBodyOverride,
             manualNote = if (manualNoteEdited) manualNote else manualNote.ifBlank { existingEdit.manualNote },
             manualSummary = manualSummary.ifBlank { existingEdit.manualSummary },
             aiSummary = manualSummary.ifBlank { existingEdit.aiSummary },
@@ -236,7 +253,9 @@ class ThreadPostRepository @Inject constructor(
                     // 讀取 DAO 時直接依此 key 排序，確保「熱門」不會因重新開啟／合併 DOM 而失序。
                     // 置頂優先；其餘讚數越高越前；最後用原始 index 穩定排序。
                     sortKey = "0:${if (c.isPinned) 0 else 1}:${(999_999_999 - c.likeCount.coerceIn(0, 999_999_999)).toString().padStart(10, '0')}:${index.toString().padStart(8, '0')}",
-                    mediaJson = com.reater.app.data.remote.FetchedMediaJson.encode(c.media)
+                    mediaJson = com.reater.app.data.remote.FetchedMediaJson.encode(c.media),
+                    authorProfileUrl = c.authorProfileUrl,
+                    authorProfileLocalPath = c.authorProfileLocalPath
                 )
             }
             val manualEntities = manualComments.mapIndexed { index, (author, text) ->

@@ -40,7 +40,7 @@ import com.reater.app.data.local.entity.UserEditEntity
         SavedCollectionEntity::class,
         SavedQueryEntity::class
     ],
-    version = 9,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -53,6 +53,16 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun proDao(): ProDao
 
     companion object {
+        val MIGRATION_10_11: Migration = Migration(10, 11) { connection ->
+            connection.execSql("ALTER TABLE `comments` ADD COLUMN `authorProfileUrl` TEXT NOT NULL DEFAULT ''")
+            connection.execSql("ALTER TABLE `comments` ADD COLUMN `authorProfileLocalPath` TEXT NOT NULL DEFAULT ''")
+        }
+
+        val MIGRATION_9_10: Migration = Migration(9, 10) { connection ->
+            connection.execSql("DROP INDEX IF EXISTS `index_items_canonicalUrl`")
+            connection.execSql("CREATE INDEX IF NOT EXISTS `index_items_canonicalUrl` ON `items` (`canonicalUrl`)")
+        }
+
         val MIGRATION_7_8: Migration = Migration(7, 8) { connection ->
             connection.execSql("ALTER TABLE `saved_collections` ADD COLUMN `isEnabled` INTEGER NOT NULL DEFAULT 1")
         }

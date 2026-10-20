@@ -60,8 +60,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.ItemDetail
+import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.ui.AvatarIcons
 import com.reater.app.ui.components.LinkifiedText
+import com.reater.app.ui.components.CopyableTextBlock
 import com.reater.app.ui.components.formatSavedTime
 import com.reater.app.ui.player.InlineVideoPlayer
 import com.reater.app.ui.player.VideoPlaybackManager
@@ -90,6 +92,9 @@ fun PostCard(
     val context = LocalContext.current
     val category = categories.firstOrNull { it.id == itemDetail.userEdit?.categoryId }
     val firstMedia = itemDetail.media.firstOrNull()
+    val textAttachment = remember(itemDetail.item.rawJsonMin) {
+        TextAttachmentStore.read(itemDetail.item.rawJsonMin)
+    }
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
@@ -326,6 +331,15 @@ fun PostCard(
                 modifier = Modifier.fillMaxWidth(),
                 onNeutralClick = onClick
             )
+
+            if (textAttachment.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CopyableTextBlock(
+                    text = textAttachment,
+                    label = "文字附件",
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             // 未展開卡片：圖片縮圖 + 影片直接顯示播放器；點圖片/影片/內文皆展開詳情
             if (firstMedia != null) {
