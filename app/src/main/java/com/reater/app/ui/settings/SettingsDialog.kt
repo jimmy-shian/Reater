@@ -19,9 +19,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -95,6 +98,7 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onExportJson: () -> Unit,
     onImportJson: () -> Unit,
+    onTriggerUninstallBackup: () -> Unit = {},
     onOpenIconGallery: () -> Unit = {},
     onOpenUnlock: () -> Unit = {}
 ) {
@@ -760,26 +764,57 @@ fun SettingsDialog(
                     // ---------- 解除安裝與資料保留 ----------
                     SettingsSectionTitle("解除安裝與資料保留")
                     Spacer(modifier = Modifier.height(6.dp))
-                    androidx.compose.material3.Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = androidx.compose.material3.CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    val keepDataAfterUninstall by viewModel.keepDataAfterUninstall.collectAsState()
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 64.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                val target = !keepDataAfterUninstall
+                                viewModel.setKeepDataAfterUninstall(target)
+                                if (target) {
+                                    onTriggerUninstallBackup()
+                                }
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (keepDataAfterUninstall) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                         )
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "解除安裝時預設保留 Reater 資料",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = keepDataAfterUninstall,
+                                onCheckedChange = { checked ->
+                                    viewModel.setKeepDataAfterUninstall(checked)
+                                    if (checked) {
+                                        onTriggerUninstallBackup()
+                                    }
+                                }
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "重新安裝後可繼續使用保留的紀錄。",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.outline,
-                                lineHeight = 16.sp
-                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "保留可還原的 Reater 資料",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "重新安裝後可再次匯入。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    lineHeight = 16.sp
+                                )
+                            }
                         }
                     }
 

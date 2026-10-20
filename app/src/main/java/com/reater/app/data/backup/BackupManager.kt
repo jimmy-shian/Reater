@@ -17,6 +17,14 @@ import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.reater.app.ui.AvatarStorage
 import java.io.File
+import java.io.BufferedInputStream
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import kotlinx.coroutines.CancellationException
+import com.reater.app.data.remote.FetchedMediaJson
+import com.reater.app.data.local.entity.SavedQueryEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -39,13 +47,22 @@ data class ExportedSettings(
     val aiTransmissionConsent: Boolean = false,
     val customAvatarId: String = "life",
     val customAvatarUri: String? = null,
+    val autoFetchEnabled: Boolean = true,
+    val lastCategoryName: String? = null,
     val isProLicensed: Boolean = false,
     val proLicenseEmail: String? = null,
-    val proLicenseCode: String? = null
+    val proLicenseCode: String? = null,
+    val keepDataAfterUninstall: Boolean = false
 )
 
 @Serializable
 data class ExportedAvatarFile(val name: String, val contentBase64: String)
+
+@Serializable
+data class ExportedAsset(val path: String, val size: Long, val sha256: String)
+
+@Serializable
+data class ExportedQuery(val name: String, val filterJson: String, val createdAt: Long)
 
 @Serializable
 data class ReaterExportV1(
@@ -59,7 +76,9 @@ data class ReaterExportV1(
     val collections: List<ExportedCollection> = emptyList(),
     val avatarFiles: List<ExportedAvatarFile> = emptyList(),
     val avatarHistory: List<String> = emptyList(),
-    val currentAvatarReference: String? = null
+    val currentAvatarReference: String? = null,
+    val assets: List<ExportedAsset> = emptyList(),
+    val queries: List<ExportedQuery> = emptyList()
 )
 
 @Serializable
@@ -68,7 +87,8 @@ data class ExportedCollection(
     val iconName: String = "life",
     val rulesJson: String,
     val sortOrder: Int = 0,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val createdAt: Long? = null
 )
 
 @Serializable
@@ -92,7 +112,26 @@ data class ExportedItem(
     val topicTag: String = "",
     val isDeleted: Boolean = false,
     val openCount: Int = 0,
-    val lastOpenedAt: Long = 0L
+    val lastOpenedAt: Long = 0L,
+    val authorProfileUrl: String = "",
+    val authorVerified: Boolean = false,
+    val postedAtRaw: String = "",
+    val mediaJson: String = "[]",
+    val likeCount: Int = 0,
+    val replyCount: Int = 0,
+    val repostCount: Int = 0,
+    val sourceFetchedAt: Long? = null,
+    val sourceVersion: Int = 1,
+    val lastFetchStatus: String = "NOT_FETCHED",
+    val lastFetchAt: Long = 0,
+    val rawJsonMin: String = "",
+    val deletedAt: Long? = null,
+    val userBodyOverride: String? = null,
+    val editedAt: Long? = null,
+    val editSource: String = "IMPORT",
+    val dirtyFlag: Boolean = false,
+    val aiRuns: List<com.reater.app.data.local.entity.AiRunEntity> = emptyList(),
+    val fetchAttempts: List<com.reater.app.data.local.entity.FetchAttemptEntity> = emptyList()
 )
 
 @Serializable
@@ -115,7 +154,8 @@ data class ExportedMedia(
     val remoteUrl: String,
     val width: Int = 0,
     val height: Int = 0,
-    val position: Int = 0
+    val position: Int = 0,
+    val archivePath: String = ""
 )
 
 @Serializable
@@ -125,6 +165,8 @@ data class ExportedCategory(
     val sort: Int,
     val isDefault: Boolean,
     val avatarIcon: String = "life",
+    val originalId: Long? = null,
+    val updatedAt: Long? = null,
     val keywords: List<ExportedKeyword> = emptyList()
 )
 
@@ -150,123 +192,244 @@ class BackupManager @Inject constructor(
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
+        encodeDefaults = true
     }
 
     /**
-     * Exports full dataset into JSON schema v1 without sensitive Keys or rawJson.
+     * Exports a v2 ZIP container with a JSON manifest and binary assets. API keys remain device-local.
      */
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     suspend fun exportToJson(outputStream: OutputStream) {
-        val details = itemDao.observeAllItemDetails().first()
-        val categories = categoryDao.getAllCategories()
-        val keywordsByCategory = categoryDao.getAllKeywords().groupBy { it.categoryId }
-        val categoryNames = categories.associate { it.id to it.name }
-        val collections = runCatching { proDao.observeAllCollections().first() }.getOrDefault(emptyList())
+        val staging = File(context.cacheDir, "backup_export_${UUID.randomUUID()}").apply { mkdirs() }
+        try {
+            val archiveFiles = linkedMapOf<String, File>()
+            val mediaBySource = mutableMapOf<String, String>()
+            val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES).build()
+            fun packMedia(remote: String, local: String, kind: String): String {
+                val key = local.ifBlank { remote }
+                if (key.isBlank()) return ""
+                mediaBySource[key]?.let { return it }
 
-        val exportList = details.map { detail ->
-            ExportedItem(
-                canonicalUrl = detail.item.canonicalUrl,
-                shortcode = detail.item.shortcode,
-                authorHandle = detail.item.authorHandle,
-                authorDisplayName = detail.item.authorDisplayName,
-                postedAt = detail.item.postedAt,
-                bodyText = detail.displayBody,
-                commentsText = detail.item.commentsText,
-                manualNote = detail.manualNote,
-                manualSummary = detail.manualSummary,
-                aiSummary = detail.userEdit?.aiSummary ?: detail.manualSummary,
-                isRead = detail.isRead,
-                isFavorite = detail.isFavorite,
-                tags = detail.tags.map { it.name },
-                comments = detail.comments.map {
-                    ExportedComment(
-                        externalId = it.externalId,
-                        author = it.author,
-                        text = it.text,
-                        likeCount = it.likeCount,
-                        parentExternalId = it.parentExternalId,
-                        depth = it.depth,
-                        sortKey = it.sortKey,
-                        mediaJson = it.mediaJson,
-                        authorProfileUrl = it.authorProfileUrl,
-                        authorProfileLocalPath = it.authorProfileLocalPath
-                    )
-                },
-                categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
-                media = detail.media.map {
-                    ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position)
-                },
-                topicTag = detail.item.topicTag,
-                isDeleted = detail.item.isDeleted,
-                openCount = detail.userEdit?.openCount ?: 0,
-                lastOpenedAt = detail.userEdit?.lastOpenedAt ?: 0L
-            )
-        }
+                // Check local candidates
+                val localFileCandidates = listOfNotNull(
+                    local.takeIf { it.isNotBlank() }?.let(::File),
+                    local.takeIf { it.isNotBlank() }?.let { File(context.filesDir, it) },
+                    local.takeIf { it.isNotBlank() }?.let { File(context.cacheDir, it) }
+                )
+                val source = localFileCandidates.firstOrNull { it.isFile && it.length() > 0 }
+                    ?: if (remote.isNotBlank()) {
+                        runCatching {
+                            coil.Coil.imageLoader(context).diskCache?.openSnapshot(remote)?.use { snapshot ->
+                                snapshot.data.toFile().takeIf { it.isFile && it.length() > 0 }
+                            }
+                        }.getOrNull()
+                    } else null
 
-        val exportedCategories = categories.map { category ->
-            ExportedCategory(
-                name = category.name,
-                colorArgb = category.colorArgb,
-                sort = category.sort,
-                isDefault = category.isDefault,
-                avatarIcon = category.avatarIcon,
-                keywords = keywordsByCategory[category.id].orEmpty().map {
-                    ExportedKeyword(it.term, it.lang, it.weight, it.matchScope)
+                val knownExtensions = setOf("mp4", "mov", "webm", "m4v", "jpg", "jpeg", "png", "webp", "gif", "avif")
+                val extension = File(local.ifBlank { remote.substringBefore('?') }).extension.lowercase()
+                val ext = extension.takeIf { it in knownExtensions }
+                    ?: if (kind.equals("VIDEO", true)) "mp4" else "jpg"
+                val name = "media/${archiveFiles.size}.$ext"
+                val destination = File(staging, name).apply { parentFile?.mkdirs() }
+                val remaining = ReaterArchive.MAX_ARCHIVE_BYTES - archiveFiles.values.sumOf { it.length() }
+
+                if (source != null) {
+                    try {
+                        source.inputStream().use { input ->
+                            destination.outputStream().use { ReaterArchive.copyBounded(input, it, remaining) }
+                        }
+                    } catch (_: Exception) {
+                        destination.delete()
+                    }
+                } else if (remote.startsWith("https://") || remote.startsWith("http://")) {
+                    try {
+                        val req = Request.Builder()
+                            .url(remote)
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+                            .header("Referer", "https://www.threads.com/")
+                            .header("Accept", "image/avif,image/webp,image/*,video/*,*/*;q=0.8")
+                            .build()
+                        client.newCall(req).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val body = response.body
+                                if (body != null) {
+                                    val type = body.contentType()?.toString().orEmpty()
+                                    if (!type.contains("text/html") && !type.contains("application/json")) {
+                                        body.byteStream().use { input ->
+                                            destination.outputStream().use { ReaterArchive.copyBounded(input, it, remaining) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        destination.delete()
+                    }
                 }
-            )
-        }
 
-        val exportedCollections = collections.map { col ->
-            ExportedCollection(
-                name = col.name,
-                iconName = col.iconName,
-                rulesJson = col.rulesJson,
-                sortOrder = col.sortOrder,
-                isEnabled = col.isEnabled
-            )
-        }
+                if (destination.isFile && destination.length() > 0) {
+                    archiveFiles[name] = destination
+                    mediaBySource[key] = name
+                    return name
+                } else {
+                    destination.delete()
+                    mediaBySource[key] = ""
+                    return ""
+                }
+            }
+            val details = itemDao.getBackupItemDetails()
+            val categories = categoryDao.getAllCategories()
+            val keywordsByCategory = categoryDao.getAllKeywords().groupBy { it.categoryId }
+            val categoryNames = categories.associate { it.id to it.name }
+            val collections = proDao.observeAllCollections().first()
 
-        val currentSettings = runCatching {
-            ExportedSettings(
-                themeMode = settingsRepository.themeMode.first(),
-                fontScale = settingsRepository.fontScale.first(),
-                unreadNudgeEnabled = settingsRepository.unreadNudgeEnabled.first(),
-                unreadNudgeDelayMin = settingsRepository.unreadNudgeDelayMin.first(),
-                reviewDigestEnabled = settingsRepository.reviewDigestEnabled.first(),
-                reviewDigestHour = settingsRepository.reviewDigestHour.first(),
-                selectedModel = settingsRepository.selectedModel.first(),
-                customBaseUrl = settingsRepository.customBaseUrl.first(),
-                aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
-                customAvatarId = settingsRepository.customAvatarId.first(),
-                customAvatarUri = settingsRepository.customAvatarUri.first(),
-                isProLicensed = settingsRepository.isProUnlocked.first(),
-                proLicenseEmail = settingsRepository.proLicenseEmail.first(),
-                proLicenseCode = settingsRepository.proLicenseCode.first()
-            )
-        }.getOrNull()
+            val exportList = details.map { detail ->
+                ExportedItem(
+                    canonicalUrl = detail.item.canonicalUrl,
+                    shortcode = detail.item.shortcode,
+                    authorHandle = detail.item.authorHandle,
+                    authorDisplayName = detail.item.authorDisplayName,
+                    postedAt = detail.item.postedAt,
+                    bodyText = detail.item.bodyText,
+                    commentsText = detail.item.commentsText,
+                    manualNote = detail.manualNote,
+                    manualSummary = detail.manualSummary,
+                    aiSummary = detail.userEdit?.aiSummary ?: detail.manualSummary,
+                    isRead = detail.isRead,
+                    isFavorite = detail.isFavorite,
+                    tags = detail.tags.map { it.name },
+                    comments = detail.comments.map {
+                        ExportedComment(
+                            externalId = it.externalId,
+                            author = it.author,
+                            text = it.text,
+                            likeCount = it.likeCount,
+                            parentExternalId = it.parentExternalId,
+                            depth = it.depth,
+                            sortKey = it.sortKey,
+                            authorProfileUrl = it.authorProfileUrl,
+                            authorProfileLocalPath = packMedia(it.authorProfileUrl, it.authorProfileLocalPath, "IMAGE"),
+                            mediaJson = FetchedMediaJson.encode(FetchedMediaJson.decode(it.mediaJson).map { media ->
+                                media.copy(localPath = packMedia(media.remoteUrl, media.localPath, media.kind))
+                            })
+                        )
+                    },
+                    categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
+                    media = detail.media.map {
+                        ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position, packMedia(it.remoteUrl, it.localPath, it.kind))
+                    },
+                    topicTag = detail.item.topicTag,
+                    isDeleted = detail.item.isDeleted,
+                    openCount = detail.userEdit?.openCount ?: 0,
+                    lastOpenedAt = detail.userEdit?.lastOpenedAt ?: 0L,
+                    authorProfileUrl = detail.item.authorProfileUrl.let { url ->
+                        if (url.isBlank()) ""
+                        else {
+                            val packed = packMedia(if (url.startsWith("http")) url else "", if (url.startsWith("http")) "" else url, "IMAGE")
+                            if (packed.isNotBlank()) packed else url
+                        }
+                    },
+                    authorVerified = detail.item.authorVerified,
+                    postedAtRaw = detail.item.postedAtRaw,
+                    mediaJson = detail.item.mediaJson,
+                    likeCount = detail.item.likeCount,
+                    replyCount = detail.item.replyCount,
+                    repostCount = detail.item.repostCount,
+                    sourceFetchedAt = detail.item.sourceFetchedAt,
+                    sourceVersion = detail.item.sourceVersion,
+                    lastFetchStatus = detail.item.lastFetchStatus,
+                    lastFetchAt = detail.item.lastFetchAt,
+                    rawJsonMin = detail.item.rawJsonMin,
+                    deletedAt = detail.item.deletedAt,
+                    userBodyOverride = detail.userEdit?.userBodyOverride,
+                    editedAt = detail.userEdit?.editedAt,
+                    editSource = detail.userEdit?.editSource ?: "IMPORT",
+                    dirtyFlag = detail.userEdit?.dirtyFlag ?: false,
+                    aiRuns = database.aiRunDao().getBackupRuns(detail.item.id),
+                    fetchAttempts = database.aiRunDao().getBackupAttempts(detail.item.id)
+                )
+            }
 
-        val avatarHistory = AvatarStorage.listHistoryFiles(context)
-        val avatarAssets = avatarHistory.flatMap { display ->
-            val ts = AvatarStorage.extractTs(display.name)
-            listOfNotNull(display, AvatarStorage.pairedOriginalFile(context, display.absolutePath),
-                ts?.let { File(AvatarStorage.avatarDir(context), "custom_avatar_crop_$it.txt") }?.takeIf { it.isFile })
-        }.distinctBy { it.name }
-        require(avatarAssets.sumOf { it.length() } <= MAX_IMPORT_BYTES.toLong() * 3 / 4) {
-            "備份含頭像超過 50MB，請先刪除不需要的歷史頭像"
+            val exportedCategories = categories.map { category ->
+                ExportedCategory(
+                    name = category.name,
+                    colorArgb = category.colorArgb,
+                    sort = category.sort,
+                    isDefault = category.isDefault,
+                    avatarIcon = category.avatarIcon,
+                    originalId = category.id,
+                    updatedAt = category.updatedAt,
+                    keywords = keywordsByCategory[category.id].orEmpty().map {
+                        ExportedKeyword(it.term, it.lang, it.weight, it.matchScope)
+                    }
+                )
+            }
+
+            val exportedCollections = collections.map { col ->
+                ExportedCollection(
+                    name = col.name,
+                    iconName = col.iconName,
+                    rulesJson = col.rulesJson,
+                    sortOrder = col.sortOrder,
+                    isEnabled = col.isEnabled,
+                    createdAt = col.createdAt
+                )
+            }
+
+            val currentSettings = ExportedSettings(
+                    themeMode = settingsRepository.themeMode.first(),
+                    fontScale = settingsRepository.fontScale.first(),
+                    unreadNudgeEnabled = settingsRepository.unreadNudgeEnabled.first(),
+                    unreadNudgeDelayMin = settingsRepository.unreadNudgeDelayMin.first(),
+                    reviewDigestEnabled = settingsRepository.reviewDigestEnabled.first(),
+                    reviewDigestHour = settingsRepository.reviewDigestHour.first(),
+                    selectedModel = settingsRepository.selectedModel.first(),
+                    customBaseUrl = settingsRepository.customBaseUrl.first(),
+                    aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
+                    customAvatarId = settingsRepository.customAvatarId.first(),
+                    customAvatarUri = settingsRepository.customAvatarUri.first(),
+                    isProLicensed = settingsRepository.isProUnlocked.first(),
+                    proLicenseEmail = settingsRepository.proLicenseEmail.first(),
+                    proLicenseCode = settingsRepository.proLicenseCode.first(),
+                    keepDataAfterUninstall = settingsRepository.keepDataAfterUninstall.first(),
+                    autoFetchEnabled = settingsRepository.autoFetchEnabled.first(),
+                    lastCategoryName = settingsRepository.lastSelectedCategoryId.first()?.let(categoryNames::get)
+                )
+
+            val avatarHistory = AvatarStorage.listHistoryFiles(context)
+            val currentAvatarFile = currentSettings.customAvatarUri?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isFile && it.length() > 0 }
+            val avatarAssets = (avatarHistory + listOfNotNull(currentAvatarFile)).flatMap { display ->
+                val ts = AvatarStorage.extractTs(display.name)
+                listOfNotNull(display, AvatarStorage.pairedOriginalFile(context, display.absolutePath),
+                    ts?.let { File(AvatarStorage.avatarDir(context), "custom_avatar_crop_$it.txt") }?.takeIf { it.isFile })
+            }.filter { it.isFile && it.length() > 0 }.distinctBy { it.name }
+            avatarAssets.forEach { source ->
+                val name = "avatars/${source.name}"
+                val copy = File(staging, name).apply { parentFile?.mkdirs() }
+                source.copyTo(copy, overwrite = true)
+                archiveFiles[name] = copy
+            }
+            val currentAvatarReference = currentSettings.customAvatarUri?.let { File(it).name }?.takeIf { ref ->
+                avatarAssets.any { it.name == ref }
+            }
+            val exportData = ReaterExportV1(
+                version = "v2",
+                items = exportList,
+                categories = exportedCategories,
+                collections = exportedCollections,
+                settings = if (currentAvatarReference == null && currentSettings.customAvatarUri != null) currentSettings.copy(customAvatarUri = null) else currentSettings,
+                assets = archiveFiles.map { (path, file) -> ExportedAsset(path, file.length(), ReaterArchive.sha256(file)) },
+                queries = proDao.observeAllSavedQueries().first().map { ExportedQuery(it.name, it.filterJson, it.createdAt) },
+                avatarHistory = avatarHistory.map { it.name },
+                currentAvatarReference = currentAvatarReference
+            )
+            val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
+            val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
+            ReaterArchive.write(outputStream, encoded, archiveFiles)
+        } finally {
+            staging.deleteRecursively()
         }
-        val exportData = ReaterExportV1(
-            items = exportList,
-            categories = exportedCategories,
-            collections = exportedCollections,
-            settings = currentSettings,
-            avatarFiles = avatarAssets.map { ExportedAvatarFile(it.name, Base64.encodeToString(it.readBytes(), Base64.NO_WRAP)) },
-            avatarHistory = avatarHistory.map { it.name },
-            currentAvatarReference = currentSettings?.customAvatarUri?.let { File(it).name }
-        )
-        val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
-        val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
-        require(encoded.size <= MAX_IMPORT_BYTES) { "備份含頭像超過 50MB，請先刪除不需要的歷史頭像" }
-        outputStream.write(encoded)
-        outputStream.flush()
     }
 
     /**
@@ -303,38 +466,81 @@ class BackupManager @Inject constructor(
     }
 
     /**
-     * Imports JSON schema v1 file safely with verification.
+     * Imports verified v2 containers and legacy v1 JSON backups.
      */
     suspend fun importFromJson(inputStream: InputStream): Result<Int> {
+        val staging = File(context.cacheDir, "backup_import_${UUID.randomUUID()}").apply { mkdirs() }
+        val restoredFiles = mutableListOf<File>()
+        var databaseCommitted = false
         return try {
-            val bytes = inputStream.use { stream ->
-                val out = java.io.ByteArrayOutputStream()
-                val buffer = ByteArray(8192)
-                var total = 0
-                while (true) {
-                    val read = stream.read(buffer)
-                    if (read < 0) break
-                    total += read
-                    require(total <= MAX_IMPORT_BYTES) { "僅支援小於 50MB 之 .reater 備份檔" }
-                    out.write(buffer, 0, read)
-                }
-                out.toByteArray()
+            val buffered = BufferedInputStream(inputStream)
+            buffered.mark(4)
+            val isZip = buffered.read() == 0x50 && buffered.read() == 0x4b
+            buffered.reset()
+            val packed = if (isZip) ReaterArchive.read(buffered, staging) else emptyMap()
+            val content = if (isZip) packed.getValue(ReaterArchive.MANIFEST).readText() else {
+                val bytes = java.io.ByteArrayOutputStream()
+                buffered.use { ReaterArchive.copyBounded(it, bytes, ReaterArchive.MAX_MANIFEST_BYTES) }
+                bytes.toString(StandardCharsets.UTF_8.name())
             }
-            val content = String(bytes, StandardCharsets.UTF_8)
             val imported = json.decodeFromString(ReaterExportV1.serializer(), content)
+            require((isZip && imported.version == "v2") || (!isZip && imported.version == "v1")) { "不支援的備份格式或版本" }
+            require(imported.assets.map { it.path }.distinct().size == imported.assets.size) { "備份資源重複" }
+            if (isZip) {
+                require(packed.keys - ReaterArchive.MANIFEST == imported.assets.map { it.path }.toSet()) { "備份資源清單不完整" }
+                imported.assets.forEach { asset ->
+                    val file = requireNotNull(packed[asset.path]) { "備份缺少資源" }
+                    require(file.length() == asset.size && ReaterArchive.sha256(file) == asset.sha256) { "備份資源已損壞：${asset.path}" }
+                }
+            }
+            // Validate references before touching permanent files or the database.
+            fun validateMedia(path: String) {
+                if (path.isNotBlank() && !path.startsWith("http://") && !path.startsWith("https://")) {
+                    require(path.startsWith("media/") && path in packed) { "備份媒體參照無效" }
+                }
+            }
+            if (isZip) imported.items.forEach { item ->
+                item.media.forEach { validateMedia(it.archivePath) }
+                item.comments.forEach { comment ->
+                    FetchedMediaJson.decode(comment.mediaJson).forEach { validateMedia(it.localPath) }
+                    validateMedia(comment.authorProfileLocalPath)
+                }
+                validateMedia(item.authorProfileUrl)
+            }
+            val mediaDir = File(context.filesDir, "restored_media/${UUID.randomUUID()}")
+            fun restoreMedia(path: String): String {
+                if (path.isBlank() || !isZip) return path
+                if (path.startsWith("http://") || path.startsWith("https://")) return path
+                validateMedia(path)
+                val destination = File(mediaDir, File(path).name)
+                if (!destination.exists()) {
+                    destination.parentFile?.mkdirs()
+                    restoredFiles += destination
+                    packed.getValue(path).copyTo(destination)
+                }
+                return destination.absolutePath
+            }
             require(imported.fileFormat == "reater") { "非法的 .reater 專屬格式" }
-            require(imported.version == "v1") { "不支援的備份版本：${imported.version}" }
             require(imported.items.size <= MAX_IMPORT_ITEMS) { "備份檔項目過多（超過上限）" }
             require(imported.items.all { it.canonicalUrl.isNotBlank() }) { "匯入資料缺少有效 URL" }
 
             // Validate every asset before changing settings or writing files. Never trust backup paths.
-            val assets = imported.avatarFiles.map { asset ->
-                require(asset.name == File(asset.name).name && !asset.name.contains('\\') && !asset.name.contains('/')) { "頭像備份檔名無效" }
-                require(AvatarStorage.isBackupFileName(asset.name)) { "頭像備份格式無效" }
-                val decoded = Base64.decode(asset.contentBase64, Base64.DEFAULT)
-                require(decoded.isNotEmpty()) { "頭像備份檔案為空" }
-                if (asset.name.endsWith(".txt")) require(AvatarStorage.decodeTransform(decoded.toString(Charsets.UTF_8)) != null) { "頭像裁切資料無效" }
-                asset.name to decoded
+            val assets: List<Pair<String, File>> = if (isZip) {
+                packed.filterKeys { it.startsWith("avatars/") }.map { (name, file) -> File(name).name to file }
+            } else imported.avatarFiles.map { asset ->
+                require(AvatarStorage.isBackupFileName(asset.name) && ReaterArchive.validName("avatars/${asset.name}")) { "頭像備份檔名無效" }
+                val file = File(staging, "avatars/${asset.name}").apply { parentFile?.mkdirs() }
+                file.writeBytes(Base64.decode(asset.contentBase64, Base64.DEFAULT))
+                asset.name to file
+            }
+            assets.forEach { (name, file) ->
+                require(AvatarStorage.isBackupFileName(name) && file.length() > 0) { "頭像備份格式無效" }
+                if (name.endsWith(".txt")) {
+                    require(file.length() < 4096 && AvatarStorage.decodeTransform(file.readText()) != null) { "頭像裁切資料無效" }
+                }
+            }
+            val validCurrentAvatarReference = imported.currentAvatarReference?.takeIf { isZip }?.takeIf { reference ->
+                assets.any { it.first == reference }
             }
             require(assets.map { it.first }.distinct().size == assets.size) { "頭像備份檔名重複" }
             val avatarDir = AvatarStorage.avatarDir(context)
@@ -348,13 +554,12 @@ class BackupManager @Inject constructor(
                 name to if (ts != null) name.replace(ts.toString(), timeMap.getValue(ts).toString())
                     else "custom_avatar_${nextTs++}.jpg"
             }
-            val restoredFiles = mutableListOf<File>()
             try {
-                for ((name, bytes) in assets) {
+                for ((name, source) in assets) {
                     val destination = File(avatarDir, restoredNames.getValue(name))
                     check(destination.canonicalFile.parentFile == avatarDir.canonicalFile)
-                    destination.writeBytes(bytes)
                     restoredFiles += destination
+                    source.copyTo(destination)
                 }
             } catch (error: Exception) {
                 restoredFiles.forEach { it.delete() }
@@ -374,7 +579,8 @@ class BackupManager @Inject constructor(
                         colorArgb = category.colorArgb,
                         sort = category.sort,
                         isDefault = category.isDefault,
-                        avatarIcon = category.avatarIcon
+                        avatarIcon = category.avatarIcon,
+                        updatedAt = category.updatedAt ?: System.currentTimeMillis()
                     )
                     val categoryId = if (existingCategory == null) categoryDao.insertCategory(saved) else {
                         categoryDao.insertCategory(saved)
@@ -387,45 +593,69 @@ class BackupManager @Inject constructor(
                     importedCategoryIds[category.name] = categoryId
                 }
 
+                val categoryIdMap = imported.categories.mapNotNull { cat ->
+                    cat.originalId?.let { old -> importedCategoryIds[cat.name]?.let { old to it } }
+                }.toMap()
+                fun remapFilter(raw: String): String {
+                    val parsed = runCatching { json.parseToJsonElement(raw) }.getOrNull()
+                    if (parsed !is kotlinx.serialization.json.JsonObject) return raw
+                    val old = (parsed["categoryId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()
+                    if (old == null || old !in categoryIdMap) return raw
+                    return kotlinx.serialization.json.JsonObject(parsed.toMutableMap().apply {
+                        put("categoryId", kotlinx.serialization.json.JsonPrimitive(categoryIdMap.getValue(old)))
+                    }).toString()
+                }
+                val existingCollections = proDao.observeAllCollections().first()
                 for (col in imported.collections) {
                     proDao.insertCollection(
                         SavedCollectionEntity(
+                            id = existingCollections.firstOrNull { it.name == col.name }?.id ?: 0,
                             name = col.name,
                             iconName = col.iconName,
-                            rulesJson = col.rulesJson,
+                            rulesJson = remapFilter(col.rulesJson),
                             sortOrder = col.sortOrder,
-                            isEnabled = col.isEnabled
+                            isEnabled = col.isEnabled,
+                            createdAt = col.createdAt ?: System.currentTimeMillis()
                         )
                     )
                 }
 
+                val existingQueries = proDao.observeAllSavedQueries().first()
+                for (query in imported.queries) {
+                    proDao.insertSavedQuery(SavedQueryEntity(
+                        id = existingQueries.firstOrNull { it.name == query.name }?.id ?: 0,
+                        name = query.name, filterJson = remapFilter(query.filterJson), createdAt = query.createdAt
+                    ))
+                }
+
                 for (item in imported.items) {
                     require(item.canonicalUrl.isNotBlank()) { "匯入資料缺少有效 URL" }
-                    val existing = itemDao.getItemByCanonicalUrl(item.canonicalUrl)
+                    val existing = item.sourceFetchedAt?.let { itemDao.getBackupMatch(item.canonicalUrl, it) }
+                        ?: itemDao.getItemByCanonicalUrl(item.canonicalUrl)
                     val entity = ItemEntity(
                         id = existing?.id ?: 0,
                         canonicalUrl = item.canonicalUrl,
                         shortcode = item.shortcode,
                         authorHandle = item.authorHandle,
                         authorDisplayName = item.authorDisplayName,
-                        authorProfileUrl = existing?.authorProfileUrl.orEmpty(),
-                        authorVerified = existing?.authorVerified ?: false,
+                        authorProfileUrl = if (isZip) restoreMedia(item.authorProfileUrl) else item.authorProfileUrl,
+                        authorVerified = item.authorVerified,
                         postedAt = item.postedAt,
-                        postedAtRaw = existing?.postedAtRaw.orEmpty(),
+                        postedAtRaw = item.postedAtRaw,
                         bodyText = item.bodyText,
                         topicTag = item.topicTag,
                         commentsText = item.commentsText,
-                        mediaJson = existing?.mediaJson ?: "[]",
-                        likeCount = existing?.likeCount ?: 0,
-                        replyCount = existing?.replyCount ?: 0,
-                        repostCount = existing?.repostCount ?: 0,
-                        sourceFetchedAt = existing?.sourceFetchedAt ?: System.currentTimeMillis(),
-                        sourceVersion = existing?.sourceVersion ?: 1,
-                        lastFetchStatus = existing?.lastFetchStatus ?: "NOT_FETCHED",
-                        lastFetchAt = existing?.lastFetchAt ?: 0L,
-                        rawJsonMin = "",
+                        mediaJson = item.mediaJson,
+                        likeCount = item.likeCount,
+                        replyCount = item.replyCount,
+                        repostCount = item.repostCount,
+                        sourceFetchedAt = item.sourceFetchedAt?.takeIf { it > 0 } ?: existing?.sourceFetchedAt ?: System.currentTimeMillis(),
+                        sourceVersion = item.sourceVersion,
+                        lastFetchStatus = item.lastFetchStatus,
+                        lastFetchAt = item.lastFetchAt,
+                        rawJsonMin = item.rawJsonMin,
                         isDeleted = item.isDeleted,
-                        deletedAt = if (item.isDeleted) System.currentTimeMillis() else null
+                        deletedAt = item.deletedAt
                     )
                     val itemId = if (existing == null) itemDao.insertItem(entity) else {
                         itemDao.updateItem(entity)
@@ -434,7 +664,7 @@ class BackupManager @Inject constructor(
                                         itemDao.insertUserEdit(
                         UserEditEntity(
                             itemId = itemId,
-                            userBodyOverride = null,
+                            userBodyOverride = item.userBodyOverride,
                             manualNote = item.manualNote,
                             manualSummary = item.manualSummary,
                             aiSummary = item.aiSummary ?: item.manualSummary,
@@ -443,9 +673,9 @@ class BackupManager @Inject constructor(
                             isFavorite = item.isFavorite,
                             openCount = item.openCount,
                             lastOpenedAt = item.lastOpenedAt,
-                            editedAt = System.currentTimeMillis(),
-                            editSource = "IMPORT",
-                            dirtyFlag = false
+                            editedAt = item.editedAt ?: System.currentTimeMillis(),
+                            editSource = item.editSource,
+                            dirtyFlag = item.dirtyFlag
                         )
                     )
                     database.commentDao().deleteCommentsByItemId(itemId)
@@ -458,15 +688,17 @@ class BackupManager @Inject constructor(
                             likeCount = comment.likeCount,
                             parentExternalId = comment.parentExternalId,
                             depth = comment.depth,
-                            sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
-                            mediaJson = comment.mediaJson,
                             authorProfileUrl = comment.authorProfileUrl,
-                            authorProfileLocalPath = comment.authorProfileLocalPath
+                            authorProfileLocalPath = restoreMedia(comment.authorProfileLocalPath),
+                            sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
+                            mediaJson = if (isZip) FetchedMediaJson.encode(FetchedMediaJson.decode(comment.mediaJson).map {
+                                it.copy(localPath = restoreMedia(it.localPath))
+                            }) else comment.mediaJson
                         )
                     })
                     database.mediaDao().deleteMediaByItemId(itemId)
                     val restoredMedia = item.media.map {
-                        MediaEntity(itemId = itemId, kind = it.kind, remoteUrl = it.remoteUrl, width = it.width, height = it.height, position = it.position)
+                        MediaEntity(itemId = itemId, kind = it.kind, remoteUrl = it.remoteUrl, localPath = restoreMedia(it.archivePath), width = it.width, height = it.height, position = it.position)
                     }
                     if (restoredMedia.isNotEmpty()) database.mediaDao().insertMediaList(restoredMedia)
                     val tagDao = database.tagDao()
@@ -477,11 +709,20 @@ class BackupManager @Inject constructor(
                         }
                         if (tagId != null && tagId > 0) tagDao.insertItemTagCrossRef(ItemTagCrossRef(itemId, tagId))
                     }
+                    if (isZip) {
+                        database.aiRunDao().deleteRuns(itemId)
+                        database.aiRunDao().deleteAttempts(itemId)
+                        item.aiRuns.forEach { database.aiRunDao().insert(it.copy(id = 0, itemId = itemId)) }
+                        item.fetchAttempts.forEach { database.aiRunDao().insertAttempt(it.copy(id = 0, itemId = itemId)) }
+                    }
                     refreshSearchIndex(itemId)
                     count++
                 }
             }
+            databaseCommitted = true
             imported.settings?.let { s ->
+                settingsRepository.setAutoFetchEnabled(s.autoFetchEnabled)
+                settingsRepository.setLastSelectedCategoryId(s.lastCategoryName?.let { categoryDao.getCategoryByName(it)?.id })
                 settingsRepository.setThemeMode(s.themeMode)
                 settingsRepository.setFontScale(s.fontScale)
                 settingsRepository.setUnreadNudgeEnabled(s.unreadNudgeEnabled)
@@ -491,8 +732,9 @@ class BackupManager @Inject constructor(
                 settingsRepository.setSelectedModel(s.selectedModel)
                 settingsRepository.setCustomBaseUrl(s.customBaseUrl)
                 settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
+                settingsRepository.setKeepDataAfterUninstall(s.keepDataAfterUninstall)
                 settingsRepository.setCustomAvatarId(s.customAvatarId)
-                val reference = imported.currentAvatarReference ?: s.customAvatarUri?.let { File(it).name }
+                val reference = validCurrentAvatarReference ?: imported.currentAvatarReference ?: s.customAvatarUri?.let { File(it).name }
                 val restoredAvatar = reference?.let(restoredNames::get)?.let { File(avatarDir, it) }
                 // Old backups carried a device-specific path only; restore it only if it is still readable.
                 val legacyAvatar = s.customAvatarUri?.takeIf {
@@ -507,12 +749,15 @@ class BackupManager @Inject constructor(
 
             Result.success(count)
         } catch (e: Exception) {
+            if (!databaseCommitted) restoredFiles.forEach { it.delete() }
+            if (e is CancellationException) throw e
             Result.failure(e)
+        } finally {
+            staging.deleteRecursively()
         }
     }
 
     private companion object {
-        const val MAX_IMPORT_BYTES = 50 * 1024 * 1024
         const val MAX_IMPORT_ITEMS = 100_000
     }
 

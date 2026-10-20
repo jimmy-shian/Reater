@@ -55,6 +55,21 @@ interface TagDao {
 
 @Dao
 interface AiRunDao {
+    @Query("SELECT * FROM ai_runs WHERE itemId = :itemId ORDER BY id")
+    suspend fun getBackupRuns(itemId: Long): List<AiRunEntity>
+
+    @Query("SELECT * FROM fetch_attempts WHERE itemId = :itemId ORDER BY id")
+    suspend fun getBackupAttempts(itemId: Long): List<com.reater.app.data.local.entity.FetchAttemptEntity>
+
+    @Query("DELETE FROM ai_runs WHERE itemId = :itemId")
+    suspend fun deleteRuns(itemId: Long)
+
+    @Query("DELETE FROM fetch_attempts WHERE itemId = :itemId")
+    suspend fun deleteAttempts(itemId: Long)
+
+    @Insert
+    suspend fun insertAttempt(attempt: com.reater.app.data.local.entity.FetchAttemptEntity)
+
     @Insert
     suspend fun insert(run: AiRunEntity): Long
 

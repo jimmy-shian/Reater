@@ -17,6 +17,13 @@ interface ItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: ItemEntity): Long
 
+    @Transaction
+    @Query("SELECT * FROM items ORDER BY id")
+    suspend fun getBackupItemDetails(): List<ItemDetail>
+
+    @Query("SELECT * FROM items WHERE canonicalUrl = :url AND sourceFetchedAt = :savedAt ORDER BY id DESC LIMIT 1")
+    suspend fun getBackupMatch(url: String, savedAt: Long): ItemEntity?
+
     @Update
     suspend fun updateItem(item: ItemEntity)
 

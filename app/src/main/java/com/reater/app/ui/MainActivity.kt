@@ -304,6 +304,9 @@ class MainViewModel @Inject constructor(
     val aiTransmissionConsent: StateFlow<Boolean> = settingsRepository.aiTransmissionConsent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val keepDataAfterUninstall: StateFlow<Boolean> = settingsRepository.keepDataAfterUninstall
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val smartCollections: StateFlow<List<SavedCollectionEntity>> = proDao.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -606,6 +609,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setAiTransmissionConsent(enabled) }
     }
 
+    fun setKeepDataAfterUninstall(keep: Boolean) {
+        viewModelScope.launch { settingsRepository.setKeepDataAfterUninstall(keep) }
+    }
+
     suspend fun getSavedApiKey(): String? {
         return settingsRepository.getOpenAiApiKey()
     }
@@ -684,7 +691,7 @@ fun MainScreen(
     var showIconGallery by remember { mutableStateOf(false) }
 
     val reaterExportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
+        ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) ioScope.launch {
             val result = runCatching {
@@ -837,6 +844,10 @@ fun MainScreen(
                 reaterExportLauncher.launch(defaultName)
             },
             onImportJson = { reaterImportLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain")) },
+            onTriggerUninstallBackup = {
+                val defaultName = "reater_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.getDefault()).format(java.util.Date())}.reater"
+                reaterExportLauncher.launch(defaultName)
+            },
             onOpenIconGallery = { showIconGallery = true },
             onOpenUnlock = { showUnlockDialog = true }
         )

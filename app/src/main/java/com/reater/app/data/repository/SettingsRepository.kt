@@ -55,6 +55,7 @@ class SettingsRepository @Inject constructor(
     private val KEY_LAST_CATEGORY_ID = androidx.datastore.preferences.core.longPreferencesKey("last_selected_category_id")
     private val KEY_CUSTOM_AVATAR_ID = stringPreferencesKey("custom_avatar_id")
     private val KEY_CUSTOM_AVATAR_URI = stringPreferencesKey("custom_avatar_uri")
+    private val KEY_KEEP_DATA_UNINSTALL = booleanPreferencesKey("keep_data_after_uninstall")
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -129,6 +130,10 @@ class SettingsRepository @Inject constructor(
 
     val reviewDigestHour: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[KEY_REVIEW_DIGEST_HOUR] ?: 21
+    }
+
+    val keepDataAfterUninstall: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_KEEP_DATA_UNINSTALL] ?: false
     }
 
     val lastSelectedCategoryId: Flow<Long?> = context.dataStore.data.map { prefs ->
@@ -267,6 +272,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setReviewDigestHour(hour: Int) {
         context.dataStore.edit { it[KEY_REVIEW_DIGEST_HOUR] = hour.coerceIn(0, 23) }
+    }
+
+    suspend fun setKeepDataAfterUninstall(keep: Boolean) {
+        context.dataStore.edit { it[KEY_KEEP_DATA_UNINSTALL] = keep }
     }
 
     fun verifyPasscode(code: String, email: String = ""): Boolean {
