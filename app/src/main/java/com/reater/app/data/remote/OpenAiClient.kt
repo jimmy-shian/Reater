@@ -2,6 +2,10 @@ package com.reater.app.data.remote
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -73,6 +77,34 @@ class OpenAiClient @Inject constructor() {
     }
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    suspend fun fetchModels(apiKey: String, customBaseUrl: String): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            val baseUrl = customBaseUrl.trim().removeSuffix("/").ifBlank {
+                return@withContext Result.success(emptyList())
+            }
+            runCatching {
+                val request = Request.Builder()
+                    .url("$baseUrl/models")
+                    .apply {
+                        if (apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey")
+                    }
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IOException("Model API HTTP error ${response.code}: $body")
+                    }
+                    json.parseToJsonElement(body).jsonObject["data"]?.jsonArray
+                        ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
+                        ?.filter(String::isNotBlank)
+                        ?.distinct()
+                        ?.sorted()
+                        .orEmpty()
+                }
+            }
+        }
 
     /**
      * Executes AI categorization and summarization in JSON mode.

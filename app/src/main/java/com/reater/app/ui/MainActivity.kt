@@ -346,7 +346,7 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "https://api.openai.com/v1")
 
     val selectedModel: StateFlow<String> = settingsRepository.selectedModel
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "gpt-5-nano")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val aiTransmissionConsent: StateFlow<Boolean> = settingsRepository.aiTransmissionConsent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -680,6 +680,9 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    suspend fun fetchAvailableModels(apiKey: String, baseUrl: String): Result<List<String>> =
+        openAiClient.fetchModels(apiKey, baseUrl)
+
     fun setAiTransmissionConsent(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setAiTransmissionConsent(enabled) }
     }
@@ -703,6 +706,9 @@ class MainViewModel @Inject constructor(
     }
 
     suspend fun summarizeItemWithAi(item: ItemDetail, manualNote: String = item.manualNote): Result<String> {
+        if (!aiTransmissionConsent.value) {
+            return Result.failure(IllegalStateException("尚未授權將貼文傳送至 AI 服務，請先於系統設定中勾選允許"))
+        }
         val key = settingsRepository.getOpenAiApiKey().orEmpty()
         if (key.isBlank()) return Result.failure(IllegalStateException("請先於設定中配置 API Key"))
 

@@ -69,7 +69,7 @@ class SettingsRepository @Inject constructor(
     }
 
     val selectedModel: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_SELECTED_MODEL] ?: "gpt-5-nano"
+        prefs[KEY_SELECTED_MODEL] ?: ""
     }
 
     val customBaseUrl: Flow<String> = context.dataStore.data.map { prefs ->

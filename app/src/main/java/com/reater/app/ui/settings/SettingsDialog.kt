@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -25,7 +26,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,10 +62,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,13 +92,17 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import com.reater.app.ui.components.DismissFocusOnScroll
-import com.reater.app.ui.components.dismissFocusOnTap
-
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Lock
 import com.reater.app.ui.AvatarIcons
 import com.reater.app.ui.components.UserAvatarView
+import kotlinx.coroutines.delay
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsDialog(
     viewModel: MainViewModel,
@@ -122,9 +133,36 @@ fun SettingsDialog(
     var baseUrlInput by remember { mutableStateOf(currentBaseUrl) }
     var modelInput by remember { mutableStateOf(currentModel) }
     var previewScale by remember(fontScale) { mutableStateOf(fontScale) }
+    var hasSavedApiKey by remember { mutableStateOf(false) }
+    var aiExpanded by rememberSaveable { mutableStateOf(false) }
+    var showModelDropdown by remember { mutableStateOf(false) }
+    var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var modelFetchInProgress by remember { mutableStateOf(false) }
+    var modelFetchError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        hasSavedApiKey = !viewModel.getSavedApiKey().isNullOrBlank()
+    }
+
+    LaunchedEffect(baseUrlInput, apiKeyInput, hasSavedApiKey) {
+        availableModels = emptyList()
+        showModelDropdown = false
+        modelFetchError = null
+        if (baseUrlInput.isBlank()) return@LaunchedEffect
+        delay(600)
+        modelFetchInProgress = true
+        val key = apiKeyInput.ifBlank { viewModel.getSavedApiKey().orEmpty() }
+        viewModel.fetchAvailableModels(key, baseUrlInput)
+            .onSuccess { models -> availableModels = models }
+            .onFailure { modelFetchError = it.message }
+        modelFetchInProgress = false
+    }
 
     fun dismissWithApply() {
         if (previewScale != fontScale) viewModel.setFontScale(previewScale)
+        if (apiKeyInput.isNotBlank() || baseUrlInput != currentBaseUrl || modelInput != currentModel) {
+            viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
+        }
         onDismiss()
     }
 
@@ -140,7 +178,13 @@ fun SettingsDialog(
     val settingsScrollState = rememberScrollState()
     DismissFocusOnScroll(settingsScrollState, focusManager)
 
-    Dialog(onDismissRequest = { dismissWithApply() }, properties = DialogProperties(dismissOnBackPress = false)) {
+    Dialog(
+        onDismissRequest = { dismissWithApply() },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
         val imeVisible = WindowInsets.isImeVisible
         BackHandler {
             if (imeVisible) {
@@ -148,14 +192,32 @@ fun SettingsDialog(
                 keyboard?.hide()
             } else dismissWithApply()
         }
+
+        val handleTapOutside = {
+            focusManager.clearFocus()
+            keyboard?.hide()
+            if (!imeVisible && aiExpanded) {
+                aiExpanded = false
+            }
+        }
+
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.fillMaxSize().imePadding().navigationBarsPadding().dismissFocusOnTap(focusManager)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding()
+                    .navigationBarsPadding()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { handleTapOutside() }
+            ) {
                 // 固定頂欄
                 DialogHeader(
                     title = "系統設定",
@@ -170,14 +232,17 @@ fun SettingsDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(settingsScrollState)
-                        .dismissFocusOnTap(focusManager)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { handleTapOutside() }
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
 
                     // ---------- 外觀 ----------
                     SettingsSectionTitle("外觀與閱讀")
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "亮暗模式", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(text = "亮暗模式", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -187,7 +252,7 @@ fun SettingsDialog(
                             FilterChip(
                                 selected = themeMode == id,
                                 onClick = { viewModel.setThemeMode(id) },
-                                label = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                                label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
                             )
                         }
                     }
@@ -197,10 +262,10 @@ fun SettingsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "字體大小", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(text = "字體大小", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Text(
                             text = "${(previewScale * 100).toInt()}%",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
@@ -295,8 +360,8 @@ fun SettingsDialog(
                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            "圖示總覽大廳",
-                                            fontSize = 12.sp,
+                                            "圖示展覽室",
+                                            style = MaterialTheme.typography.labelMedium,
                                             maxLines = 1,
                                             softWrap = false,
                                             overflow = TextOverflow.Ellipsis
@@ -360,12 +425,12 @@ fun SettingsDialog(
                                     Text(
                                         text = "升級 Pro 解鎖自訂大頭像",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
+                                        style = MaterialTheme.typography.titleSmall
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "解鎖 10 款尊爵圖示、圖示總覽大廳與自訂相片",
-                                        fontSize = 11.sp,
+                                        text = "解鎖 10 款尊爵圖示、圖示展覽室與自訂相片",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                 }
@@ -375,13 +440,13 @@ fun SettingsDialog(
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text("解鎖", fontSize = 12.sp)
+                                    Text("解鎖", style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 通知與排程 ----------
                     SettingsSectionTitle("通知與推播提醒")
@@ -394,7 +459,7 @@ fun SettingsDialog(
                         Text(
                             text = if (notifGranted) "推播權限：已授權"
                             else "推播權限：未授權",
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.weight(1f)
                         )
@@ -409,7 +474,7 @@ fun SettingsDialog(
                                 modifier = Modifier.height(32.dp),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("授權", fontSize = 12.sp)
+                                Text("授權", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -427,10 +492,10 @@ fun SettingsDialog(
                                 .weight(1f)
                                 .padding(end = 12.dp)
                         ) {
-                            Text(text = "未讀提醒", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "未讀提醒", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 text = "儲存後若仍未讀，延遲自動發送推播提醒",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -509,10 +574,10 @@ fun SettingsDialog(
                                 .weight(1f)
                                 .padding(end = 12.dp)
                         ) {
-                            Text(text = "每日回顧", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "每日回顧", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 text = "每天固定時間點推播彙整未讀數",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -607,121 +672,343 @@ fun SettingsDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // ---------- AI 服務 (BYOK) ----------
-                    SettingsSectionTitle("AI 服務 (BYOK)")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "API Key（支援 OpenAI / 相容端點）", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = apiKeyInput,
-                        onValueChange = { apiKeyInput = it },
-                        placeholder = { Text("sk-...", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        modifier = Modifier.fillMaxWidth(),
+                    // ---------- AI 服務 (BYOK) - 收合式設計 ----------
+                    val keyConfigured = apiKeyInput.isNotBlank() || hasSavedApiKey
+                    val providerLabel = if (baseUrlInput.contains("openai.com")) "OpenAI" else "自訂端點"
+                    val modelLabel = if (modelInput.isNotBlank()) modelInput else "尚未指定模型"
+                    val keyStatusText = if (keyConfigured) "API Key 已設定" else "尚未設定"
+
+                    androidx.compose.material3.Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp)),
                         shape = RoundedCornerShape(10.dp),
-                        singleLine = true,
-                        // 單行長字串由 TextField 內部水平捲動處理；父層不再搶事件，
-                        // 游標拖到最左/最右可自動跟隨捲動，不會卡住
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (aiExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                         )
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(text = "API Base URL", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = baseUrlInput,
-                        onValueChange = { baseUrlInput = it },
-                        placeholder = {
-                            Text(
-                                "https://api.openai.com/v1 或自訂代理",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(text = "Model ID", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = modelInput,
-                        onValueChange = { modelInput = it },
-                        placeholder = {
-                            Text(
-                                "gpt-5-nano, deepseek-chat 等",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Checkbox(
-                            checked = aiConsent,
-                            onCheckedChange = viewModel::setAiTransmissionConsent
-                        )
-                        Text(
-                            text = "允許將貼文與留言傳送至設定的 AI 服務",
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        if (imeVisible) {
+                                            focusManager.clearFocus()
+                                            keyboard?.hide()
+                                        } else {
+                                            aiExpanded = !aiExpanded
+                                        }
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    SettingsSectionTitle("AI 服務 (BYOK)")
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "$providerLabel · $modelLabel ($keyStatusText)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                val arrowRotation by animateFloatAsState(
+                                    targetValue = if (aiExpanded) 180f else 0f,
+                                    animationSpec = tween(250),
+                                    label = "aiArrow"
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (aiExpanded) "收合 AI 設定" else "展開 AI 設定",
+                                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                                    tint = MaterialTheme.colorScheme.outline
+                                )
+                            }
+
+                            AnimatedVisibility(
+                                visible = aiExpanded,
+                                enter = expandVertically(tween(250)) + fadeIn(tween(250)),
+                                exit = shrinkVertically(tween(200)) + fadeOut(tween(200))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            if (imeVisible) {
+                                                focusManager.clearFocus()
+                                                keyboard?.hide()
+                                            } else if (aiExpanded) {
+                                                aiExpanded = false
+                                            }
+                                        }
+                                ) {
+                                    Text(
+                                        text = "API Key",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = apiKeyInput,
+                                        onValueChange = { apiKeyInput = it },
+                                        placeholder = {
+                                            Text(
+                                                text = if (hasSavedApiKey) "•••••••••••••••• (已保存)" else "sk-...",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Text(
+                                        text = "API Base URL",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = baseUrlInput,
+                                        onValueChange = { baseUrlInput = it },
+                                        placeholder = {
+                                            Text(
+                                                "https://api.openai.com/v1",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Model ID",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Box(modifier = Modifier.padding(start = 8.dp)) {
+                                            Text(
+                                                text = when {
+                                                    modelFetchInProgress -> "讀取模型…"
+                                                    availableModels.isNotEmpty() -> "選取可用模型 ▾"
+                                                    else -> "輸入 URL 後取得"
+                                                },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .clickable(enabled = availableModels.isNotEmpty()) { showModelDropdown = true }
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                            DropdownMenu(
+                                                expanded = showModelDropdown && availableModels.isNotEmpty(),
+                                                onDismissRequest = { showModelDropdown = false }
+                                            ) {
+                                                Text(
+                                                    text = "從目前 API Base URL 取得",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.outline,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                                )
+                                                HorizontalDivider()
+                                                availableModels.forEach { modelId ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(modelId, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                        },
+                                                        onClick = {
+                                                            modelInput = modelId
+                                                            showModelDropdown = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = modelInput,
+                                        onValueChange = { modelInput = it },
+                                        placeholder = {
+                                            Text(
+                                                "從 API 取得的 Model ID",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            IconButton(
+                                                enabled = availableModels.isNotEmpty(),
+                                                onClick = { showModelDropdown = !showModelDropdown }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowDropDown,
+                                                    contentDescription = "展開常用模型清單",
+                                                    tint = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        },
+                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    if (availableModels.isNotEmpty()) {
+                                        Text(
+                                            text = "可用模型：",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        availableModels.forEach { chipModel ->
+                                            val isSelected = modelInput == chipModel
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                                ),
+                                                modifier = Modifier.clickable {
+                                                    modelInput = chipModel
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = chipModel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { viewModel.setAiTransmissionConsent(!aiConsent) }
+                                    ) {
+                                        Checkbox(
+                                            checked = aiConsent,
+                                            onCheckedChange = viewModel::setAiTransmissionConsent
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "允許將貼文與留言內容傳送至設定的 AI 服務",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            lineHeight = 16.sp,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Button(
+                                        onClick = {
+                                            viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
+                                            hasSavedApiKey = apiKeyInput.isNotBlank() || hasSavedApiKey
+                                            Toast.makeText(context, "AI 設定已儲存", Toast.LENGTH_SHORT).show()
+                                            focusManager.clearFocus()
+                                            keyboard?.hide()
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+                                    ) {
+                                        Text("儲存 AI 設定", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 備份與資料管理 ----------
                     SettingsSectionTitle("資料備份與還原")
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "僅支援 .reater 專屬備份檔。",
-                        fontSize = 12.sp,
+                        text = ".reater 專屬備份格式",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         lineHeight = 16.sp,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -729,37 +1016,37 @@ fun SettingsDialog(
                     ) {
                         Button(
                             onClick = onExportJson,
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            modifier = Modifier.weight(1f).height(42.dp),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                "匯出 .reater",
+                                "匯出備份",
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 textAlign = TextAlign.Center
                             )
                         }
                         OutlinedButton(
                             onClick = onImportJson,
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            modifier = Modifier.weight(1f).height(42.dp),
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                "匯入 .reater",
+                                "匯入備份",
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 textAlign = TextAlign.Center
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 解除安裝與資料保留 ----------
                     SettingsSectionTitle("解除安裝與資料保留")
@@ -818,22 +1105,31 @@ fun SettingsDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
+                } // End of scrollable Column
 
-                    // 底部儲存設定
+                // 固定底部儲存按鈕（鍵盤彈起時隱藏，不遮擋輸入框與其他設定）
+                if (!imeVisible) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.End
                     ) {
                         Button(
                             onClick = {
                                 viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
-                                Toast.makeText(context, "AI 設定已儲存", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "設定已儲存", Toast.LENGTH_SHORT).show()
                                 dismissWithApply()
                             },
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(8.dp),
+                             modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                         ) {
-                            Text("儲存設定")
+                            Text("儲存設定", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -846,7 +1142,7 @@ fun SettingsDialog(
 private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
-        fontSize = 14.sp,
+        style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary
     )
