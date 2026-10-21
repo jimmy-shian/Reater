@@ -35,6 +35,7 @@ class SettingsRepository @Inject constructor(
     private val KEY_SELECTED_MODEL = stringPreferencesKey("selected_ai_model")
     private val KEY_AUTO_FETCH_ENABLED = booleanPreferencesKey("auto_fetch_enabled")
     private val KEY_AI_CONSENT = booleanPreferencesKey("ai_transmission_consent")
+    private val KEY_AI_ANALYZE_ON_SAVE = booleanPreferencesKey("ai_analyze_on_save")
     private val KEY_PRO_UNLOCKED = booleanPreferencesKey("pro_unlocked")
     // Pro 雙軌授權：Play 購買與離線啟用碼各自獨立，isPro = 任一為 true。
     // 舊版只有單一 pro_unlocked，每次 Play 對帳無購買就會寫 false 蓋掉啟用碼，
@@ -56,6 +57,14 @@ class SettingsRepository @Inject constructor(
     private val KEY_CUSTOM_AVATAR_ID = stringPreferencesKey("custom_avatar_id")
     private val KEY_CUSTOM_AVATAR_URI = stringPreferencesKey("custom_avatar_uri")
     private val KEY_KEEP_DATA_UNINSTALL = booleanPreferencesKey("keep_data_after_uninstall")
+
+    // 智慧分類規則三項：
+    // 1. 自動根據內文關鍵字去分類（開關，預設開）
+    // 2. 根據作者名稱去分類（開關，預設開）
+    // 3. 根據特定關鍵字分類到指定標籤/分類（客製化比對清單 JSON）
+    private val KEY_SMART_RULE_CONTENT_KEYWORDS = booleanPreferencesKey("smart_rule_content_keywords")
+    private val KEY_SMART_RULE_AUTHOR = booleanPreferencesKey("smart_rule_author")
+    private val KEY_SMART_RULE_CUSTOM_KEYWORDS_JSON = stringPreferencesKey("smart_rule_custom_keywords_json")
 
     private val aead: Aead by lazy {
         AeadConfig.register()
@@ -82,6 +91,10 @@ class SettingsRepository @Inject constructor(
 
     val aiTransmissionConsent: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_AI_CONSENT] ?: false
+    }
+
+    val aiAnalyzeOnSave: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AI_ANALYZE_ON_SAVE] ?: false
     }
 
     val isProUnlocked: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -158,6 +171,31 @@ class SettingsRepository @Inject constructor(
         prefs[KEY_CUSTOM_AVATAR_URI]
     }
 
+    // 智慧分類規則 Flow
+    val smartRuleContentKeywordsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SMART_RULE_CONTENT_KEYWORDS] ?: true
+    }
+
+    val smartRuleAuthorEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SMART_RULE_AUTHOR] ?: true
+    }
+
+    val smartRuleCustomKeywordsJson: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SMART_RULE_CUSTOM_KEYWORDS_JSON] ?: "[]"
+    }
+
+    suspend fun setSmartRuleContentKeywordsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_SMART_RULE_CONTENT_KEYWORDS] = enabled }
+    }
+
+    suspend fun setSmartRuleAuthorEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_SMART_RULE_AUTHOR] = enabled }
+    }
+
+    suspend fun setSmartRuleCustomKeywordsJson(jsonString: String) {
+        context.dataStore.edit { it[KEY_SMART_RULE_CUSTOM_KEYWORDS_JSON] = jsonString }
+    }
+
     suspend fun setCustomAvatarId(id: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_CUSTOM_AVATAR_ID] = id
@@ -224,6 +262,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setAiTransmissionConsent(enabled: Boolean) {
         context.dataStore.edit { it[KEY_AI_CONSENT] = enabled }
+    }
+
+    suspend fun setAiAnalyzeOnSave(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AI_ANALYZE_ON_SAVE] = enabled }
     }
 
     suspend fun setProEntitlementFromPlay(owned: Boolean) {

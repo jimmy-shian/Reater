@@ -21,6 +21,10 @@ import com.reater.app.ui.components.PasscodeUnlockDialog
 import com.reater.app.ui.components.IconGalleryDialog
 import com.reater.app.ui.components.UserAvatarView
 import com.reater.app.ui.analytics.AnalyticsScreen
+import com.reater.app.domain.CustomKeywordRule
+import com.reater.app.ui.components.EditCustomKeywordRuleDialog
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -174,6 +178,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Pro 一鍵開通 Deep Link：冷啟動時先收下，Compose 端 LaunchedEffect 會自動驗證解鎖
         parseProUnlock(intent?.data)?.let { proDeepLinkFlow.value = it }
+        val openId = intent?.getLongExtra(com.reater.app.notify.NotifyCenter.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
+        if (openId > 0) {
+            pendingOpenItemIdFlow.value = openId
+        }
         setContent {
             MainThemedScreen()
         }
@@ -184,6 +192,10 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         // singleTask 熱啟動（App 已在前景）：同樣丟進 Flow，Compose 端會接著處理
         parseProUnlock(intent.data)?.let { proDeepLinkFlow.value = it }
+        val openId = intent.getLongExtra(com.reater.app.notify.NotifyCenter.EXTRA_OPEN_ITEM_ID, -1L)
+        if (openId > 0) {
+            pendingOpenItemIdFlow.value = openId
+        }
     }
 
     data class ProUnlockDeepLink(val email: String, val code: String)
@@ -191,6 +203,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** 待處理的一鍵開通連結（冷/熱啟動共用，Compose 消費後清 null）。 */
         val proDeepLinkFlow = MutableStateFlow<ProUnlockDeepLink?>(null)
+        /** 待跳轉並開啟詳細檢視的文章 ID（點擊通知時傳入）。 */
+        val pendingOpenItemIdFlow = MutableStateFlow<Long?>(null)
 
         /**
          * 解析 reater://pro-unlock?email=..&code=..（code 也接受 key 別名）
@@ -353,6 +367,60 @@ class MainViewModel @Inject constructor(
 
     val keepDataAfterUninstall: StateFlow<Boolean> = settingsRepository.keepDataAfterUninstall
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val smartRuleContentKeywordsEnabled: StateFlow<Boolean> = settingsRepository.smartRuleContentKeywordsEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val smartRuleAuthorEnabled: StateFlow<Boolean> = settingsRepository.smartRuleAuthorEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    private val customRulesJsonSerializer = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    val smartRuleCustomKeywords: StateFlow<List<CustomKeywordRule>> = settingsRepository.smartRuleCustomKeywordsJson
+        .map { json: String ->
+            runCatching {
+                customRulesJsonSerializer.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(CustomKeywordRule.serializer()),
+                    json
+                )
+            }.getOrDefault(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun setSmartRuleContentKeywordsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setSmartRuleContentKeywordsEnabled(enabled) }
+    }
+
+    fun setSmartRuleAuthorEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setSmartRuleAuthorEnabled(enabled) }
+    }
+
+    fun saveCustomKeywordRule(rule: CustomKeywordRule) {
+        viewModelScope.launch {
+            val current = smartRuleCustomKeywords.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == rule.id }
+            if (idx >= 0) {
+                current[idx] = rule
+            } else {
+                current.add(rule)
+            }
+            settingsRepository.setSmartRuleCustomKeywordsJson(customRulesJsonSerializer.encodeToString(kotlinx.serialization.builtins.ListSerializer(CustomKeywordRule.serializer()), current))
+        }
+    }
+
+    fun deleteCustomKeywordRule(ruleId: String) {
+        viewModelScope.launch {
+            val current = smartRuleCustomKeywords.value.filter { it.id != ruleId }
+            settingsRepository.setSmartRuleCustomKeywordsJson(customRulesJsonSerializer.encodeToString(kotlinx.serialization.builtins.ListSerializer(CustomKeywordRule.serializer()), current))
+        }
+    }
+
+    fun applySmartClassification(onDone: (Int) -> Unit) {
+        viewModelScope.launch {
+            val count = repository.applySmartClassificationToAll(onlyUnclassified = false)
+            onDone(count)
+        }
+    }
 
     val smartCollections: StateFlow<List<SavedCollectionEntity>> = proDao.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -695,6 +763,15 @@ class MainViewModel @Inject constructor(
         return settingsRepository.getOpenAiApiKey()
     }
 
+    val aiAnalyzeOnSave: StateFlow<Boolean> = settingsRepository.aiAnalyzeOnSave
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setAiAnalyzeOnSave(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAiAnalyzeOnSave(enabled) }
+    }
+
+    suspend fun getItemDetailById(id: Long): ItemDetail? = repository.getItemDetailById(id)
+
     private val noteWriteMutex = kotlinx.coroutines.sync.Mutex()
 
     fun updateManualNote(itemId: Long, note: String) {
@@ -702,6 +779,30 @@ class MainViewModel @Inject constructor(
             noteWriteMutex.lock()
             try { repository.updateManualNote(itemId, note) }
             finally { noteWriteMutex.unlock() }
+        }
+    }
+
+    private val _aiActiveItemIds = MutableStateFlow<Set<Long>>(emptySet())
+    val aiActiveItemIds: StateFlow<Set<Long>> = _aiActiveItemIds
+
+    fun startBackgroundAiAnalysis(context: Context, item: ItemDetail, manualNote: String = item.manualNote) {
+        val itemId = item.item.id
+        _aiActiveItemIds.update { it + itemId }
+        com.reater.app.notify.AiAnalysisWorker.schedule(
+            context = context.applicationContext,
+            itemId = itemId,
+            postTitle = item.displayBody.take(40),
+            manualNote = manualNote
+        )
+        // 觀察工作是否已完成（透過 Flow 同步更新狀態）
+        viewModelScope.launch {
+            val workManager = androidx.work.WorkManager.getInstance(context.applicationContext)
+            workManager.getWorkInfosForUniqueWorkFlow("ai_analysis_work_$itemId").collect { workInfoList ->
+                val state = workInfoList.firstOrNull()?.state
+                if (state != null && state.isFinished) {
+                    _aiActiveItemIds.update { it - itemId }
+                }
+            }
         }
     }
 
@@ -752,6 +853,9 @@ fun MainScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val currentTab by viewModel.tabIndex.collectAsState()
     val isPro by viewModel.isProUnlocked.collectAsState()
+    val contentKeywordsRuleEnabled by viewModel.smartRuleContentKeywordsEnabled.collectAsState()
+    val authorRuleEnabled by viewModel.smartRuleAuthorEnabled.collectAsState()
+    val customKeywordRules by viewModel.smartRuleCustomKeywords.collectAsState()
     val collections by viewModel.smartCollections.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val proCategoryFilter by viewModel.proCategoryFilter.collectAsState()
@@ -771,16 +875,20 @@ fun MainScreen(
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
     var showIconGallery by remember { mutableStateOf(false) }
 
+    var backupLoadingMessage by remember { mutableStateOf<String?>(null) }
+
     val reaterExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) ioScope.launch {
+            backupLoadingMessage = "正在打包備份資料，請稍候..."
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { viewModel.exportJson(it) }
                         ?: error("無法開啟指定匯出檔案")
                 }
             }
+            backupLoadingMessage = null
             Toast.makeText(
                 context,
                 if (result.isSuccess) "已匯出 .reater 備份檔" else "匯出失敗：${result.exceptionOrNull()?.localizedMessage}",
@@ -790,6 +898,7 @@ fun MainScreen(
     }
     val reaterImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) ioScope.launch {
+            backupLoadingMessage = "正在解壓並還原備份，請稍候..."
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     // 自動過濾：僅接受 .reater 專屬格式（檔名 + 內容雙重校驗，詳見 BackupManager）
@@ -811,11 +920,40 @@ fun MainScreen(
                         ?: error("無法開啟所選備份檔案")
                 }
             }
+            backupLoadingMessage = null
             Toast.makeText(
                 context,
-                result.fold({ "已還原備份（共 $it 筆）" }, { "還原失敗：${it.localizedMessage}" }),
+                result.fold({ "已還原備份（共 $it 筆文章）" }, { "還原失敗：${it.localizedMessage}" }),
                 Toast.LENGTH_LONG
             ).show()
+        }
+    }
+
+    if (backupLoadingMessage != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false
+            )
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    Text(
+                        text = backupLoadingMessage.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
     }
 
@@ -827,6 +965,17 @@ fun MainScreen(
     // Deep Link 帶入的預填值（一鍵開通失敗時讓用戶直接按驗證重試）
     var unlockPrefillEmail by remember { mutableStateOf("") }
     var unlockPrefillCode by remember { mutableStateOf("") }
+
+    // 通知點擊帶入 ID：自動尋找該文章並展開詳細檢視
+    val pendingOpenItemId by MainActivity.pendingOpenItemIdFlow.collectAsState()
+    LaunchedEffect(pendingOpenItemId) {
+        val id = pendingOpenItemId ?: return@LaunchedEffect
+        MainActivity.pendingOpenItemIdFlow.value = null
+        val target = viewModel.getItemDetailById(id)
+        if (target != null) {
+            selectedItemForDetail = target
+        }
+    }
 
     // Pro 一鍵開通：reater://pro-unlock?email=..&code=.. 點開即自動驗證解鎖
     val deepLink by MainActivity.proDeepLinkFlow.collectAsState()
@@ -1425,7 +1574,19 @@ fun MainScreen(
                             onReorderCategories = viewModel::reorderAllCategories,
                             onUpdateRule = viewModel::updateCollectionRule,
                             onSaveCollection = viewModel::updateCollection,
-                            onDeleteCollection = viewModel::deleteCollection
+                            onDeleteCollection = viewModel::deleteCollection,
+                            contentKeywordsRuleEnabled = contentKeywordsRuleEnabled,
+                            onToggleContentKeywordsRule = viewModel::setSmartRuleContentKeywordsEnabled,
+                            authorRuleEnabled = authorRuleEnabled,
+                            onToggleAuthorRule = viewModel::setSmartRuleAuthorEnabled,
+                            customKeywordRules = customKeywordRules,
+                            onSaveCustomKeywordRule = viewModel::saveCustomKeywordRule,
+                            onDeleteCustomKeywordRule = viewModel::deleteCustomKeywordRule,
+                            onApplySmartClassification = {
+                                viewModel.applySmartClassification { count ->
+                                    Toast.makeText(context, "智慧分類已更新 $count 篇貼文！", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
                     4 -> {
@@ -1523,21 +1684,26 @@ private fun ProCategoryTabContent(
     categories: List<CategoryEntity>,
     isPro: Boolean,
     onAddCategoryClick: () -> Unit,
-    collections: List<SavedCollectionEntity>,
+    collections: List<SavedCollectionEntity> = emptyList(),
     allItems: List<ItemDetail> = emptyList(),
     onOpenUnlock: () -> Unit,
     onEditCategory: (CategoryEntity) -> Unit,
     onMoveCategory: (CategoryEntity, Int) -> Unit,
     onReorderCategories: (List<CategoryEntity>) -> Unit = {},
-    onUpdateRule: (SavedCollectionEntity, CollectionRule) -> Unit,
+    onUpdateRule: (SavedCollectionEntity, CollectionRule) -> Unit = { _, _ -> },
     onSaveCollection: (SavedCollectionEntity, String, String, CollectionRule) -> Unit = { _, _, _, _ -> },
-    onDeleteCollection: ((SavedCollectionEntity) -> Unit)? = null
+    onDeleteCollection: ((SavedCollectionEntity) -> Unit)? = null,
+    contentKeywordsRuleEnabled: Boolean = true,
+    onToggleContentKeywordsRule: (Boolean) -> Unit = {},
+    authorRuleEnabled: Boolean = true,
+    onToggleAuthorRule: (Boolean) -> Unit = {},
+    customKeywordRules: List<CustomKeywordRule> = emptyList(),
+    onSaveCustomKeywordRule: (CustomKeywordRule) -> Unit = {},
+    onDeleteCustomKeywordRule: (String) -> Unit = {},
+    onApplySmartClassification: () -> Unit = {}
 ) {
-    var editingRuleCollection by remember { mutableStateOf<SavedCollectionEntity?>(null) }
-    val json = remember { kotlinx.serialization.json.Json { ignoreUnknownKeys = true } }
-    fun ruleFor(collection: SavedCollectionEntity): CollectionRule = runCatching {
-        json.decodeFromString(CollectionRule.serializer(), collection.rulesJson).let { it.copy(enabled = collection.isEnabled and it.enabled) }
-    }.getOrDefault(CollectionRule(enabled = collection.isEnabled))
+    var editingCustomRule by remember { mutableStateOf<CustomKeywordRule?>(null) }
+    var showAddCustomRuleDialog by remember { mutableStateOf(false) }
 
     var orderedCategories by remember(categories) { mutableStateOf(categories) }
     var draggingCategoryId by remember { mutableStateOf<Long?>(null) }
@@ -1572,37 +1738,40 @@ private fun ProCategoryTabContent(
         }
     }
 
-    editingRuleCollection?.let { collection ->
-        val original = ruleFor(collection)
-        com.reater.app.ui.components.SmartCollectionRuleDialog(
-            collection = collection,
-            initialRule = original,
+    if (showAddCustomRuleDialog) {
+        EditCustomKeywordRuleDialog(
+            initialRule = null,
             categories = categories,
-            allItems = allItems,
-            isPro = isPro,
-            onDismiss = { editingRuleCollection = null },
-            onSave = { newName, newIcon, updatedRule ->
-                onSaveCollection(collection, newName, newIcon, updatedRule)
-                editingRuleCollection = null
+            onDismiss = { showAddCustomRuleDialog = false },
+            onSave = { newRule ->
+                onSaveCustomKeywordRule(newRule)
+                showAddCustomRuleDialog = false
+            }
+        )
+    }
+
+    editingCustomRule?.let { rule ->
+        EditCustomKeywordRuleDialog(
+            initialRule = rule,
+            categories = categories,
+            onDismiss = { editingCustomRule = null },
+            onSave = { updatedRule ->
+                onSaveCustomKeywordRule(updatedRule)
+                editingCustomRule = null
             },
-            onDelete = {
-                onDeleteCollection?.invoke(collection)
-                editingRuleCollection = null
-            },
-            onResetToDefault = {
-                val def = SmartCollectionEngine.getDefaultRule(collection.name, collection.iconName)
-                val defName = defaultCollectionDisplayName(collection.name, collection.iconName)
-                onSaveCollection(collection, defName, collection.iconName, def)
-                editingRuleCollection = null
+            onDelete = { ruleId ->
+                onDeleteCustomKeywordRule(ruleId)
+                editingCustomRule = null
             }
         )
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("分類管理", style = MaterialTheme.typography.titleMedium)
+            Text("分類管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(if (isPro) "共 ${categories.size} 個分類，可自由排序" else "免費 ${categories.count { !it.isDefault }}/3・升級後分類無上限",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
             OutlinedButton(onClick = onAddCategoryClick, modifier = Modifier.fillMaxWidth()) { Text("＋ 新增分類") }
         }
         items(orderedCategories, key = { "category_${it.id}" }) { category ->
@@ -1615,13 +1784,6 @@ private fun ProCategoryTabContent(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        val measured = coordinates.size.height.toFloat()
-                        if (measured > 0f && measured != measuredItemHeightPx) {
-                            measuredItemHeightPx = measured
-                        }
-                    }
-                    .then(if (isDragging) Modifier else Modifier.animateItem())
                     .zIndex(if (isDragging) 10f else 1f)
                     .graphicsLayer {
                         if (isDragging) {
@@ -1698,100 +1860,329 @@ private fun ProCategoryTabContent(
                 }
             }
         }
-        item { Text("智慧分類規則", style = MaterialTheme.typography.titleMedium) }
+
+        item {
+            Spacer(Modifier.height(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("智慧分類規則", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "儲存貼文時自動分析並歸入合適分類；包含 2 項自動偵測開關與 1 項客製化比對。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         if (!isPro) {
             item {
-                Text("PRO 可依作者、標籤、讚數、閱讀與收藏狀態自動篩選，並隨時停用規則。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ProUnlockCard(onUnlockClick = onOpenUnlock)
             }
-        } else {
-            items(collections, key = { "rule_${it.id}" }) { collection ->
-                val rule = ruleFor(collection)
-                val isRuleEnabled = rule.enabled
-                val hasConditions = rule.hasActiveConditions()
-                val summaryText = SmartCollectionEngine.generateRuleSummary(rule, categories)
-                val matchedCount = remember(rule, allItems, categories) {
-                    if (!hasConditions) 0
-                    else allItems.count { SmartCollectionEngine.matchesItem(rule, it, categories) }
-                }
+        }
 
-                Card(
+        // 規則 1：自動根據內文關鍵字去分類（開關）
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (contentKeywordsRuleEnabled) 0.45f else 0.22f)
+                )
+            ) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { editingRuleCollection = collection },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
-                            alpha = if (isRuleEnabled) 0.45f else 0.22f
-                        )
-                    )
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        // 既有/專屬 SVG 向量圖示容器（禁止使用 Emoji）
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isRuleEnabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(AvatarIcons.getDrawableRes(collection.iconName)),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = if (isRuleEnabled) Color.Unspecified else MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-
-                        // 資訊層級：智慧分類名稱 -> 規則摘要 -> 符合篇數
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = com.reater.app.domain.defaultCollectionDisplayName(collection.name, collection.iconName),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRuleEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
-                            )
-
-                            Text(
-                                text = summaryText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isRuleEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Text(
-                                text = if (!isRuleEnabled) "已停用"
-                                else if (hasConditions) "符合 $matchedCount 篇"
-                                else "尚未設定條件",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isRuleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                fontWeight = if (isRuleEnabled) FontWeight.Medium else FontWeight.Normal
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_rule_filter),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
+                    }
 
-                        // Toggle：只負責啟用 / 停用規則
-                        Switch(
-                            checked = isRuleEnabled,
-                            onCheckedChange = { isChecked ->
-                                onUpdateRule(collection, rule.copy(enabled = isChecked))
-                            },
-                            modifier = Modifier.padding(top = 2.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "自動根據內文關鍵字去分類",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "自動比對貼文內文與標題關鍵字，命中時推薦歸入相應分類",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    Switch(
+                        checked = contentKeywordsRuleEnabled,
+                        onCheckedChange = { if (isPro) onToggleContentKeywordsRule(it) else onOpenUnlock() }
+                    )
                 }
+            }
+        }
+
+        // 規則 2：根據作者名稱去分類（開關）
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (authorRuleEnabled) 0.45f else 0.22f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_rule_sparkles),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "根據作者名稱去分類",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "依據該作者過往的分類習慣，自動歸類至作者關聯分類",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = authorRuleEnabled,
+                        onCheckedChange = { if (isPro) onToggleAuthorRule(it) else onOpenUnlock() }
+                    )
+                }
+            }
+        }
+
+        // 規則 3：根據特定關鍵字分類到指定標籤/分類（客製化輸入比對）
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "根據特定關鍵字分類至標籤 / 分類",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = "最高優先度",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "命中特定關鍵字時，享有最高優先權，強制歸類至所選分類或標籤",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // 規則清單
+                    if (customKeywordRules.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "尚未設定特定關鍵字比對規則，點擊下方新增客製化比對。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            customKeywordRules.forEach { rule ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (isPro) editingCustomRule = rule
+                                            else onOpenUnlock()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // 關鍵字
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                        ) {
+                                            Text(
+                                                text = "「${rule.keyword}」",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "➔",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+
+                                        // 目標分類或標籤
+                                        if (rule.targetType == "CATEGORY") {
+                                            val cat = categories.firstOrNull { it.id == rule.targetCategoryId }
+                                            if (cat != null) {
+                                                Icon(
+                                                    painter = painterResource(AvatarIcons.getDrawableRes(cat.avatarIcon)),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = Color.Unspecified
+                                                )
+                                                Text(
+                                                    text = cat.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = rule.targetCategoryName.ifBlank { "指定分類" },
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                text = "#${rule.targetTagName}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                        }
+
+                                        Spacer(Modifier.weight(1f))
+
+                                        IconButton(
+                                            onClick = {
+                                                if (isPro) editingCustomRule = rule
+                                                else onOpenUnlock()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "編輯", modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                if (isPro) onDeleteCustomKeywordRule(rule.id)
+                                                else onOpenUnlock()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.DeleteOutline,
+                                                contentDescription = "刪除",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ＋ 新增特定關鍵字比對按鈕
+                    OutlinedButton(
+                        onClick = {
+                            if (isPro) showAddCustomRuleDialog = true
+                            else onOpenUnlock()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("＋ 新增比對規則")
+                    }
+                }
+            }
+        }
+
+        // 重新套用智慧分類按鈕
+        item {
+            Button(
+                onClick = onApplySmartClassification,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("立即重新套用智慧分類至所有貼文")
             }
         }
     }

@@ -50,12 +50,18 @@ object NotifyCenter {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun openAppIntent(context: Context): PendingIntent {
+    const val EXTRA_OPEN_ITEM_ID = "open_item_id"
+
+    private fun openAppIntent(context: Context, itemId: Long? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (itemId != null && itemId > 0) {
+                putExtra(EXTRA_OPEN_ITEM_ID, itemId)
+            }
         }
+        val requestCode = if (itemId != null && itemId > 0) (itemId % 100000).toInt() else 0
         return PendingIntent.getActivity(
-            context, 0, intent,
+            context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
@@ -67,7 +73,7 @@ object NotifyCenter {
             .setSmallIcon(R.drawable.ic_stat_reater)
             .setContentTitle("還有未讀文章")
             .setContentText(if (title.isBlank()) "你儲存的文章還沒看，點我回顧" else "「$title」還沒看，點我回顧")
-            .setContentIntent(openAppIntent(context))
+            .setContentIntent(openAppIntent(context, itemId))
             .setAutoCancel(true)
             .build()
         try {
@@ -91,6 +97,40 @@ object NotifyCenter {
             NotificationManagerCompat.from(context).notify(9999, note)
         } catch (_: SecurityException) {
             // 權限可能在檢查後被撤回；略過通知，讓背景工作正常結束。
+        }
+    }
+
+    fun postAiAnalysisComplete(context: Context, itemId: Long, title: String, summary: String) {
+        if (!canNotify(context)) return
+        ensureChannel(context)
+        val note = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_reater)
+            .setContentTitle(if (title.isBlank()) "AI 分析完成" else "AI 分析完成：$title")
+            .setContentText(summary.ifBlank { "已完成文章分析並儲存摘要" })
+            .setStyle(NotificationCompat.BigTextStyle().bigText(summary.ifBlank { "已完成文章分析並儲存摘要" }))
+            .setContentIntent(openAppIntent(context, itemId))
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(20000 + (itemId % 10000).toInt(), note)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun postAiAnalysisFailed(context: Context, itemId: Long, title: String, errorMessage: String) {
+        if (!canNotify(context)) return
+        ensureChannel(context)
+        val note = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_reater)
+            .setContentTitle(if (title.isBlank()) "AI 分析未完成" else "AI 分析未完成：$title")
+            .setContentText(errorMessage)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(errorMessage))
+            .setContentIntent(openAppIntent(context, itemId))
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(20000 + (itemId % 10000).toInt(), note)
+        } catch (_: SecurityException) {
         }
     }
 

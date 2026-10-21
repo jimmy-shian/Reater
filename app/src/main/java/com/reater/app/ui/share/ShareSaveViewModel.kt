@@ -61,7 +61,9 @@ data class ShareSaveUiState(
     val saveError: String? = null,
     val showCreateCategoryDialog: Boolean = false,
     val showProLimitNotice: Boolean = false,
-    val fetchedResult: FetchedPostResult? = null
+    val fetchedResult: FetchedPostResult? = null,
+    val hasApiKey: Boolean = false,
+    val aiAnalyzeOnSave: Boolean = false
 )
 
 @HiltViewModel
@@ -105,6 +107,15 @@ class ShareSaveViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1f)
 
     init {
+        viewModelScope.launch {
+            val key = settingsRepository.getOpenAiApiKey()
+            _uiState.update { it.copy(hasApiKey = !key.isNullOrBlank()) }
+        }
+        viewModelScope.launch {
+            settingsRepository.aiAnalyzeOnSave.collect { enabled ->
+                _uiState.update { it.copy(aiAnalyzeOnSave = enabled) }
+            }
+        }
         viewModelScope.launch {
             val lastId = settingsRepository.lastSelectedCategoryId.first()
             if (!userPickedCategory && lastId != null && _uiState.value.selectedCategoryId == null) {
@@ -519,16 +530,22 @@ class ShareSaveViewModel @Inject constructor(
         _uiState.update { it.copy(showSaveConflict = false) }
     }
 
-    fun savePost(saveAsNew: Boolean? = null) {
+    fun savePost(saveAsNew: Boolean? = null, triggerAiAnalysis: Boolean? = null) {
         if (_uiState.value.isSaving) return
         _uiState.update { it.copy(isSaving = true, showSaveConflict = false, saveError = null) }
 
         viewModelScope.launch {
             try {
-                // 等待本次分享的 HTTP / WebView 完成，避免儲存早期預覽快照。
-                var state = kotlinx.coroutines.withTimeoutOrNull(180_000) {
-                    uiState.first { !it.isFetching && !it.webResolving }
-                } ?: error("抓取尚未完成，請稍後重試，原有文章尚未變更。")
+                // 優先使用當前快照；若仍在抓取，最多等候 1.5 秒讓接近完成的請求收尾，避免長時間卡頓
+                var state = _uiState.value
+                if (state.isFetching || state.webResolving) {
+                    val completedState = kotlinx.coroutines.withTimeoutOrNull(1500) {
+                        uiState.first { !it.isFetching && !it.webResolving }
+                    }
+                    if (completedState != null) {
+                        state = completedState
+                    }
+                }
                 if (saveAsNew == false) {
                     val fresh = graphQLClient.fetchPostByPostIdOrShortcode(
                         state.targetUrl, state.shortcode
@@ -563,6 +580,15 @@ class ShareSaveViewModel @Inject constructor(
                     saveAsNew = saveAsNew == true,
                     overwriteConfirmed = saveAsNew == false
                 )
+                val shouldAnalyze = triggerAiAnalysis ?: (state.aiAnalyzeOnSave && state.hasApiKey)
+                if (shouldAnalyze) {
+                    com.reater.app.notify.AiAnalysisWorker.schedule(
+                        context = appContext,
+                        itemId = itemId,
+                        postTitle = state.bodyText.take(40),
+                        manualNote = state.manualNote
+                    )
+                }
                 // 儲存後未讀提醒（設定可調分鐘數 / 開關）
                 runCatching {
                     if (settingsRepository.unreadNudgeEnabled.first()) {

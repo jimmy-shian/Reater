@@ -63,6 +63,8 @@ data class AiAnalysisResult(
     val confidence: Double = 1.0
 )
 
+class OpenAiApiException(val code: Int, val rawBody: String) : IOException("HTTP $code: $rawBody")
+
 @Singleton
 class OpenAiClient @Inject constructor() {
 
@@ -168,7 +170,7 @@ class OpenAiClient @Inject constructor() {
             val rawResponse = response.body?.string().orEmpty()
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(IOException("API HTTP error ${response.code}: $rawResponse"))
+                return@withContext Result.failure(OpenAiApiException(response.code, rawResponse))
             }
 
             val parsedResponse = json.decodeFromString(OpenAiChatResponse.serializer(), rawResponse)
@@ -195,5 +197,44 @@ class OpenAiClient @Inject constructor() {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(text.toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        fun formatAiError(throwable: Throwable?): String {
+            if (throwable == null) return "AI 分析失敗，請稍後再試"
+            if (throwable is OpenAiApiException) {
+                return when (throwable.code) {
+                    401 -> "API 金鑰無效或尚未授權，請至設定檢查"
+                    403 -> "存取遭拒絕，此金鑰沒有該模型的呼叫權限"
+                    404 -> "找不到指定的模型或 API 網址不存在"
+                    429 -> "請求次數過於頻繁或額度已用盡，請稍後再試"
+                    500, 502, 503, 504 -> "AI 服務伺服器連線異常，請稍後重試"
+                    else -> "連線失敗，請稍後再試"
+                }
+            }
+            val msg = throwable.message.orEmpty()
+            val codeMatch = Regex("""\b(401|403|404|429|500|502|503|504)\b""").find(msg)?.value?.toIntOrNull()
+            if (codeMatch != null) {
+                return when (codeMatch) {
+                    401 -> "API 金鑰無效或尚未授權，請至設定檢查"
+                    403 -> "存取遭拒絕，此金鑰沒有該模型的呼叫權限"
+                    404 -> "找不到指定的模型或 API 網址不存在"
+                    429 -> "請求次數過於頻繁或額度已用盡，請稍後再試"
+                    500, 502, 503, 504 -> "AI 服務伺服器連線異常，請稍後重試"
+                    else -> "連線失敗，請稍後再試"
+                }
+            }
+            if (throwable is java.net.SocketTimeoutException) {
+                return "AI 伺服器回應超時，請檢查網路連線後再試"
+            }
+            if (throwable is java.net.UnknownHostException) {
+                return "無法連線至 AI 伺服器，請檢查網路或網址設定"
+            }
+            return if (msg.isNotBlank() && !msg.contains("Exception") && !msg.contains("HTTP") && !msg.contains("failed to connect")) {
+                msg
+            } else {
+                "AI 分析失敗，請稍後再試"
+            }
+        }
     }
 }

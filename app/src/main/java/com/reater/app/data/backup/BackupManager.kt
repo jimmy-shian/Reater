@@ -52,7 +52,8 @@ data class ExportedSettings(
     val isProLicensed: Boolean = false,
     val proLicenseEmail: String? = null,
     val proLicenseCode: String? = null,
-    val keepDataAfterUninstall: Boolean = false
+    val keepDataAfterUninstall: Boolean = false,
+    val aiAnalyzeOnSave: Boolean = false
 )
 
 @Serializable
@@ -145,7 +146,8 @@ data class ExportedComment(
     val sortKey: String = "",
     val mediaJson: String = "",
     val authorProfileUrl: String = "",
-    val authorProfileLocalPath: String = ""
+    val authorProfileLocalPath: String = "",
+    val fetchedAt: Long = 0L
 )
 
 @Serializable
@@ -204,8 +206,8 @@ class BackupManager @Inject constructor(
         try {
             val archiveFiles = linkedMapOf<String, File>()
             val mediaBySource = mutableMapOf<String, String>()
-            val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES).build()
+            val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build()
             fun packMedia(remote: String, local: String, kind: String): String {
                 val key = local.ifBlank { remote }
                 if (key.isBlank()) return ""
@@ -312,7 +314,8 @@ class BackupManager @Inject constructor(
                             authorProfileLocalPath = packMedia(it.authorProfileUrl, it.authorProfileLocalPath, "IMAGE"),
                             mediaJson = FetchedMediaJson.encode(FetchedMediaJson.decode(it.mediaJson).map { media ->
                                 media.copy(localPath = packMedia(media.remoteUrl, media.localPath, media.kind))
-                            })
+                            }),
+                            fetchedAt = it.fetchedAt
                         )
                     },
                     categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
@@ -387,6 +390,7 @@ class BackupManager @Inject constructor(
                     selectedModel = settingsRepository.selectedModel.first(),
                     customBaseUrl = settingsRepository.customBaseUrl.first(),
                     aiTransmissionConsent = settingsRepository.aiTransmissionConsent.first(),
+                    aiAnalyzeOnSave = settingsRepository.aiAnalyzeOnSave.first(),
                     customAvatarId = settingsRepository.customAvatarId.first(),
                     customAvatarUri = settingsRepository.customAvatarUri.first(),
                     isProLicensed = settingsRepository.isProUnlocked.first(),
@@ -426,7 +430,15 @@ class BackupManager @Inject constructor(
             )
             val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
             val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
-            ReaterArchive.write(outputStream, encoded, archiveFiles)
+            val tempArchive = File(staging, "archive.reater")
+            tempArchive.outputStream().buffered(64 * 1024).use { fileOut ->
+                ReaterArchive.write(fileOut, encoded, archiveFiles)
+            }
+            check(tempArchive.exists() && tempArchive.length() > 0) { "備份檔產生失敗（檔案大小為 0）" }
+            tempArchive.inputStream().buffered(64 * 1024).use { fileIn ->
+                fileIn.copyTo(outputStream, bufferSize = 64 * 1024)
+            }
+            outputStream.flush()
         } finally {
             staging.deleteRecursively()
         }
@@ -473,50 +485,58 @@ class BackupManager @Inject constructor(
         val restoredFiles = mutableListOf<File>()
         var databaseCommitted = false
         return try {
-            val buffered = BufferedInputStream(inputStream)
-            buffered.mark(4)
-            val isZip = buffered.read() == 0x50 && buffered.read() == 0x4b
-            buffered.reset()
-            val packed = if (isZip) ReaterArchive.read(buffered, staging) else emptyMap()
-            val content = if (isZip) packed.getValue(ReaterArchive.MANIFEST).readText() else {
-                val bytes = java.io.ByteArrayOutputStream()
-                buffered.use { ReaterArchive.copyBounded(it, bytes, ReaterArchive.MAX_MANIFEST_BYTES) }
-                bytes.toString(StandardCharsets.UTF_8.name())
+            val tempSourceFile = File(staging, "import_source.tmp")
+            tempSourceFile.outputStream().buffered(64 * 1024).use { out ->
+                inputStream.copyTo(out, bufferSize = 64 * 1024)
             }
-            val imported = json.decodeFromString(ReaterExportV1.serializer(), content)
+            require(tempSourceFile.exists() && tempSourceFile.length() > 0) {
+                "備份檔案為空（0 bytes），請確認選取的檔案是否完整"
+            }
+
+            val isZip = tempSourceFile.inputStream().buffered().use { stream ->
+                stream.read() == 0x50 && stream.read() == 0x4b
+            }
+            val packed = if (isZip) {
+                tempSourceFile.inputStream().buffered(64 * 1024).use { ReaterArchive.read(it, staging) }
+            } else emptyMap()
+
+            val content = if (isZip) {
+                val manifestFile = packed[ReaterArchive.MANIFEST] ?: error("備份檔案缺少 manifest.json，非有效備份")
+                manifestFile.readText(StandardCharsets.UTF_8)
+            } else {
+                tempSourceFile.readText(StandardCharsets.UTF_8)
+            }
+            require(content.isNotBlank()) { "備份檔案內容為空，無法解析" }
+            val imported = try {
+                json.decodeFromString(ReaterExportV1.serializer(), content)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("備份資料格式解析失敗：${e.localizedMessage}", e)
+            }
             require((isZip && imported.version == "v2") || (!isZip && imported.version == "v1")) { "不支援的備份格式或版本" }
             require(imported.assets.map { it.path }.distinct().size == imported.assets.size) { "備份資源重複" }
             if (isZip) {
-                require(packed.keys - ReaterArchive.MANIFEST == imported.assets.map { it.path }.toSet()) { "備份資源清單不完整" }
-                imported.assets.forEach { asset ->
-                    val file = requireNotNull(packed[asset.path]) { "備份缺少資源" }
-                    require(file.length() == asset.size && ReaterArchive.sha256(file) == asset.sha256) { "備份資源已損壞：${asset.path}" }
+                val missingAssets = imported.assets.filter { it.path !in packed }
+                if (missingAssets.isNotEmpty()) {
+                    android.util.Log.w("BackupManager", "備份中有 ${missingAssets.size} 個多媒體資源缺失，將安全降級為遠端連結還原")
                 }
             }
-            // Validate references before touching permanent files or the database.
-            fun validateMedia(path: String) {
-                if (path.isNotBlank() && !path.startsWith("http://") && !path.startsWith("https://")) {
-                    require(path.startsWith("media/") && path in packed) { "備份媒體參照無效" }
-                }
+
+            fun isMediaAvailable(path: String): Boolean {
+                if (path.isBlank() || path.startsWith("http://") || path.startsWith("https://")) return true
+                return path.startsWith("media/") && path in packed
             }
-            if (isZip) imported.items.forEach { item ->
-                item.media.forEach { validateMedia(it.archivePath) }
-                item.comments.forEach { comment ->
-                    FetchedMediaJson.decode(comment.mediaJson).forEach { validateMedia(it.localPath) }
-                    validateMedia(comment.authorProfileLocalPath)
-                }
-                validateMedia(item.authorProfileUrl)
-            }
+
             val mediaDir = File(context.filesDir, "restored_media/${UUID.randomUUID()}")
             fun restoreMedia(path: String): String {
                 if (path.isBlank() || !isZip) return path
                 if (path.startsWith("http://") || path.startsWith("https://")) return path
-                validateMedia(path)
+                if (!isMediaAvailable(path)) return ""
+                val sourceFile = packed[path] ?: return ""
                 val destination = File(mediaDir, File(path).name)
                 if (!destination.exists()) {
                     destination.parentFile?.mkdirs()
                     restoredFiles += destination
-                    packed.getValue(path).copyTo(destination)
+                    sourceFile.copyTo(destination, overwrite = true)
                 }
                 return destination.absolutePath
             }
@@ -597,6 +617,34 @@ class BackupManager @Inject constructor(
                     cat.originalId?.let { old -> importedCategoryIds[cat.name]?.let { old to it } }
                 }.toMap()
                 fun remapFilter(raw: String): String {
+                    val rule = runCatching { json.decodeFromString(com.reater.app.domain.CollectionRule.serializer(), raw) }.getOrNull()
+                    if (rule != null) {
+                        val newTopCat = rule.categoryId?.let { categoryIdMap[it] ?: it }
+                        val remappedCriteria = rule.criteria.map { criterion ->
+                            var updated = criterion
+                            if (criterion.field == com.reater.app.domain.RuleField.CATEGORY) {
+                                val oldId = criterion.value.toLongOrNull()
+                                val newId = oldId?.let { categoryIdMap[it] }
+                                if (newId != null) {
+                                    updated = updated.copy(value = newId.toString())
+                                }
+                            }
+                            criterion.config?.categoryId?.let { oldConfigId ->
+                                val newConfigId = categoryIdMap[oldConfigId]
+                                if (newConfigId != null) {
+                                    updated = updated.copy(config = updated.config?.copy(categoryId = newConfigId))
+                                }
+                            }
+                            updated
+                        }
+                        return runCatching {
+                            json.encodeToString(
+                                com.reater.app.domain.CollectionRule.serializer(),
+                                rule.copy(categoryId = newTopCat, criteria = remappedCriteria)
+                            )
+                        }.getOrDefault(raw)
+                    }
+
                     val parsed = runCatching { json.parseToJsonElement(raw) }.getOrNull()
                     if (parsed !is kotlinx.serialization.json.JsonObject) return raw
                     val old = (parsed["categoryId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()
@@ -693,7 +741,8 @@ class BackupManager @Inject constructor(
                             sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
                             mediaJson = if (isZip) FetchedMediaJson.encode(FetchedMediaJson.decode(comment.mediaJson).map {
                                 it.copy(localPath = restoreMedia(it.localPath))
-                            }) else comment.mediaJson
+                            }) else comment.mediaJson,
+                            fetchedAt = if (comment.fetchedAt > 0) comment.fetchedAt else (item.sourceFetchedAt ?: System.currentTimeMillis())
                         )
                     })
                     database.mediaDao().deleteMediaByItemId(itemId)
@@ -709,7 +758,7 @@ class BackupManager @Inject constructor(
                         }
                         if (tagId != null && tagId > 0) tagDao.insertItemTagCrossRef(ItemTagCrossRef(itemId, tagId))
                     }
-                    if (isZip) {
+                    if (isZip || item.aiRuns.isNotEmpty() || item.fetchAttempts.isNotEmpty()) {
                         database.aiRunDao().deleteRuns(itemId)
                         database.aiRunDao().deleteAttempts(itemId)
                         item.aiRuns.forEach { database.aiRunDao().insert(it.copy(id = 0, itemId = itemId)) }
@@ -732,6 +781,7 @@ class BackupManager @Inject constructor(
                 settingsRepository.setSelectedModel(s.selectedModel)
                 settingsRepository.setCustomBaseUrl(s.customBaseUrl)
                 settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
+                settingsRepository.setAiAnalyzeOnSave(s.aiAnalyzeOnSave)
                 settingsRepository.setKeepDataAfterUninstall(s.keepDataAfterUninstall)
                 settingsRepository.setCustomAvatarId(s.customAvatarId)
                 val reference = validCurrentAvatarReference ?: imported.currentAvatarReference ?: s.customAvatarUri?.let { File(it).name }

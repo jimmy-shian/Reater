@@ -92,6 +92,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import com.reater.app.ui.components.DismissFocusOnScroll
+import com.reater.app.ui.components.dismissFocusOnTap
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
@@ -122,6 +123,7 @@ fun SettingsDialog(
     val currentBaseUrl by viewModel.customBaseUrl.collectAsState()
     val currentModel by viewModel.selectedModel.collectAsState()
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
+    val aiAnalyzeOnSave by viewModel.aiAnalyzeOnSave.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val fontScale by viewModel.fontScale.collectAsState()
     val nudgeEnabled by viewModel.unreadNudgeEnabled.collectAsState()
@@ -178,6 +180,20 @@ fun SettingsDialog(
     val settingsScrollState = rememberScrollState()
     DismissFocusOnScroll(settingsScrollState, focusManager)
 
+    // 自動儲存 AI 設定變更，免按儲存按鈕
+    LaunchedEffect(baseUrlInput, modelInput) {
+        if (baseUrlInput != currentBaseUrl || modelInput != currentModel) {
+            viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
+        }
+    }
+    LaunchedEffect(apiKeyInput) {
+        if (apiKeyInput.isNotBlank()) {
+            delay(500)
+            viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
+            hasSavedApiKey = true
+        }
+    }
+
     Dialog(
         onDismissRequest = { dismissWithApply() },
         properties = DialogProperties(
@@ -213,10 +229,7 @@ fun SettingsDialog(
                     .fillMaxSize()
                     .imePadding()
                     .navigationBarsPadding()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { handleTapOutside() }
+                    .dismissFocusOnTap(focusManager)
             ) {
                 // 固定頂欄
                 DialogHeader(
@@ -232,10 +245,7 @@ fun SettingsDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(settingsScrollState)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { handleTapOutside() }
+                        .dismissFocusOnTap(focusManager)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
 
@@ -743,17 +753,6 @@ fun SettingsDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(top = 10.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            if (imeVisible) {
-                                                focusManager.clearFocus()
-                                                keyboard?.hide()
-                                            } else if (aiExpanded) {
-                                                aiExpanded = false
-                                            }
-                                        }
                                 ) {
                                     Text(
                                         text = "API Key",
@@ -974,20 +973,31 @@ fun SettingsDialog(
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    Button(
-                                        onClick = {
-                                            viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
-                                            hasSavedApiKey = apiKeyInput.isNotBlank() || hasSavedApiKey
-                                            Toast.makeText(context, "AI 設定已儲存", Toast.LENGTH_SHORT).show()
-                                            focusManager.clearFocus()
-                                            keyboard?.hide()
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { viewModel.setAiAnalyzeOnSave(!aiAnalyzeOnSave) }
                                     ) {
-                                        Text("儲存 AI 設定", style = MaterialTheme.typography.labelMedium)
+                                        Checkbox(
+                                            checked = aiAnalyzeOnSave,
+                                            onCheckedChange = viewModel::setAiAnalyzeOnSave
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "儲存時自動進行 AI 分析（分析並儲存）",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = "儲存 Threads 貼文時自動在背景啟動 AI 分析摘要並跳出通知",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1107,32 +1117,6 @@ fun SettingsDialog(
 
                     Spacer(modifier = Modifier.height(32.dp))
                 } // End of scrollable Column
-
-                // 固定底部儲存按鈕（鍵盤彈起時隱藏，不遮擋輸入框與其他設定）
-                if (!imeVisible) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Button(
-                            onClick = {
-                                viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
-                                Toast.makeText(context, "設定已儲存", Toast.LENGTH_SHORT).show()
-                                dismissWithApply()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                             modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-                        ) {
-                            Text("儲存設定", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
             }
         }
     }

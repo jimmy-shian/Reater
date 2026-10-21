@@ -25,6 +25,9 @@ import com.reater.app.domain.UrlParser
 import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.data.remote.threads.TopicTags
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
+import com.reater.app.domain.CustomKeywordRule
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,6 +55,7 @@ class ThreadPostRepository @Inject constructor(
         return itemDao.searchItemDetailsFts(quoted)
     }
     fun observePostDetail(id: Long): Flow<ItemDetail?> = itemDao.observeItemDetailById(id)
+    suspend fun getItemDetailById(id: Long): ItemDetail? = itemDao.getItemDetailById(id)
 
     /**
      * 儲存畫面分類預選：同主題優先、同作者其次。
@@ -63,10 +67,113 @@ class ThreadPostRepository @Inject constructor(
             itemDao.getMostFrequentCategoryByTopic(topic)?.let { return it.categoryId }
         }
         val author = authorHandle.trim()
-        if (author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
+        val authorRuleEnabled = settingsRepository.smartRuleAuthorEnabled.first()
+        if (authorRuleEnabled && author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
             itemDao.getMostFrequentCategoryByAuthor(author)?.let { return it.categoryId }
         }
         return null
+    }
+
+
+    private val ruleJson = Json { ignoreUnknownKeys = true }
+
+    /**
+     * 智慧分類三大核心規則評估：
+     * 1. 最高級自訂比對：特定關鍵字比對，命中時優先歸入指定分類（或標籤）。
+     * 2. 根據作者名稱去分類：若開關啟用且作者有效，依歷史紀錄自動歸類。
+     * 3. 自動根據內文關鍵字去分類：若開關啟用，以分類關鍵字庫自動歸類。
+     */
+    suspend fun classifyPostSmartly(
+        bodyText: String,
+        commentsText: String = "",
+        authorHandle: String = "",
+        topicTag: String = "",
+        onCustomTagMatched: ((String) -> Unit)? = null
+    ): Long? {
+        val combinedSearchText = (authorHandle + " " + topicTag + " " + bodyText + " " + commentsText).lowercase()
+
+        // 規則三（最高級自訂比對）：特定關鍵字比對
+        val customRulesJson = settingsRepository.smartRuleCustomKeywordsJson.first()
+        val customRules = runCatching {
+            ruleJson.decodeFromString<List<CustomKeywordRule>>(customRulesJson)
+        }.getOrDefault(emptyList())
+
+        for (rule in customRules) {
+            if (!rule.isEnabled) continue
+            val kw = rule.keyword.trim().lowercase()
+            if (kw.isNotEmpty() && combinedSearchText.contains(kw)) {
+                if (rule.targetTagName.isNotBlank()) {
+                    onCustomTagMatched?.invoke(rule.targetTagName.trim())
+                }
+                if (rule.targetCategoryId != null) {
+                    return rule.targetCategoryId
+                }
+            }
+        }
+
+        // 規則二：根據作者名稱去分類（開關）
+        val authorRuleEnabled = settingsRepository.smartRuleAuthorEnabled.first()
+        if (authorRuleEnabled && authorHandle.isNotBlank() && !authorHandle.equals("threads_user", ignoreCase = true)) {
+            val authorCat = itemDao.getMostFrequentCategoryByAuthor(authorHandle.trim())?.categoryId
+            if (authorCat != null) return authorCat
+        }
+
+        // 規則一：自動根據內文關鍵字去分類（開關）
+        val contentRuleEnabled = settingsRepository.smartRuleContentKeywordsEnabled.first()
+        if (contentRuleEnabled) {
+            val classResult = classifier.classify(
+                titleScope = authorHandle + " " + bodyText.take(60),
+                bodyScope = bodyText + " " + commentsText
+            )
+            return classResult.categoryId
+        }
+
+        return null
+    }
+
+    /**
+     * 批次對貼文重新套用智慧分類規則
+     */
+    suspend fun applySmartClassificationToAll(onlyUnclassified: Boolean = true): Int {
+        val allItems = itemDao.observeAllItemDetails().first()
+        val targetItems = if (onlyUnclassified) {
+            allItems.filter { it.userEdit?.categoryId == null }
+        } else {
+            allItems
+        }
+        var updatedCount = 0
+        for (item in targetItems) {
+            var customTag: String? = null
+            val newCatId = classifyPostSmartly(
+                bodyText = item.displayBody,
+                commentsText = item.comments.joinToString(" ") { it.text },
+                authorHandle = item.item.authorHandle,
+                topicTag = item.item.topicTag,
+                onCustomTagMatched = { customTag = it }
+            )
+            if (newCatId != null && newCatId != item.userEdit?.categoryId) {
+                val currentEdit = itemDao.getUserEditByItemId(item.item.id)
+                val newEdit = currentEdit?.copy(
+                    categoryId = newCatId,
+                    editedAt = System.currentTimeMillis()
+                ) ?: UserEditEntity(
+                    itemId = item.item.id,
+                    categoryId = newCatId,
+                    editedAt = System.currentTimeMillis()
+                )
+                itemDao.insertUserEdit(newEdit)
+                updatedCount++
+            }
+            if (customTag != null) {
+                val tagId = tagDao.getTagByName(customTag)?.id ?: tagDao.insertTag(TagEntity(name = customTag)).let { inserted ->
+                    if (inserted >= 0) inserted else tagDao.getTagByName(customTag)?.id
+                }
+                if (tagId != null && tagId > 0) {
+                    tagDao.insertItemTagCrossRef(ItemTagCrossRef(item.item.id, tagId))
+                }
+            }
+        }
+        return updatedCount
     }
 
     class SaveConflictException(val isInTrash: Boolean) : IllegalStateException("這篇文章已經儲存")
@@ -198,12 +305,15 @@ class ThreadPostRepository @Inject constructor(
         }
 
         // Auto-classification if categoryId is null
+        var customMatchedTag: String? = null
         val resolvedCategoryId = if (categoryExplicitlySelected) categoryId else categoryId ?: run {
-            val classResult = classifier.classify(
-                titleScope = authorHandle + " " + bodyText.take(60),
-                bodyScope = bodyText + " " + commentsText
+            classifyPostSmartly(
+                bodyText = bodyText,
+                commentsText = commentsText,
+                authorHandle = authorHandle,
+                topicTag = fetchedResult?.topicTag ?: "",
+                onCustomTagMatched = { customMatchedTag = it }
             )
-            classResult.categoryId
         }
 
         // Upsert UserEditEntity
@@ -229,6 +339,15 @@ class ThreadPostRepository @Inject constructor(
             isFavorite = isFavorite
         )
         itemDao.insertUserEdit(userEdit)
+        if (customMatchedTag != null) {
+            val tName = customMatchedTag!!
+            val tagId = tagDao.getTagByName(tName)?.id ?: tagDao.insertTag(TagEntity(name = tName)).let { inserted ->
+                if (inserted >= 0) inserted else tagDao.getTagByName(tName)?.id
+            }
+            if (tagId != null && tagId > 0) {
+                tagDao.insertItemTagCrossRef(ItemTagCrossRef(itemId, tagId))
+            }
+        }
 
         // Insert fetched structured comments；若抓取無留言但使用者手貼了留言文字，        // 把手貼文字結構化入庫（支援「作者: 內容」或「@作者 內容」開頭，否則作者記為手動筆記），
         // 否則「貼上留言」存了卻不顯示、計數也不對。

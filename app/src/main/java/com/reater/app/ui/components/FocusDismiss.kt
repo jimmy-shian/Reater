@@ -19,9 +19,12 @@ import androidx.compose.ui.input.pointer.pointerInput
  * 3. 外部「滑動」關閉鍵盤請搭配 [DismissFocusOnScroll]（監聽外層 ScrollState）。
  */
 @Composable
-fun Modifier.dismissFocusOnTap(focusManager: FocusManager): Modifier {
-    return this.pointerInput(focusManager) {
-        detectTapGestures(onTap = { runCatching { focusManager.clearFocus() } })
+fun Modifier.dismissFocusOnTap(focusManager: FocusManager, onDismiss: (() -> Unit)? = null): Modifier {
+    return this.pointerInput(focusManager, onDismiss) {
+        detectTapGestures(onTap = {
+            runCatching { focusManager.clearFocus() }
+            onDismiss?.invoke()
+        })
     }
 }
 

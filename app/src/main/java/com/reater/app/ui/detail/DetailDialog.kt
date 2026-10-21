@@ -405,21 +405,15 @@ fun DetailDialog(
         com.reater.app.data.remote.MediaDedup.distinctEntities(item.media.sortedBy { it.position })
     }
 
+    val aiActiveItemIds by viewModel.aiActiveItemIds.collectAsState()
+    val isItemAiRunning = aiActiveItemIds.contains(item.item.id)
+
     // 留言內建圖片/影片的全螢幕檢視器（點留言圖片放大）
     var commentViewerMedia by remember { mutableStateOf<List<ViewerMedia>?>(null) }
     var commentViewerIndex by remember { mutableStateOf(0) }
     fun runAiSummary() {
-        isSummarizing = true
-        coroutineScope.launch {
-            val result = viewModel.summarizeItemWithAi(item, manualNote)
-            isSummarizing = false
-            result.onSuccess {
-                currentSummary = it
-                Toast.makeText(context, "AI 分析完成！", Toast.LENGTH_SHORT).show()
-            }.onFailure { err ->
-                Toast.makeText(context, err.message ?: "AI 分析失敗", Toast.LENGTH_LONG).show()
-            }
-        }
+        viewModel.startBackgroundAiAnalysis(context, item, manualNote)
+        Toast.makeText(context, "AI 分析已在背景啟動，完成後將發送通知", Toast.LENGTH_SHORT).show()
     }
 
     if (showAiConsent) {
@@ -553,6 +547,7 @@ fun DetailDialog(
                                 leadingIcon = {
                                     Icon(Icons.Default.AutoAwesome, contentDescription = null)
                                 },
+                                enabled = !isItemAiRunning,
                                 onClick = {
                                     showOverflow = false
                                     if (aiConsent) runAiSummary() else showAiConsent = true
@@ -1256,17 +1251,19 @@ fun DetailDialog(
                         onClick = {
                             if (aiConsent) runAiSummary() else showAiConsent = true
                         },
-                        enabled = !isSummarizing,
+                        enabled = !isSummarizing && !isItemAiRunning,
                         modifier = Modifier.weight(1f).height(46.dp),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                     ) {
-                        if (isSummarizing) {
+                        if (isSummarizing || isItemAiRunning) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("處理中…", fontSize = 13.sp, maxLines = 1, softWrap = false)
                         } else {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))

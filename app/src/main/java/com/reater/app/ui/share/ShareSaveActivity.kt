@@ -48,6 +48,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
@@ -805,7 +806,8 @@ fun ShareSaveScreen(
                 // Action buttons
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
@@ -813,7 +815,26 @@ fun ShareSaveScreen(
                     ) {
                         Text(stringResource(R.string.cancel))
                     }
+                    if (state.hasApiKey && !isNewCategory && !state.aiAnalyzeOnSave) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.savePost(triggerAiAnalysis = true)
+                            },
+                            enabled = !state.isSaving,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("分析並儲存")
+                        }
+                    }
                     Spacer(modifier = Modifier.width(12.dp))
+                    val saveButtonLabel = when {
+                        isNewCategory -> "新建"
+                        state.aiAnalyzeOnSave && state.hasApiKey -> "分析並儲存"
+                        else -> stringResource(R.string.save)
+                    }
                     Button(
                         onClick = {
                             if (isNewCategory) {
@@ -830,7 +851,11 @@ fun ShareSaveScreen(
                         enabled = !state.isSaving,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(if (isNewCategory) "新建" else stringResource(R.string.save))
+                        if (state.aiAnalyzeOnSave && state.hasApiKey && !isNewCategory) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(saveButtonLabel)
                     }
                 }
             }
