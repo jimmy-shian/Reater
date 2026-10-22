@@ -61,11 +61,28 @@ class ThreadPostRepository @Inject constructor(
      * 儲存畫面分類預選：同主題優先、同作者其次。
      * 各自取過往「最常用」分類（次數相同取最近使用）；都無紀錄回 null（呼叫方沿用全域上次選擇）。
      */
-    suspend fun suggestCategoryId(authorHandle: String, topicTag: String): Long? {
+    suspend fun suggestCategoryId(
+        authorHandle: String,
+        topicTag: String,
+        bodyText: String = "",
+        commentsText: String = ""
+    ): Long? {
+        // 1. 智慧分類（特定自訂關鍵字、基礎領域關鍵字、歷史分類關聯學習）優先
+        val smartCat = classifyPostSmartly(
+            bodyText = bodyText,
+            commentsText = commentsText,
+            authorHandle = authorHandle,
+            topicTag = topicTag
+        )
+        if (smartCat != null) return smartCat
+
+        // 2. 同主題最常用分類
         val topic = topicTag.trim()
         if (topic.isNotBlank()) {
             itemDao.getMostFrequentCategoryByTopic(topic)?.let { return it.categoryId }
         }
+
+        // 3. 同作者最常用分類
         val author = authorHandle.trim()
         val authorRuleEnabled = settingsRepository.smartRuleAuthorEnabled.first()
         if (authorRuleEnabled && author.isNotBlank() && !author.equals("threads_user", ignoreCase = true)) {
@@ -98,17 +115,21 @@ class ThreadPostRepository @Inject constructor(
             ruleJson.decodeFromString<List<CustomKeywordRule>>(customRulesJson)
         }.getOrDefault(emptyList())
 
+        var matchedCategoryId: Long? = null
         for (rule in customRules) {
             if (!rule.isEnabled) continue
-            val kw = rule.keyword.trim().lowercase()
-            if (kw.isNotEmpty() && combinedSearchText.contains(kw)) {
+            val kws = rule.keyword.split(Regex("[,，、;；\\s]+")).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+            if (kws.any { combinedSearchText.contains(it) }) {
                 if (rule.targetTagName.isNotBlank()) {
                     onCustomTagMatched?.invoke(rule.targetTagName.trim())
                 }
-                if (rule.targetCategoryId != null) {
-                    return rule.targetCategoryId
+                if (rule.targetCategoryId != null && matchedCategoryId == null) {
+                    matchedCategoryId = rule.targetCategoryId
                 }
             }
+        }
+        if (matchedCategoryId != null) {
+            return matchedCategoryId
         }
 
         // 規則二：根據作者名稱去分類（開關）
@@ -121,8 +142,9 @@ class ThreadPostRepository @Inject constructor(
         // 規則一：自動根據內文關鍵字去分類（開關）
         val contentRuleEnabled = settingsRepository.smartRuleContentKeywordsEnabled.first()
         if (contentRuleEnabled) {
+            val titlePrefix = if (topicTag.isNotBlank()) "#$topicTag " else ""
             val classResult = classifier.classify(
-                titleScope = authorHandle + " " + bodyText.take(60),
+                titleScope = titlePrefix + authorHandle + " " + bodyText.take(80),
                 bodyScope = bodyText + " " + commentsText
             )
             return classResult.categoryId
@@ -143,13 +165,13 @@ class ThreadPostRepository @Inject constructor(
         }
         var updatedCount = 0
         for (item in targetItems) {
-            var customTag: String? = null
+            val customTags = mutableSetOf<String>()
             val newCatId = classifyPostSmartly(
                 bodyText = item.displayBody,
                 commentsText = item.comments.joinToString(" ") { it.text },
                 authorHandle = item.item.authorHandle,
                 topicTag = item.item.topicTag,
-                onCustomTagMatched = { customTag = it }
+                onCustomTagMatched = { customTags.add(it) }
             )
             if (newCatId != null && newCatId != item.userEdit?.categoryId) {
                 val currentEdit = itemDao.getUserEditByItemId(item.item.id)
@@ -164,7 +186,7 @@ class ThreadPostRepository @Inject constructor(
                 itemDao.insertUserEdit(newEdit)
                 updatedCount++
             }
-            if (customTag != null) {
+            for (customTag in customTags) {
                 val tagId = tagDao.getTagByName(customTag)?.id ?: tagDao.insertTag(TagEntity(name = customTag)).let { inserted ->
                     if (inserted >= 0) inserted else tagDao.getTagByName(customTag)?.id
                 }
@@ -304,16 +326,18 @@ class ThreadPostRepository @Inject constructor(
             itemDao.insertItem(newItem)
         }
 
-        // Auto-classification if categoryId is null
-        var customMatchedTag: String? = null
-        val resolvedCategoryId = if (categoryExplicitlySelected) categoryId else categoryId ?: run {
+        // Auto-classification: 若使用者未明確點選分類，智慧分類（關鍵字/歷史特徵/作者規則）優先；無符合時才退回預選/上次分類
+        val customMatchedTags = mutableSetOf<String>()
+        val resolvedCategoryId = if (categoryExplicitlySelected) {
+            categoryId
+        } else {
             classifyPostSmartly(
                 bodyText = bodyText,
                 commentsText = commentsText,
                 authorHandle = authorHandle,
                 topicTag = fetchedResult?.topicTag ?: "",
-                onCustomTagMatched = { customMatchedTag = it }
-            )
+                onCustomTagMatched = { customMatchedTags.add(it) }
+            ) ?: categoryId
         }
 
         // Upsert UserEditEntity
@@ -339,8 +363,7 @@ class ThreadPostRepository @Inject constructor(
             isFavorite = isFavorite
         )
         itemDao.insertUserEdit(userEdit)
-        if (customMatchedTag != null) {
-            val tName = customMatchedTag!!
+        for (tName in customMatchedTags) {
             val tagId = tagDao.getTagByName(tName)?.id ?: tagDao.insertTag(TagEntity(name = tName)).let { inserted ->
                 if (inserted >= 0) inserted else tagDao.getTagByName(tName)?.id
             }

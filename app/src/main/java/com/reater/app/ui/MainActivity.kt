@@ -40,6 +40,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1717,6 +1719,7 @@ private fun PostListTab(
 }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProCategoryTabContent(
     categories: List<CategoryEntity>,
@@ -2068,7 +2071,7 @@ private fun ProCategoryTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "根據特定關鍵字分類至標籤 / 分類",
+                                    text = "特定文字自動歸類",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -2087,7 +2090,7 @@ private fun ProCategoryTabContent(
                             }
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                text = "命中特定關鍵字時，享有最高優先權，強制歸類至所選分類或標籤",
+                                text = "貼文或留言包含特定文字時，享有最高優先權，優先歸類至指定的 APP 分類",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2102,7 +2105,7 @@ private fun ProCategoryTabContent(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "尚未設定特定關鍵字比對規則，點擊下方新增客製化比對。",
+                                text = "尚未設定特定文字歸類規則，點擊下方「新增比對規則」加入設定。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -2124,12 +2127,13 @@ private fun ProCategoryTabContent(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        // 關鍵字
+                                        // 1:1 左側：比對文字（單行超過用"..."）
                                         Surface(
+                                            modifier = Modifier.weight(1f),
                                             shape = RoundedCornerShape(6.dp),
                                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                                         ) {
@@ -2138,6 +2142,8 @@ private fun ProCategoryTabContent(
                                                 style = MaterialTheme.typography.labelMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
                                         }
@@ -2148,37 +2154,49 @@ private fun ProCategoryTabContent(
                                             color = MaterialTheme.colorScheme.outline
                                         )
 
-                                        // 目標分類或標籤
-                                        if (rule.targetType == "CATEGORY") {
-                                            val cat = categories.firstOrNull { it.id == rule.targetCategoryId }
-                                            if (cat != null) {
-                                                Icon(
-                                                    painter = painterResource(AvatarIcons.getDrawableRes(cat.avatarIcon)),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = Color.Unspecified
-                                                )
-                                                Text(
-                                                    text = cat.name,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium
-                                                )
-                                            } else {
-                                                Text(
-                                                    text = rule.targetCategoryName.ifBlank { "指定分類" },
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
+                                        // 1:1 右側：目標分類（使用原本的分類圖示，單行超過用"..."）
+                                        Surface(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                val cat = categories.firstOrNull { it.id == rule.targetCategoryId }
+                                                if (cat != null) {
+                                                    com.reater.app.ui.components.CategoryIcon(cat, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(
+                                                        text = cat.name,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = rule.targetCategoryName.ifBlank { "指定分類" },
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    )
+                                                }
+                                                if (rule.targetTagName.isNotBlank()) {
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "(${rule.targetTagName})",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
                                             }
-                                        } else {
-                                            Text(
-                                                text = "#${rule.targetTagName}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
                                         }
-
-                                        Spacer(Modifier.weight(1f))
 
                                         IconButton(
                                             onClick = {
@@ -2220,7 +2238,7 @@ private fun ProCategoryTabContent(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("＋ 新增比對規則")
+                        Text("新增比對規則")
                     }
                 }
             }

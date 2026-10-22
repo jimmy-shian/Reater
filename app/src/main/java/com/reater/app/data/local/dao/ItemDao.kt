@@ -242,7 +242,30 @@ interface ItemDao {
         LIMIT 1
     """)
     suspend fun getMostFrequentCategoryByTopic(topicTag: String): CategoryCount?
+
+    /**
+     * 讀取過往已分類貼文的精簡摘要，供智慧分類模型比對內容關鍵字與主題。
+     */
+    @Query("""
+        SELECT user_edits.categoryId AS categoryId,
+               items.topicTag AS topicTag,
+               items.bodyText AS bodyText,
+               items.commentsText AS commentsText
+        FROM items
+        INNER JOIN user_edits ON items.id = user_edits.itemId
+        WHERE items.isDeleted = 0 AND user_edits.categoryId IS NOT NULL
+        ORDER BY items.id DESC
+        LIMIT 600
+    """)
+    suspend fun getRecentCategorizedSummaries(): List<CategorizedItemSummary>
 }
+
+data class CategorizedItemSummary(
+    val categoryId: Long,
+    val topicTag: String,
+    val bodyText: String,
+    val commentsText: String = ""
+)
 
 data class CategoryCount(
     val categoryId: Long,

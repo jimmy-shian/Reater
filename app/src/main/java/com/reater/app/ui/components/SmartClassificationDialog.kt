@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -30,11 +29,11 @@ import com.reater.app.domain.CustomKeywordRule
 import com.reater.app.ui.AvatarIcons
 
 /**
- * 編輯/新增「特定關鍵字智慧分類比對規則」對話框：
- * 支援設定特定關鍵字 -> 歸入指定分類（帶圖示）或指定標籤。
- * 避開系統導覽列與軟體鍵盤，防止按鈕被截斷。
+ * 編輯/新增「特定文字智慧分類規則」對話框：
+ * 支援輸入多個比對文字 -> 自動歸入 APP 目標分類，並可選填自訂純文字標籤（無 # 符號）。
+ * 採用固定底部操作列與彈性可滾動內容區，防止軟體鍵盤或小螢幕下按鈕跑版。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditCustomKeywordRuleDialog(
     initialRule: CustomKeywordRule? = null,
@@ -43,12 +42,11 @@ fun EditCustomKeywordRuleDialog(
     onSave: (CustomKeywordRule) -> Unit,
     onDelete: ((String) -> Unit)? = null
 ) {
-    var keyword by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.keyword ?: "") }
-    var targetType by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.targetType ?: "CATEGORY") }
-    var selectedCategoryId by rememberSaveable(initialRule?.id) {
-        mutableStateOf(initialRule?.targetCategoryId ?: categories.firstOrNull()?.id)
-    }
+    var keywordInput by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.keyword ?: "") }
     var targetTagName by rememberSaveable(initialRule?.id) { mutableStateOf(initialRule?.targetTagName ?: "") }
+    var selectedCategoryId by rememberSaveable(initialRule?.id) {
+        mutableStateOf<Long?>(initialRule?.targetCategoryId ?: categories.firstOrNull()?.id)
+    }
     var categoryDropdownExpanded by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
@@ -58,10 +56,12 @@ fun EditCustomKeywordRuleDialog(
         categories.firstOrNull { it.id == selectedCategoryId } ?: categories.firstOrNull()
     }
 
-    val canSave = keyword.trim().isNotBlank() && (
-        (targetType == "CATEGORY" && selectedCategory != null) ||
-        (targetType == "TAG" && targetTagName.trim().isNotBlank())
-    )
+    // 解析多個比對文字（以逗號、頓號、分號或空白分隔）
+    val parsedKeywords = remember(keywordInput) {
+        keywordInput.split(Regex("[,，、;；\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    val canSave = parsedKeywords.isNotEmpty() && (selectedCategory != null || targetTagName.trim().isNotBlank())
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -77,16 +77,16 @@ fun EditCustomKeywordRuleDialog(
                 .clickable { focusManager.clearFocus() }
                 .systemBarsPadding()
                 .imePadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight()
+                    .heightIn(max = 560.dp)
                     .clickable(enabled = false) {}
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -94,12 +94,12 @@ fun EditCustomKeywordRuleDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 20.dp, end = 8.dp, top = 14.dp, bottom = 12.dp),
+                            .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (initialRule == null) "新增關鍵字比對規則" else "編輯關鍵字比對規則",
+                            text = if (initialRule == null) "新增關鍵字規則" else "編輯關鍵字規則",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -110,144 +110,157 @@ fun EditCustomKeywordRuleDialog(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                    // Content
+                    // 可滾動內容區（加 weight 確保不會擠壓底部按鈕）
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
                             .verticalScroll(scrollState)
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // 提示說明
+                        // 簡明提示
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "比對內文含有此特定關鍵字時，享有最高優先度，強制自動分類到指定的分類或標籤。",
+                                text = "當貼文內文或留言包含以下文字時，儲存時將自動歸入指定的 APP 分類。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 lineHeight = 18.sp
                             )
                         }
 
-                        // 特定關鍵字輸入
-                        OutlinedTextField(
-                            value = keyword,
-                            onValueChange = { keyword = it },
-                            label = { Text("特定關鍵字") },
-                            placeholder = { Text("例如：人工智慧、股票、美食、Threads...") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // 歸類目標選擇：分類 / 標籤
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // 1. 比對文字輸入
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "自動歸類至",
+                                text = "比對文字（可多個關鍵字）",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
                             )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                FilterChip(
-                                    selected = targetType == "CATEGORY",
-                                    onClick = { targetType = "CATEGORY" },
-                                    label = { Text("目標分類") },
-                                    leadingIcon = if (targetType == "CATEGORY") {
-                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                    } else null,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                FilterChip(
-                                    selected = targetType == "TAG",
-                                    onClick = { targetType = "TAG" },
-                                    label = { Text("目標標籤") },
-                                    leadingIcon = if (targetType == "TAG") {
-                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                    } else null,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-
-                        // 依選擇呈現對應設定
-                        if (targetType == "CATEGORY") {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = "選擇指定分類",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    OutlinedButton(
-                                        onClick = { categoryDropdownExpanded = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
-                                    ) {
-                                        if (selectedCategory != null) {
-                                            Icon(
-                                                painter = painterResource(AvatarIcons.getDrawableRes(selectedCategory.avatarIcon)),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(20.dp),
-                                                tint = Color.Unspecified
-                                            )
-                                            Spacer(Modifier.width(10.dp))
+                            OutlinedTextField(
+                                value = keywordInput,
+                                onValueChange = { keywordInput = it },
+                                placeholder = { Text("輸入文字，例如：AI, 科技, ChatGPT") },
+                                singleLine = false,
+                                minLines = 2,
+                                maxLines = 3,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (parsedKeywords.isNotEmpty()) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                ) {
+                                    parsedKeywords.forEach { kw ->
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                        ) {
                                             Text(
-                                                text = selectedCategory.name,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        } else {
-                                            Text("尚未選擇分類")
-                                        }
-                                        Spacer(Modifier.weight(1f))
-                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
-                                    }
-
-                                    DropdownMenu(
-                                        expanded = categoryDropdownExpanded,
-                                        onDismissRequest = { categoryDropdownExpanded = false },
-                                        modifier = Modifier.fillMaxWidth(0.85f)
-                                    ) {
-                                        categories.forEach { cat ->
-                                            DropdownMenuItem(
-                                                leadingIcon = {
-                                                    Icon(
-                                                        painter = painterResource(AvatarIcons.getDrawableRes(cat.avatarIcon)),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = Color.Unspecified
-                                                    )
-                                                },
-                                                text = { Text(cat.name) },
-                                                trailingIcon = if (cat.id == selectedCategory?.id) {
-                                                    { Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
-                                                } else null,
-                                                onClick = {
-                                                    selectedCategoryId = cat.id
-                                                    categoryDropdownExpanded = false
-                                                }
+                                                text = "「$kw」",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
                                 }
                             }
-                        } else {
+                        }
+
+                        // 2. 目標分類（Reater APP 分類）
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "目標分類（APP 分類）",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { categoryDropdownExpanded = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    if (selectedCategory != null) {
+                                        Icon(
+                                            painter = painterResource(AvatarIcons.getDrawableRes(selectedCategory.avatarIcon)),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = Color.Unspecified
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            text = selectedCategory.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "選擇目標分類",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                                }
+
+                                DropdownMenu(
+                                    expanded = categoryDropdownExpanded,
+                                    onDismissRequest = { categoryDropdownExpanded = false },
+                                    modifier = Modifier.fillMaxWidth(0.85f)
+                                ) {
+                                    categories.forEach { cat ->
+                                        DropdownMenuItem(
+                                            leadingIcon = {
+                                                Icon(
+                                                    painter = painterResource(AvatarIcons.getDrawableRes(cat.avatarIcon)),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = Color.Unspecified
+                                                )
+                                            },
+                                            text = { Text(cat.name) },
+                                            trailingIcon = if (cat.id == selectedCategory?.id) {
+                                                { Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                                            } else null,
+                                            onClick = {
+                                                selectedCategoryId = cat.id
+                                                categoryDropdownExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. 自訂附加標籤（選填純文字，不含 #）
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "自訂標籤（選填）",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
                             OutlinedTextField(
                                 value = targetTagName,
                                 onValueChange = { targetTagName = it },
-                                label = { Text("目標標籤名稱") },
-                                placeholder = { Text("例如：精選推薦、AI日報...") },
+                                placeholder = { Text("選填純文字，例如：筆記、重要") },
                                 singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -255,12 +268,12 @@ fun EditCustomKeywordRuleDialog(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                    // Footer Buttons
+                    // 固定底部操作列（永遠可見）
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -287,24 +300,27 @@ fun EditCustomKeywordRuleDialog(
                             ) {
                                 Text("取消")
                             }
-
                             Button(
-                                onClick = {
-                                    val trimmedKw = keyword.trim()
-                                    val rule = CustomKeywordRule(
-                                        id = initialRule?.id ?: java.util.UUID.randomUUID().toString(),
-                                        keyword = trimmedKw,
-                                        targetType = targetType,
-                                        targetCategoryId = if (targetType == "CATEGORY") selectedCategory?.id else null,
-                                        targetCategoryName = if (targetType == "CATEGORY") (selectedCategory?.name ?: "") else "",
-                                        targetTagName = if (targetType == "TAG") targetTagName.trim() else "",
-                                        isEnabled = initialRule?.isEnabled ?: true
-                                    )
-                                    onSave(rule)
-                                    onDismiss()
-                                },
                                 enabled = canSave,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                onClick = {
+                                    val cleanedTag = targetTagName.trim().removePrefix("#").trim()
+                                    val targetTypeResolved = if (cleanedTag.isNotBlank() && selectedCategory != null) "BOTH"
+                                        else if (cleanedTag.isNotBlank()) "TAG"
+                                        else "CATEGORY"
+                                    onSave(
+                                        CustomKeywordRule(
+                                            id = initialRule?.id ?: java.util.UUID.randomUUID().toString(),
+                                            keyword = keywordInput.trim(),
+                                            targetType = targetTypeResolved,
+                                            targetCategoryId = selectedCategory?.id,
+                                            targetCategoryName = selectedCategory?.name.orEmpty(),
+                                            targetTagName = cleanedTag,
+                                            isEnabled = initialRule?.isEnabled ?: true
+                                        )
+                                    )
+                                    onDismiss()
+                                }
                             ) {
                                 Text("儲存")
                             }

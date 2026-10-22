@@ -189,22 +189,30 @@ class ShareSaveViewModel @Inject constructor(
      */
     private fun refreshCategorySuggestion() {
         if (userPickedCategory) return
-        val author = _uiState.value.authorHandle.trim()
-        val topic = _uiState.value.fetchedResult?.topicTag?.trim().orEmpty()
-        if (author.isBlank() && topic.isBlank()) return
+        val current = _uiState.value
+        val author = current.authorHandle.trim()
+        val topic = current.fetchedResult?.topicTag?.trim().orEmpty()
+        val body = current.bodyText
+        val comments = current.commentsText
+        if (author.isBlank() && topic.isBlank() && body.isBlank()) return
         suggestionJob?.cancel()
         suggestionJob = viewModelScope.launch {
             val suggested = runCatching {
-                repository.suggestCategoryId(author, topic)
+                repository.suggestCategoryId(
+                    authorHandle = author,
+                    topicTag = topic,
+                    bodyText = body,
+                    commentsText = comments
+                )
             }.getOrNull() ?: return@launch
             if (userPickedCategory) return@launch
-            val current = _uiState.value
-            if (current.authorHandle.trim() != author) return@launch
-            if (current.fetchedResult?.topicTag?.trim().orEmpty() != topic) return@launch
+            val latest = _uiState.value
+            if (latest.authorHandle.trim() != author) return@launch
+            val basis = if (body.isNotBlank()) "smart" else if (topic.isNotBlank()) "topic" else "author"
             _uiState.update {
                 it.copy(
                     selectedCategoryId = suggested,
-                    suggestedBasis = if (topic.isNotBlank()) "topic" else "author"
+                    suggestedBasis = basis
                 )
             }
         }
