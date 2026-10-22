@@ -358,9 +358,9 @@ class ThreadPostRepository @Inject constructor(
         } else {
             emptyList()
         }
-        if (fetchedResult != null && (fetchedResult.comments.isNotEmpty() || manualComments.isNotEmpty() || fetchedResult.status == "COMPLETE")) {
+        if ((fetchedResult != null && fetchedResult.comments.isNotEmpty()) || manualComments.isNotEmpty()) {
             commentDao.deleteCommentsByItemId(itemId)
-            val fetchedEntities = fetchedResult.comments.mapIndexed { index, c ->
+            val fetchedEntities = fetchedResult?.comments.orEmpty().mapIndexed { index, c ->
                 CommentEntity(
                     itemId = itemId,
                     externalId = c.externalId.ifBlank { "c_$index" },
@@ -392,8 +392,8 @@ class ThreadPostRepository @Inject constructor(
             commentDao.insertComments(fetchedEntities + manualEntities)
         }
 
-        // Insert media attachments（母文媒體排前面，免遷移合併存檔）
-        if (fetchedResult != null) {
+        // Insert media attachments（母文媒體排前面，免遷移合併存檔；覆蓋更新時僅在有新媒體時才替換）
+        if (fetchedResult != null && (combinedMedia.isNotEmpty() || existing == null)) {
             mediaDao.deleteMediaByItemId(itemId)
             val mediaEntities = combinedMedia.mapIndexed { index, m ->
                 MediaEntity(

@@ -693,7 +693,8 @@ fun SettingsDialog(
                     androidx.compose.material3.Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp)),
+                            .clip(RoundedCornerShape(10.dp))
+                            .dismissFocusOnTap(focusManager),
                         shape = RoundedCornerShape(10.dp),
                         colors = androidx.compose.material3.CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
@@ -704,7 +705,11 @@ fun SettingsDialog(
                             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                         )
                     ) {
-                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .dismissFocusOnTap(focusManager)
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -752,6 +757,7 @@ fun SettingsDialog(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .dismissFocusOnTap(focusManager)
                                         .padding(top = 10.dp)
                                 ) {
                                     Text(
@@ -988,12 +994,12 @@ fun SettingsDialog(
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "儲存時自動進行 AI 分析（分析並儲存）",
+                                                text = "儲存後自動 AI 分析",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                             Text(
-                                                text = "儲存 Threads 貼文時自動在背景啟動 AI 分析摘要並跳出通知",
+                                                text = "儲存貼文時在背景產生摘要並發送通知",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.outline
                                             )

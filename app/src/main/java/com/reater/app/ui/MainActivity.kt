@@ -113,6 +113,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import com.reater.app.ui.components.dismissFocusOnTap
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -771,6 +773,7 @@ class MainViewModel @Inject constructor(
     }
 
     suspend fun getItemDetailById(id: Long): ItemDetail? = repository.getItemDetailById(id)
+    fun observePostDetail(id: Long): kotlinx.coroutines.flow.Flow<ItemDetail?> = repository.observePostDetail(id)
 
     private val noteWriteMutex = kotlinx.coroutines.sync.Mutex()
 
@@ -966,14 +969,20 @@ fun MainScreen(
     var unlockPrefillEmail by remember { mutableStateOf("") }
     var unlockPrefillCode by remember { mutableStateOf("") }
 
-    // 通知點擊帶入 ID：自動尋找該文章並展開詳細檢視
-    val pendingOpenItemId by MainActivity.pendingOpenItemIdFlow.collectAsState()
-    LaunchedEffect(pendingOpenItemId) {
-        val id = pendingOpenItemId ?: return@LaunchedEffect
-        MainActivity.pendingOpenItemIdFlow.value = null
-        val target = viewModel.getItemDetailById(id)
-        if (target != null) {
-            selectedItemForDetail = target
+    // 通知點擊帶入 ID：自動尋找該文章並展開詳細檢視（避免 LaunchedEffect 監聽 key 變更時自消取消協程）
+    LaunchedEffect(Unit) {
+        MainActivity.pendingOpenItemIdFlow.collect { id ->
+            if (id != null && id > 0) {
+                val target = viewModel.getItemDetailById(id)
+                if (target != null) {
+                    showSettingsDialog = false
+                    showUnlockDialog = false
+                    selectedItemForDetail = target
+                    viewModel.markAsRead(target)
+                    viewModel.recordOpen(target)
+                }
+                MainActivity.pendingOpenItemIdFlow.value = null
+            }
         }
     }
 
@@ -1047,6 +1056,7 @@ fun MainScreen(
     if (selectedItemForDetail != null) {
         // 以最新 Flow 資料解析，改分類 / AI 摘要後徽章與內容即時更新
         val liveDetail = posts.firstOrNull { it.item.id == selectedItemForDetail!!.item.id }
+            ?.takeIf { it.aiSummary.isNotBlank() || selectedItemForDetail!!.aiSummary.isBlank() }
             ?: selectedItemForDetail!!
         DetailDialog(
             item = liveDetail,
@@ -1303,43 +1313,71 @@ fun MainScreen(
                 .padding(padding)
                 .dismissFocusOnTap(focusManager)
         ) {
-            // Search Bar（Search 鍵同樣收合鍵盤，有內容時顯示 X 清除按鈕）
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.onSearchQueryChanged(it) },
-                placeholder = {
-                    Text(
-                        stringResource(R.string.search_hint),
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
+            // 緊湊搜尋列：佔位小（38dp，垂直外距 4dp），為下方列表保留最大閱讀空間
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .height(38.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.search_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel.onSearchQueryChanged(it) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     if (searchQuery.isNotEmpty()) {
                         IconButton(
                             onClick = {
                                 viewModel.onSearchQueryChanged("")
                                 focusManager.clearFocus()
-                            }
+                            },
+                            modifier = Modifier.size(24.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "清除搜尋",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
-            )
+                }
+            }
 
             val pagerState = androidx.compose.foundation.pager.rememberPagerState(
                 initialPage = currentTab.coerceIn(0, 5),
@@ -1641,7 +1679,7 @@ private fun PostListTab(
             categories = categories, selectedId = selectedFilter,
             counts = posts.groupingBy { it.userEdit?.categoryId ?: -1L }.eachCount(),
             totalCount = posts.size, onSelect = onFilterSelect,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), active = active
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), active = active
         )
     if (filtered.isEmpty()) {
         Box(
@@ -1712,7 +1750,7 @@ private fun ProCategoryTabContent(
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
     val itemSpacingPx = remember(density) { with(density) { 10.dp.toPx() } }
-    var measuredItemHeightPx by remember(density) { mutableFloatStateOf(with(density) { 56.dp.toPx() }) }
+    var measuredItemHeightPx by remember(density) { mutableFloatStateOf(with(density) { 42.dp.toPx() }) }
     val slotPitchPx = measuredItemHeightPx + itemSpacingPx
 
     fun settleDrag() {
@@ -1766,7 +1804,7 @@ private fun ProCategoryTabContent(
         )
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text("分類管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(if (isPro) "共 ${categories.size} 個分類，可自由排序" else "免費 ${categories.count { !it.isDefault }}/3・升級後分類無上限",
@@ -1784,6 +1822,7 @@ private fun ProCategoryTabContent(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(42.dp)
                     .zIndex(if (isDragging) 10f else 1f)
                     .graphicsLayer {
                         if (isDragging) {
@@ -1792,18 +1831,20 @@ private fun ProCategoryTabContent(
                         scaleX = dragScale
                         scaleY = dragScale
                     },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = if (isDragging) 8.dp else 1.dp),
                 border = if (isDragging) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
             ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        .height(42.dp)
+                        .padding(start = 10.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     com.reater.app.ui.components.CategoryDragHandle(
                         id = category.id,
+                        modifier = Modifier.size(32.dp),
                         onDragStart = {
                             settleJob?.cancel()
                             settleJob = null
@@ -1853,10 +1894,22 @@ private fun ProCategoryTabContent(
                             }
                         }
                     )
-                    com.reater.app.ui.components.CategoryIcon(category)
+                    Spacer(Modifier.width(4.dp))
+                    com.reater.app.ui.components.CategoryIcon(category, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(category.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    IconButton(onClick = { onEditCategory(category) }) { Icon(Icons.Default.Edit, "編輯分類") }
+                    Text(
+                        text = category.name,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(
+                        onClick = { onEditCategory(category) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, "編輯分類", modifier = Modifier.size(16.dp))
+                    }
                 }
             }
         }

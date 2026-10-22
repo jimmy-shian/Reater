@@ -132,36 +132,41 @@ fun ReaterDropdownTrigger(
     title: String,
     value: String,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     leading: @Composable (() -> Unit)? = null,
     badge: @Composable (() -> Unit)? = null,
     contentExtra: (RowScope.() -> Unit)? = null
 ) {
     val elevation by animateDpAsState(
-        targetValue = if (expanded) 8.dp else 1.dp,
+        targetValue = if (expanded) (if (compact) 4.dp else 8.dp) else 1.dp,
         animationSpec = tween(ReaterDropdownMotion.ExpandMs, easing = FastOutSlowInEasing),
         label = "dropdownTriggerShadow"
     )
+    val triggerShape = RoundedCornerShape(if (compact) 8.dp else 12.dp)
     Surface(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
-            .shadow(elevation, RoundedCornerShape(12.dp)),
-        shape = RoundedCornerShape(12.dp),
+            .defaultMinSize(minHeight = if (compact) 42.dp else 48.dp)
+            .shadow(elevation, triggerShape),
+        shape = triggerShape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = if (compact) 12.dp else 14.dp,
+                    vertical = if (compact) 8.dp else 10.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leading?.invoke()
             if (leading != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
@@ -172,7 +177,7 @@ fun ReaterDropdownTrigger(
             if (badge != null) Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium,
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -233,13 +238,14 @@ fun ReaterDropdownOption(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     subLabel: String? = null,
     leading: @Composable (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
+            .defaultMinSize(minHeight = if (compact) 42.dp else 48.dp)
             .background(
                 if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                 else MaterialTheme.colorScheme.surface
@@ -249,12 +255,15 @@ fun ReaterDropdownOption(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(
+                    horizontal = if (compact) 14.dp else 14.dp,
+                    vertical = if (compact) 8.dp else 8.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leading?.invoke()
-            if (leading != null) Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            if (leading != null) Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
+            if (compact) {
                 Text(
                     text = text,
                     style = MaterialTheme.typography.bodyMedium,
@@ -263,17 +272,42 @@ fun ReaterDropdownOption(
                     else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     softWrap = false,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
                 if (subLabel != null) {
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = subLabel,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        else MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (subLabel != null) {
+                        Text(
+                            text = subLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             if (selected) {
@@ -282,7 +316,7 @@ fun ReaterDropdownOption(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(if (compact) 16.dp else 18.dp)
                 )
             }
         }
@@ -344,13 +378,14 @@ fun AnimatedDropdownPopup(
     expanded: Boolean,
     onDismiss: () -> Unit,
     matchAnchorWidth: Boolean = true,
+    anchorWidth: Dp? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val visible = remember { MutableTransitionState(false) }
     SideEffect { visible.targetState = expanded }
     if (visible.currentState || visible.targetState) {
         val density = androidx.compose.ui.platform.LocalDensity.current
-        var anchorWidthDp by remember { mutableStateOf<Dp>(0.dp) }
+        var measuredAnchorWidthDp by remember { mutableStateOf<Dp>(0.dp) }
         Popup(
             popupPositionProvider = remember {
                 object : PopupPositionProvider {
@@ -361,10 +396,17 @@ fun AnimatedDropdownPopup(
                         popupContentSize: IntSize
                     ): IntOffset {
                         with(density) {
-                            anchorWidthDp = anchorBounds.width.toDp()
+                            measuredAnchorWidthDp = anchorBounds.width.toDp()
                         }
-                        val x = anchorBounds.left.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
-                        val y = (anchorBounds.bottom + 4).coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                        val x = anchorBounds.left
+                        val spaceBelow = windowSize.height - anchorBounds.bottom
+                        val spaceAbove = anchorBounds.top
+                        val gapPx = with(density) { 4.dp.roundToPx() }
+                        val y = if (spaceBelow >= popupContentSize.height || spaceBelow >= spaceAbove) {
+                            anchorBounds.bottom + gapPx
+                        } else {
+                            (anchorBounds.top - popupContentSize.height - gapPx).coerceAtLeast(0)
+                        }
                         return IntOffset(x, y)
                     }
                 }
@@ -386,14 +428,15 @@ fun AnimatedDropdownPopup(
                     ) {
                         if (it == EnterExitState.Visible) 1f else 0f
                     }
-                    val surfaceModifier = if (matchAnchorWidth && anchorWidthDp.value > 0f) {
-                        Modifier.width(anchorWidthDp)
+                    val targetWidth = anchorWidth ?: measuredAnchorWidthDp.takeIf { it.value > 0f }
+                    val surfaceModifier = if (matchAnchorWidth && targetWidth != null && targetWidth.value > 0f) {
+                        Modifier.width(targetWidth)
                     } else {
                         Modifier.widthIn(max = 420.dp).padding(horizontal = 16.dp)
                     }
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        shadowElevation = 8.dp,
+                        shape = RoundedCornerShape(10.dp),
+                        shadowElevation = 6.dp,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         color = MaterialTheme.colorScheme.surface,
                         modifier = surfaceModifier

@@ -547,22 +547,36 @@ class ShareSaveViewModel @Inject constructor(
                     }
                 }
                 if (saveAsNew == false) {
-                    val fresh = graphQLClient.fetchPostByPostIdOrShortcode(
-                        state.targetUrl, state.shortcode
-                    ).getOrThrow()
-                    check(fresh.status == "COMPLETE" && fresh.hasStructuredPost) {
-                        "尚未重新取得完整貼文資料，原有文章尚未變更，請重試。"
+                    val existingFetched = state.fetchedResult
+                    val hasExistingContent = existingFetched != null && (
+                        existingFetched.bodyText.isNotBlank() ||
+                            existingFetched.media.isNotEmpty() ||
+                            existingFetched.comments.isNotEmpty()
+                        )
+                    val fresh = if (hasExistingContent) {
+                        existingFetched
+                    } else {
+                        graphQLClient.fetchPostByPostIdOrShortcode(
+                            state.targetUrl, state.shortcode
+                        ).getOrNull() ?: existingFetched
                     }
-                    val freshBody = if (fresh.parentChain.isNotEmpty()) {
-                        buildThreadDisplayBody(fresh.parentChain, fresh.authorHandle, fresh.bodyText)
-                    } else fresh.bodyText
-                    state = state.copy(
-                        fetchedResult = fresh,
-                        bodyText = if (savedStateHandle.get<Boolean>("bodyTextEdited") == true) state.bodyText else freshBody,
-                        commentsText = fresh.comments.joinToString("\n\n") { "@${it.author}: ${it.text}" },
-                        authorHandle = fresh.authorHandle,
-                        shortcode = fresh.shortcode
-                    )
+                    if (fresh != null) {
+                        val mergedMedia = if (fresh.media.isNotEmpty()) fresh.media else existingFetched?.media.orEmpty()
+                        val mergedComments = if (fresh.comments.isNotEmpty()) fresh.comments else existingFetched?.comments.orEmpty()
+                        val mergedResult = fresh.copy(media = mergedMedia, comments = mergedComments)
+                        val freshBody = if (mergedResult.parentChain.isNotEmpty()) {
+                            buildThreadDisplayBody(mergedResult.parentChain, mergedResult.authorHandle, mergedResult.bodyText)
+                        } else mergedResult.bodyText.ifBlank { state.bodyText }
+                        state = state.copy(
+                            fetchedResult = mergedResult,
+                            bodyText = if (savedStateHandle.get<Boolean>("bodyTextEdited") == true) state.bodyText else freshBody.ifBlank { state.bodyText },
+                            commentsText = if (mergedComments.isNotEmpty()) {
+                                mergedComments.joinToString("\n\n") { "@${it.author}: ${it.text}" }
+                            } else state.commentsText,
+                            authorHandle = mergedResult.authorHandle.ifBlank { state.authorHandle },
+                            shortcode = mergedResult.shortcode.ifBlank { state.shortcode }
+                        )
+                    }
                 }
                 val itemId = repository.savePost(
                     canonicalUrl = state.targetUrl.ifBlank { "https://www.threads.com/unknown/${System.currentTimeMillis()}" },

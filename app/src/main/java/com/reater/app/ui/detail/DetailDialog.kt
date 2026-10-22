@@ -360,6 +360,8 @@ fun DetailDialog(
     onMoveToTrash: () -> Unit
 ) {
     val context = LocalContext.current
+    val liveItem by viewModel.observePostDetail(item.item.id).collectAsState(initial = item)
+    val currentItem = liveItem ?: item
 
     // 進入詳細檢視時，強制暫停背景 Feed 的所有影片播放；關閉詳細檢視時亦確保詳細檢視內的影片全部暫停銷毀
     DisposableEffect(Unit) {
@@ -369,8 +371,8 @@ fun DetailDialog(
         }
     }
     var isSummarizing by remember { mutableStateOf(false) }
-    var currentSummary by remember(item.item.id) { mutableStateOf(item.aiSummary) }
-    var manualNote by rememberSaveable(item.item.id) { mutableStateOf(item.manualNote) }
+    val currentSummary = currentItem.aiSummary
+    var manualNote by rememberSaveable(item.item.id) { mutableStateOf(currentItem.manualNote) }
     val latestNote by rememberUpdatedState(manualNote)
     val lifecycleOwner = LocalLifecycleOwner.current
     val detailScroll = rememberScrollState()
@@ -390,7 +392,7 @@ fun DetailDialog(
     val aiConsent by viewModel.aiTransmissionConsent.collectAsState()
     val isPro by viewModel.isProUnlocked.collectAsState()
     val coroutineScope = rememberCoroutineScope()
-    val category = categories.firstOrNull { it.id == item.userEdit?.categoryId }
+    val category = categories.firstOrNull { it.id == currentItem.userEdit?.categoryId }
     // 詳細檢視內建新建分類：與 PRO Tab / 儲存頁共用 CategoryCreateDialog（本地狀態，避免搶全域 Dialog）
     var showDetailCreateDialog by remember { mutableStateOf(false) }
     var detailCreatePrefill by remember { mutableStateOf("") }

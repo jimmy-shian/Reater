@@ -1,8 +1,10 @@
 package com.reater.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -10,7 +12,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.reater.app.data.local.entity.CategoryEntity
@@ -40,17 +44,19 @@ fun CategoryFilterBar(
     }
 
     val configuration = LocalConfiguration.current
-    val maxDropdownListHeight = (configuration.screenHeightDp * 0.52f).dp.coerceIn(180.dp, 360.dp)
+    val maxDropdownListHeight = (configuration.screenHeightDp * 0.42f).dp.coerceIn(180.dp, 280.dp)
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val barWidth = maxWidth
         ReaterDropdownTrigger(
             expanded = expanded,
             onClick = { expanded = !expanded },
             title = label,
             value = "${if (selectedId == null) totalCount else counts[selectedId] ?: 0} 筆",
+            compact = true,
             leading = {
                 if (selectedId != null && selectedId != -1L) {
-                    CategoryIcon(categories.firstOrNull { it.id == selectedId }, modifier = Modifier.size(20.dp))
+                    CategoryIcon(categories.firstOrNull { it.id == selectedId }, modifier = Modifier.size(18.dp))
                 }
             }
         )
@@ -58,45 +64,68 @@ fun CategoryFilterBar(
         AnimatedDropdownPopup(
             expanded = expanded,
             onDismiss = { expanded = false; query = "" },
-            matchAnchorWidth = true
+            matchAnchorWidth = true,
+            anchorWidth = barWidth
         ) {
-            // 緊湊搜尋欄 (48dp，含 Search 圖示、Placeholder、清除鈕)
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = {
-                    Text("搜尋分類", style = MaterialTheme.typography.bodyMedium)
-                },
-                leadingIcon = {
+            // 緊湊搜尋欄 (38dp)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .height(38.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(15.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                },
-                trailingIcon = {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) {
+                            Text(
+                                "搜尋分類",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                        BasicTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     if (query.isNotEmpty()) {
                         IconButton(
                             onClick = { query = "" },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(20.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
                                 contentDescription = "清除",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                },
-                textStyle = MaterialTheme.typography.bodyMedium,
-                shape = RoundedCornerShape(8.dp),
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .height(48.dp)
-            )
+                }
+            }
 
             // 分類列表（超過可用高度內部捲動）
             Column(
@@ -115,6 +144,7 @@ fun CategoryFilterBar(
                 ReaterDropdownOption(
                     text = "全部分類",
                     selected = selectedId == null,
+                    compact = true,
                     subLabel = "$totalCount 筆",
                     onClick = { select(null) }
                 )
@@ -122,6 +152,7 @@ fun CategoryFilterBar(
                     ReaterDropdownOption(
                         text = "未分類",
                         selected = selectedId == -1L,
+                        compact = true,
                         subLabel = "${counts[-1L] ?: 0} 筆",
                         onClick = { select(-1L) }
                     )
@@ -129,7 +160,7 @@ fun CategoryFilterBar(
 
                 // 分隔線：將系統篩選與自訂實體分類分開
                 HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
@@ -139,8 +170,9 @@ fun CategoryFilterBar(
                     ReaterDropdownOption(
                         text = cat.name,
                         selected = selectedId == cat.id,
+                        compact = true,
                         subLabel = "${counts[cat.id] ?: 0} 筆",
-                        leading = { CategoryIcon(cat, modifier = Modifier.size(20.dp)) },
+                        leading = { CategoryIcon(cat, modifier = Modifier.size(16.dp)) },
                         onClick = { select(cat.id) }
                     )
                 }
@@ -150,7 +182,7 @@ fun CategoryFilterBar(
                         text = "找不到相符分類",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(14.dp)
+                        modifier = Modifier.padding(12.dp)
                     )
                 }
             }

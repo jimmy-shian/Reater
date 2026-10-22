@@ -813,21 +813,11 @@ fun ShareSaveScreen(
                         onClick = onDismiss,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    if (state.hasApiKey && !isNewCategory && !state.aiAnalyzeOnSave) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.savePost(triggerAiAnalysis = true)
-                            },
-                            enabled = !state.isSaving,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("分析並儲存")
-                        }
+                        Text(
+                            text = stringResource(R.string.cancel),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     val saveButtonLabel = when {
@@ -855,7 +845,11 @@ fun ShareSaveScreen(
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                         }
-                        Text(saveButtonLabel)
+                        Text(
+                            text = saveButtonLabel,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
