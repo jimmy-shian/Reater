@@ -180,10 +180,50 @@ data class ExportedKeyword(
     val matchScope: String
 )
 
+data class BackupProgress(
+    val current: Int,
+    val total: Int,
+    val stage: String,
+    val detail: String = "",
+    val estimatedRemainingSeconds: Long? = null
+) {
+    val fraction: Float
+        get() = if (total > 0) (current.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val estimatedRemainingText: String?
+        get() = estimatedRemainingSeconds?.let { sec ->
+            if (sec <= 0) "即將完成"
+            else if (sec < 60) "預估剩餘約 $sec 秒"
+            else {
+                val mins = sec / 60
+                val remSec = sec % 60
+                if (remSec == 0L) "預估剩餘約 $mins 分鐘"
+                else "預估剩餘約 $mins 分 $remSec 秒"
+            }
+        }
+}
+
+class EtaEstimator(val total: Int) {
+    private val startTimeNs = System.nanoTime()
+
+    fun estimateRemainingSeconds(current: Int): Long? {
+        if (current <= 0 || total <= 0) return null
+        if (current >= total) return 0L
+        val elapsedSec = (System.nanoTime() - startTimeNs) / 1_000_000_000.0
+        if (elapsedSec < 0.2) return null
+        val rate = current / elapsedSec
+        if (rate <= 0.0) return null
+        val remaining = (total - current) / rate
+        return remaining.toLong().coerceAtLeast(1L)
+    }
+}
+
 @Singleton
 class BackupManager @Inject constructor(
     private val database: AppDatabase,
     private val settingsRepository: SettingsRepository,
+    private val graphQLClient: com.reater.app.data.remote.ThreadsGraphQLClient,
+    private val mediaDownloader: com.reater.app.data.remote.MediaDownloader,
     @ApplicationContext private val context: Context
 ) {
 
@@ -201,7 +241,10 @@ class BackupManager @Inject constructor(
      * Exports a v2 ZIP container with a JSON manifest and binary assets. API keys remain device-local.
      */
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
-    suspend fun exportToJson(outputStream: OutputStream) {
+    suspend fun exportToJson(
+        outputStream: OutputStream,
+        onProgress: (BackupProgress) -> Unit = {}
+    ) {
         val staging = File(context.cacheDir, "backup_export_${UUID.randomUUID()}").apply { mkdirs() }
         try {
             val archiveFiles = linkedMapOf<String, File>()
@@ -211,7 +254,7 @@ class BackupManager @Inject constructor(
             fun packMedia(remote: String, local: String, kind: String): String {
                 val key = local.ifBlank { remote }
                 if (key.isBlank()) return ""
-                mediaBySource[key]?.let { return it }
+                mediaBySource[key]?.takeIf { it.isNotBlank() }?.let { return it }
 
                 // Check local candidates
                 val localFileCandidates = listOfNotNull(
@@ -281,12 +324,62 @@ class BackupManager @Inject constructor(
                 }
             }
             val details = itemDao.getBackupItemDetails()
+            val totalItems = details.size.coerceAtLeast(1)
+            val exportEta = EtaEstimator(totalItems)
+            onProgress(BackupProgress(0, totalItems, "正在準備備份資料...", "共 ${details.size} 篇文章"))
             val categories = categoryDao.getAllCategories()
             val keywordsByCategory = categoryDao.getAllKeywords().groupBy { it.categoryId }
             val categoryNames = categories.associate { it.id to it.name }
             val collections = proDao.observeAllCollections().first()
 
-            val exportList = details.map { detail ->
+            val exportList = details.mapIndexed { idx, detail ->
+                val currentIdx = idx + 1
+                val handleLabel = "@${detail.item.authorHandle.ifBlank { detail.item.shortcode }}"
+                val etaSec = exportEta.estimateRemainingSeconds(currentIdx)
+                onProgress(BackupProgress(currentIdx, totalItems, "正在打包備份資料 (${currentIdx}/${details.size})", handleLabel, etaSec))
+
+                var packedMediaList = detail.media.map {
+                    ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position, packMedia(it.remoteUrl, it.localPath, it.kind))
+                }
+                var packedAuthorProfile = detail.item.authorProfileUrl.let { url ->
+                    if (url.isBlank()) ""
+                    else {
+                        val packed = packMedia(if (url.startsWith("http")) url else "", if (url.startsWith("http")) "" else url, "IMAGE")
+                        if (packed.isNotBlank()) packed else url
+                    }
+                }
+                // 若匯出時發現媒體缺檔（例如舊 CDN URL 已過期且無本地檔）或未抓取，自動向 Threads 重新抓取補齊
+                val needsRefetch = (packedMediaList.isNotEmpty() && packedMediaList.any { it.archivePath.isBlank() }) ||
+                    (packedMediaList.isEmpty() && detail.item.lastFetchStatus == "NOT_FETCHED")
+                if (needsRefetch && (detail.item.canonicalUrl.contains("threads.") || detail.item.shortcode.isNotBlank())) {
+                    onProgress(BackupProgress(currentIdx, totalItems, "正在重新抓取缺失媒體 (${currentIdx}/${details.size})", handleLabel, etaSec))
+                    val fresh = graphQLClient.fetchPostByPostIdOrShortcode(
+                        detail.item.canonicalUrl, detail.item.shortcode
+                    ).getOrNull()
+                    if (fresh != null) {
+                        val chainMedia = fresh.parentChain.flatMap { it.media }
+                        val freshCombined = com.reater.app.data.remote.MediaDedup.distinctFetched(
+                            (chainMedia + fresh.parentMedia) + fresh.media
+                        )
+                        if (freshCombined.isNotEmpty()) {
+                            packedMediaList = freshCombined.mapIndexed { mIdx, fm ->
+                                ExportedMedia(
+                                    kind = fm.kind,
+                                    remoteUrl = fm.remoteUrl,
+                                    width = fm.width,
+                                    height = fm.height,
+                                    position = mIdx,
+                                    archivePath = packMedia(fm.remoteUrl, fm.localPath, fm.kind)
+                                )
+                            }
+                        }
+                        if ((packedAuthorProfile.isBlank() || packedAuthorProfile.startsWith("http")) && fresh.authorProfileUrl.isNotBlank()) {
+                            val p = packMedia(fresh.authorProfileUrl, "", "IMAGE")
+                            if (p.isNotBlank()) packedAuthorProfile = p
+                        }
+                    }
+                }
+
                 ExportedItem(
                     canonicalUrl = detail.item.canonicalUrl,
                     shortcode = detail.item.shortcode,
@@ -319,20 +412,12 @@ class BackupManager @Inject constructor(
                         )
                     },
                     categoryName = detail.userEdit?.categoryId?.let(categoryNames::get),
-                    media = detail.media.map {
-                        ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position, packMedia(it.remoteUrl, it.localPath, it.kind))
-                    },
+                    media = packedMediaList,
                     topicTag = detail.item.topicTag,
                     isDeleted = detail.item.isDeleted,
                     openCount = detail.userEdit?.openCount ?: 0,
                     lastOpenedAt = detail.userEdit?.lastOpenedAt ?: 0L,
-                    authorProfileUrl = detail.item.authorProfileUrl.let { url ->
-                        if (url.isBlank()) ""
-                        else {
-                            val packed = packMedia(if (url.startsWith("http")) url else "", if (url.startsWith("http")) "" else url, "IMAGE")
-                            if (packed.isNotBlank()) packed else url
-                        }
-                    },
+                    authorProfileUrl = packedAuthorProfile,
                     authorVerified = detail.item.authorVerified,
                     postedAtRaw = detail.item.postedAtRaw,
                     mediaJson = detail.item.mediaJson,
@@ -428,6 +513,7 @@ class BackupManager @Inject constructor(
                 avatarHistory = avatarHistory.map { it.name },
                 currentAvatarReference = currentAvatarReference
             )
+            onProgress(BackupProgress(totalItems, totalItems, "正在封裝 .reater 備份檔...", "共 ${archiveFiles.size} 個媒體資源", 0L))
             val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
             val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
             val tempArchive = File(staging, "archive.reater")
@@ -480,11 +566,15 @@ class BackupManager @Inject constructor(
     /**
      * Imports verified v2 containers and legacy v1 JSON backups.
      */
-    suspend fun importFromJson(inputStream: InputStream): Result<Int> {
+    suspend fun importFromJson(
+        inputStream: InputStream,
+        onProgress: (BackupProgress) -> Unit = {}
+    ): Result<Int> {
         val staging = File(context.cacheDir, "backup_import_${UUID.randomUUID()}").apply { mkdirs() }
         val restoredFiles = mutableListOf<File>()
         var databaseCommitted = false
         return try {
+            onProgress(BackupProgress(0, 1, "正在讀取備份檔案..."))
             val tempSourceFile = File(staging, "import_source.tmp")
             tempSourceFile.outputStream().buffered(64 * 1024).use { out ->
                 inputStream.copyTo(out, bufferSize = 64 * 1024)
@@ -495,6 +585,9 @@ class BackupManager @Inject constructor(
 
             val isZip = tempSourceFile.inputStream().buffered().use { stream ->
                 stream.read() == 0x50 && stream.read() == 0x4b
+            }
+            if (isZip) {
+                onProgress(BackupProgress(0, 1, "正在解壓縮 .reater 備份資源..."))
             }
             val packed = if (isZip) {
                 tempSourceFile.inputStream().buffered(64 * 1024).use { ReaterArchive.read(it, staging) }
@@ -586,6 +679,60 @@ class BackupManager @Inject constructor(
                 throw error
             }
 
+            val totalItems = imported.items.size.coerceAtLeast(1)
+            val restoreEta = EtaEstimator(totalItems)
+
+            // 解壓縮還原本機媒體與留言（純本機解壓與檔案搬移，不進行網路抓取）
+            data class PreparedImportItem(
+                val item: ExportedItem,
+                val resolvedAuthorProfile: String,
+                val resolvedMedia: List<ExportedMedia>,
+                val resolvedComments: List<ExportedComment>
+            )
+
+            val preparedItems = imported.items.mapIndexed { idx, rawItem ->
+                val currentIdx = idx + 1
+                val handleLabel = "@${rawItem.authorHandle.ifBlank { rawItem.shortcode }}"
+                val etaSec = restoreEta.estimateRemainingSeconds(currentIdx)
+                onProgress(
+                    BackupProgress(
+                        current = currentIdx,
+                        total = totalItems,
+                        stage = "正在解壓還原文章 (${currentIdx}/${imported.items.size})",
+                        detail = handleLabel,
+                        estimatedRemainingSeconds = etaSec
+                    )
+                )
+
+                // 優先自備份封裝資源還原本機檔案；無備份本地檔時直接保留遠端 URL
+                val prelimMedia = rawItem.media.map { m ->
+                    val local = if (isZip) restoreMedia(m.archivePath) else m.archivePath
+                    m.copy(archivePath = local)
+                }
+
+                val prelimAuthorProfile = if (isZip) restoreMedia(rawItem.authorProfileUrl) else rawItem.authorProfileUrl
+
+                val prelimComments = rawItem.comments.map { comment ->
+                    val restoredAvatar = restoreMedia(comment.authorProfileLocalPath)
+                    val restoredMediaJson = if (isZip) {
+                        FetchedMediaJson.encode(FetchedMediaJson.decode(comment.mediaJson).map { cm ->
+                            val cmLocal = restoreMedia(cm.localPath)
+                            cm.copy(localPath = cmLocal)
+                        })
+                    } else comment.mediaJson
+                    comment.copy(authorProfileLocalPath = restoredAvatar, mediaJson = restoredMediaJson)
+                }
+
+                PreparedImportItem(
+                    item = rawItem,
+                    resolvedAuthorProfile = prelimAuthorProfile,
+                    resolvedMedia = prelimMedia,
+                    resolvedComments = prelimComments
+                )
+            }
+
+            onProgress(BackupProgress(0, totalItems, "正在寫入本機資料庫...", "共 ${preparedItems.size} 篇文章"))
+
             var count = 0
             database.withWriteTransaction {
                 val itemDao = database.itemDao()
@@ -676,7 +823,23 @@ class BackupManager @Inject constructor(
                     ))
                 }
 
-                for (item in imported.items) {
+                val dbEta = EtaEstimator(preparedItems.size)
+                for ((idx, prep) in preparedItems.withIndex()) {
+                    val currentIdx = idx + 1
+                    if (currentIdx % 5 == 0 || currentIdx == preparedItems.size) {
+                        val etaSec = dbEta.estimateRemainingSeconds(currentIdx)
+                        val handleLabel = "@${prep.item.authorHandle.ifBlank { prep.item.shortcode }}"
+                        onProgress(
+                            BackupProgress(
+                                current = currentIdx,
+                                total = totalItems,
+                                stage = "正在寫入本機資料庫 (${currentIdx}/${preparedItems.size})",
+                                detail = handleLabel,
+                                estimatedRemainingSeconds = etaSec
+                            )
+                        )
+                    }
+                    val item = prep.item
                     require(item.canonicalUrl.isNotBlank()) { "匯入資料缺少有效 URL" }
                     val existing = item.sourceFetchedAt?.let { itemDao.getBackupMatch(item.canonicalUrl, it) }
                         ?: itemDao.getItemByCanonicalUrl(item.canonicalUrl)
@@ -686,7 +849,7 @@ class BackupManager @Inject constructor(
                         shortcode = item.shortcode,
                         authorHandle = item.authorHandle,
                         authorDisplayName = item.authorDisplayName,
-                        authorProfileUrl = if (isZip) restoreMedia(item.authorProfileUrl) else item.authorProfileUrl,
+                        authorProfileUrl = prep.resolvedAuthorProfile,
                         authorVerified = item.authorVerified,
                         postedAt = item.postedAt,
                         postedAtRaw = item.postedAtRaw,
@@ -709,7 +872,7 @@ class BackupManager @Inject constructor(
                         itemDao.updateItem(entity)
                         existing.id
                     }
-                                        itemDao.insertUserEdit(
+                    itemDao.insertUserEdit(
                         UserEditEntity(
                             itemId = itemId,
                             userBodyOverride = item.userBodyOverride,
@@ -727,7 +890,7 @@ class BackupManager @Inject constructor(
                         )
                     )
                     database.commentDao().deleteCommentsByItemId(itemId)
-                    database.commentDao().insertComments(item.comments.mapIndexed { index, comment ->
+                    database.commentDao().insertComments(prep.resolvedComments.mapIndexed { index, comment ->
                         CommentEntity(
                             itemId = itemId,
                             externalId = comment.externalId.ifBlank { "import_$index" },
@@ -737,17 +900,23 @@ class BackupManager @Inject constructor(
                             parentExternalId = comment.parentExternalId,
                             depth = comment.depth,
                             authorProfileUrl = comment.authorProfileUrl,
-                            authorProfileLocalPath = restoreMedia(comment.authorProfileLocalPath),
+                            authorProfileLocalPath = comment.authorProfileLocalPath,
                             sortKey = comment.sortKey.ifBlank { "0:${index.toString().padStart(8, '0')}" },
-                            mediaJson = if (isZip) FetchedMediaJson.encode(FetchedMediaJson.decode(comment.mediaJson).map {
-                                it.copy(localPath = restoreMedia(it.localPath))
-                            }) else comment.mediaJson,
+                            mediaJson = comment.mediaJson,
                             fetchedAt = if (comment.fetchedAt > 0) comment.fetchedAt else (item.sourceFetchedAt ?: System.currentTimeMillis())
                         )
                     })
                     database.mediaDao().deleteMediaByItemId(itemId)
-                    val restoredMedia = item.media.map {
-                        MediaEntity(itemId = itemId, kind = it.kind, remoteUrl = it.remoteUrl, localPath = restoreMedia(it.archivePath), width = it.width, height = it.height, position = it.position)
+                    val restoredMedia = prep.resolvedMedia.map {
+                        MediaEntity(
+                            itemId = itemId,
+                            kind = it.kind,
+                            remoteUrl = it.remoteUrl,
+                            localPath = it.archivePath,
+                            width = it.width,
+                            height = it.height,
+                            position = it.position
+                        )
                     }
                     if (restoredMedia.isNotEmpty()) database.mediaDao().insertMediaList(restoredMedia)
                     val tagDao = database.tagDao()
@@ -797,6 +966,7 @@ class BackupManager @Inject constructor(
                 }
             }
 
+            onProgress(BackupProgress(totalItems, totalItems, "備份資料還原完成", "共 $count 篇文章", 0L))
             Result.success(count)
         } catch (e: Exception) {
             if (!databaseCommitted) restoredFiles.forEach { it.delete() }

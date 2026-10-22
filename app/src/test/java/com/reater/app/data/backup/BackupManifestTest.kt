@@ -94,4 +94,28 @@ class BackupManifestTest {
         assertTrue(decoded.settings?.isProLicensed == true)
         assertEquals(456L, decoded.items.first().sourceFetchedAt)
     }
+
+    @Test fun backupProgressEtaFormattingTests() {
+        val p1 = BackupProgress(5, 10, "stage", "detail", null)
+        assertNull(p1.estimatedRemainingText)
+
+        val p2 = BackupProgress(10, 10, "stage", "detail", 0L)
+        assertEquals("即將完成", p2.estimatedRemainingText)
+
+        val p3 = BackupProgress(3, 10, "stage", "detail", 45L)
+        assertEquals("預估剩餘約 45 秒", p3.estimatedRemainingText)
+
+        val p4 = BackupProgress(1, 10, "stage", "detail", 60L)
+        assertEquals("預估剩餘約 1 分鐘", p4.estimatedRemainingText)
+
+        val p5 = BackupProgress(1, 10, "stage", "detail", 85L)
+        assertEquals("預估剩餘約 1 分 25 秒", p5.estimatedRemainingText)
+    }
+
+    @Test fun etaEstimatorEdgeCasesDoNotThrow() {
+        val estimator = EtaEstimator(100)
+        assertNull(estimator.estimateRemainingSeconds(0))
+        assertEquals(0L, estimator.estimateRemainingSeconds(100))
+        assertEquals(0L, estimator.estimateRemainingSeconds(105))
+    }
 }

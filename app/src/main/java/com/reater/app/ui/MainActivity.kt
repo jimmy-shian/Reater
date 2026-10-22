@@ -740,15 +740,23 @@ class MainViewModel @Inject constructor(
     fun buyPro(activity: android.app.Activity) = billingManager.launchPurchase(activity)
     fun restorePro() = billingManager.refreshPurchases()
 
-    suspend fun exportJson(output: java.io.OutputStream) = backupManager.exportToJson(output)
+    suspend fun exportJson(
+        output: java.io.OutputStream,
+        onProgress: (com.reater.app.data.backup.BackupProgress) -> Unit = {}
+    ) = backupManager.exportToJson(output, onProgress)
+
     suspend fun exportCsv(output: java.io.OutputStream) = backupManager.exportToCsv(output)
-    suspend fun importJson(input: java.io.InputStream) = backupManager.importFromJson(input)
+
+    suspend fun importJson(
+        input: java.io.InputStream,
+        onProgress: (com.reater.app.data.backup.BackupProgress) -> Unit = {}
+    ) = backupManager.importFromJson(input, onProgress)
 
     fun saveAiConfig(apiKey: String, baseUrl: String, model: String) {
         viewModelScope.launch {
             if (apiKey.isNotBlank()) settingsRepository.setOpenAiApiKey(apiKey)
-            settingsRepository.setCustomBaseUrl(baseUrl)
-            settingsRepository.setSelectedModel(model)
+            if (baseUrl.isNotBlank()) settingsRepository.setCustomBaseUrl(baseUrl)
+            if (model.isNotBlank()) settingsRepository.setSelectedModel(model)
         }
     }
 
@@ -880,20 +888,23 @@ fun MainScreen(
     val customAvatarUri by viewModel.customAvatarUri.collectAsState()
     var showIconGallery by remember { mutableStateOf(false) }
 
-    var backupLoadingMessage by remember { mutableStateOf<String?>(null) }
+    var backupProgress by remember { mutableStateOf<com.reater.app.data.backup.BackupProgress?>(null) }
 
     val reaterExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) ioScope.launch {
-            backupLoadingMessage = "正在打包備份資料，請稍候..."
+            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, "正在準備匯出備份資料...")
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { viewModel.exportJson(it) }
-                        ?: error("無法開啟指定匯出檔案")
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        viewModel.exportJson(out) { prog ->
+                            backupProgress = prog
+                        }
+                    } ?: error("無法開啟指定匯出檔案")
                 }
             }
-            backupLoadingMessage = null
+            backupProgress = null
             Toast.makeText(
                 context,
                 if (result.isSuccess) "已匯出 .reater 備份檔" else "匯出失敗：${result.exceptionOrNull()?.localizedMessage}",
@@ -903,7 +914,7 @@ fun MainScreen(
     }
     val reaterImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) ioScope.launch {
-            backupLoadingMessage = "正在解壓並還原備份，請稍候..."
+            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, "正在讀取並解壓備份檔...")
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     // 自動過濾：僅接受 .reater 專屬格式（檔名 + 內容雙重校驗，詳見 BackupManager）
@@ -921,11 +932,14 @@ fun MainScreen(
                     ) {
                         error("僅支援 .reater 專屬格式，請重新選擇 .reater 備份檔")
                     }
-                    context.contentResolver.openInputStream(uri)?.use { viewModel.importJson(it).getOrThrow() }
-                        ?: error("無法開啟所選備份檔案")
+                    context.contentResolver.openInputStream(uri)?.use { inp ->
+                        viewModel.importJson(inp) { prog ->
+                            backupProgress = prog
+                        }.getOrThrow()
+                    } ?: error("無法開啟所選備份檔案")
                 }
             }
-            backupLoadingMessage = null
+            backupProgress = null
             Toast.makeText(
                 context,
                 result.fold({ "已還原備份（共 $it 筆文章）" }, { "還原失敗：${it.localizedMessage}" }),
@@ -934,7 +948,7 @@ fun MainScreen(
         }
     }
 
-    if (backupLoadingMessage != null) {
+    backupProgress?.let { prog ->
         androidx.compose.ui.window.Dialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(
@@ -943,20 +957,70 @@ fun MainScreen(
             )
         ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+                tonalElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    Text(
-                        text = backupLoadingMessage.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = prog.stage,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${(prog.fraction * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { prog.fraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (prog.detail.isNotBlank()) {
+                            Text(
+                                text = prog.detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                        prog.estimatedRemainingText?.let { etaText ->
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = etaText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
         }
