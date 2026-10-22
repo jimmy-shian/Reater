@@ -361,10 +361,10 @@ class MainViewModel @Inject constructor(
     val billingUiState: StateFlow<BillingUiState> = billingManager.uiState
 
     val customBaseUrl: StateFlow<String> = settingsRepository.customBaseUrl
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "https://api.openai.com/v1")
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "https://api.openai.com/v1")
 
     val selectedModel: StateFlow<String> = settingsRepository.selectedModel
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val aiTransmissionConsent: StateFlow<Boolean> = settingsRepository.aiTransmissionConsent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

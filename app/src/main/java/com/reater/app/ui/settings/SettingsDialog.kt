@@ -134,6 +134,8 @@ fun SettingsDialog(
     var apiKeyInput by remember { mutableStateOf("") }
     var baseUrlInput by remember { mutableStateOf(currentBaseUrl) }
     var modelInput by remember { mutableStateOf(currentModel) }
+    var isBaseUrlUserEdited by remember { mutableStateOf(false) }
+    var isModelUserEdited by remember { mutableStateOf(false) }
     var previewScale by remember(fontScale) { mutableStateOf(fontScale) }
     var hasSavedApiKey by remember { mutableStateOf(false) }
     var aiExpanded by rememberSaveable { mutableStateOf(false) }
@@ -141,6 +143,18 @@ fun SettingsDialog(
     var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelFetchInProgress by remember { mutableStateOf(false) }
     var modelFetchError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentBaseUrl) {
+        if (!isBaseUrlUserEdited && currentBaseUrl.isNotBlank()) {
+            baseUrlInput = currentBaseUrl
+        }
+    }
+
+    LaunchedEffect(currentModel) {
+        if (!isModelUserEdited && currentModel.isNotBlank()) {
+            modelInput = currentModel
+        }
+    }
 
     LaunchedEffect(Unit) {
         hasSavedApiKey = !viewModel.getSavedApiKey().isNullOrBlank()
@@ -162,7 +176,9 @@ fun SettingsDialog(
 
     fun dismissWithApply() {
         if (previewScale != fontScale) viewModel.setFontScale(previewScale)
-        if (apiKeyInput.isNotBlank() || baseUrlInput != currentBaseUrl || modelInput != currentModel) {
+        if (apiKeyInput.isNotBlank() ||
+            (isBaseUrlUserEdited && baseUrlInput.isNotBlank() && baseUrlInput != currentBaseUrl) ||
+            (isModelUserEdited && modelInput.isNotBlank() && modelInput != currentModel)) {
             viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
         }
         onDismiss()
@@ -180,9 +196,10 @@ fun SettingsDialog(
     val settingsScrollState = rememberScrollState()
     DismissFocusOnScroll(settingsScrollState, focusManager)
 
-    // 自動儲存 AI 設定變更，免按儲存按鈕
+    // 自動儲存 AI 設定變更，免按儲存按鈕（僅在使用者手動修改時儲存，避免覆蓋本地已記憶的值）
     LaunchedEffect(baseUrlInput, modelInput) {
-        if (baseUrlInput != currentBaseUrl || modelInput != currentModel) {
+        if ((isBaseUrlUserEdited && baseUrlInput != currentBaseUrl && baseUrlInput.isNotBlank()) ||
+            (isModelUserEdited && modelInput != currentModel && modelInput.isNotBlank())) {
             viewModel.saveAiConfig(apiKeyInput, baseUrlInput, modelInput)
         }
     }
@@ -778,12 +795,17 @@ fun SettingsDialog(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         },
-                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        singleLine = true,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 2,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        keyboardActions = KeyboardActions(onDone = {
+                                            focusManager.clearFocus()
+                                            keyboard?.hide()
+                                        }),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = MaterialTheme.colorScheme.surface,
                                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
@@ -802,7 +824,10 @@ fun SettingsDialog(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     OutlinedTextField(
                                         value = baseUrlInput,
-                                        onValueChange = { baseUrlInput = it },
+                                        onValueChange = {
+                                            baseUrlInput = it
+                                            isBaseUrlUserEdited = true
+                                        },
                                         placeholder = {
                                             Text(
                                                 "https://api.openai.com/v1",
@@ -812,12 +837,17 @@ fun SettingsDialog(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         },
-                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        singleLine = true,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        keyboardActions = KeyboardActions(onDone = {
+                                            focusManager.clearFocus()
+                                            keyboard?.hide()
+                                        }),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = MaterialTheme.colorScheme.surface,
                                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
@@ -874,6 +904,7 @@ fun SettingsDialog(
                                                         },
                                                         onClick = {
                                                             modelInput = modelId
+                                                            isModelUserEdited = true
                                                             showModelDropdown = false
                                                         }
                                                     )
@@ -884,7 +915,10 @@ fun SettingsDialog(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     OutlinedTextField(
                                         value = modelInput,
-                                        onValueChange = { modelInput = it },
+                                        onValueChange = {
+                                            modelInput = it
+                                            isModelUserEdited = true
+                                        },
                                         placeholder = {
                                             Text(
                                                 "從 API 取得的 Model ID",
@@ -906,12 +940,17 @@ fun SettingsDialog(
                                                 )
                                             }
                                         },
-                                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                                         shape = RoundedCornerShape(8.dp),
-                                        singleLine = true,
+                                        singleLine = false,
+                                        minLines = 1,
+                                        maxLines = 3,
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                        keyboardActions = KeyboardActions(onDone = {
+                                            focusManager.clearFocus()
+                                            keyboard?.hide()
+                                        }),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = MaterialTheme.colorScheme.surface,
                                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),

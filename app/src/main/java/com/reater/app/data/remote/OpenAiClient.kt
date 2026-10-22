@@ -117,7 +117,8 @@ class OpenAiClient @Inject constructor() {
         model: String,
         customBaseUrl: String?,
         postContent: String,
-        commentsContent: String
+        commentsContent: String,
+        targetLocale: java.util.Locale = java.util.Locale.getDefault()
     ): Result<Pair<AiAnalysisResult, OpenAiUsage>> {
         if (apiKey.isBlank()) {
             return Result.failure(IllegalStateException("API Key is empty"))
@@ -127,23 +128,50 @@ class OpenAiClient @Inject constructor() {
             ?: "https://api.openai.com/v1"
         val endpoint = "$baseUrl/chat/completions"
 
+        val langTag = targetLocale.toLanguageTag()
+        val langDisplayName = targetLocale.getDisplayName(targetLocale)
+        val languageInstruction = when {
+            langTag.startsWith("zh-TW", ignoreCase = true) ||
+                langTag.startsWith("zh-HK", ignoreCase = true) ||
+                langTag.startsWith("zh-MO", ignoreCase = true) ||
+                langTag.contains("Hant", ignoreCase = true) ->
+                "繁體中文 (Traditional Chinese, zh-TW)"
+            langTag.startsWith("zh", ignoreCase = true) ->
+                "簡體中文 (Simplified Chinese, zh-CN)"
+            langTag.startsWith("ja", ignoreCase = true) ->
+                "日本語 (Japanese)"
+            langTag.startsWith("ko", ignoreCase = true) ->
+                "한국어 (Korean)"
+            langTag.startsWith("en", ignoreCase = true) ->
+                "English"
+            else ->
+                "$langDisplayName ($langTag)"
+        }
+
         val systemPrompt = """
-            You are a content analyzer for 'Reater'. Analyze the given Threads post and comments.
-            Output ONLY valid JSON matching this schema:
+            You are a content analyzer for 'Reater'.
+            Analyze BOTH the full post article and its notable comments to generate a comprehensive analysis and summary.
+
+            CRITICAL INSTRUCTIONS:
+            1. OUTPUT LANGUAGE: All output text (including "category", "tags", and "summary") MUST be written strictly in the user's system language: $languageInstruction. Do NOT output in English or any other language unless the system language is English.
+            2. SYNTHESIZE ARTICLE & COMMENTS: You must synthesize the full post content along with notable feedback, discussions, viewpoints, or consensus from the comments. If comments are present, the summary MUST reflect both the post's core message and the community's discussions.
+            3. OUTPUT FORMAT: Output ONLY valid JSON matching this schema:
             {
-              "category": "string (a short 2-6 character topic label, e.g. 科技, 生活, 讀書)",
-              "tags": ["tag1", "tag2", "tag3"], // at most 3 tags
-              "summary": "string (under 120 words capturing the core message and consensus)",
+              "category": "string (a concise 2-6 character topic label in $languageInstruction, e.g. 科技, 生活, 讀書, 投資)",
+              "tags": ["tag1", "tag2", "tag3"], // at most 3 tags in $languageInstruction
+              "summary": "string (a concise, informative summary synthesizing both the post and the comments, under 160 words, in $languageInstruction)",
               "confidence": 0.95
             }
         """.trimIndent()
 
         val userPrompt = """
-            [POST BODY]:
-            $postContent
+            [POST BODY / 文章內文]:
+            ${postContent.ifBlank { "(無文章內文)" }}
 
-            [NOTABLE COMMENTS]:
-            $commentsContent
+            [NOTABLE COMMENTS / 討論留言]:
+            ${commentsContent.ifBlank { "(無留言)" }}
+
+            Please synthesize both the post article and the comments above, and output the JSON strictly in $languageInstruction.
         """.trimIndent()
 
         val requestPayload = OpenAiChatRequest(
