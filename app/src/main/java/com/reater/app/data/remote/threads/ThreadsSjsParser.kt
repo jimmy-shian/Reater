@@ -149,30 +149,6 @@ object ThreadsSjsParser {
         val mainTpa = main.optJSONObject("text_post_app_info")
         val mainIsReply = mainTpa?.optBoolean("is_reply", false) == true
 
-        // /share/ 可能解析到留言而非主串（實測 BAV_nQgC4O → n.i.c.k.0.3.2.3 的留言，
-        // 但使用者要的是 octopus5201314 的主串「新角拿了MVP」）。
-        // 當主貼本身是留言時，自動回溯根貼文（root post）當主貼，原留言則降為留言。
-        val effectiveMain: JSONObject
-        if (mainIsReply) {
-            val chain = findParentChain(main, allPosts, shortcode)
-            val rootPost = chain.firstOrNull()?.let { root ->
-                allPosts.find { it.optString("code") == root.shortcode }
-            }
-            effectiveMain = rootPost ?: main
-        } else {
-            effectiveMain = main
-        }
-
-        // 用 effectiveMain 重新取作者/時間/內文/媒體（根貼文可能與原留言不同）
-        val effUser = effectiveMain.optJSONObject("user")
-        val effAuthorHandle = effUser?.optString("username").orEmpty().ifBlank { authorHandle }
-        val effAuthorVerified = effUser?.optBoolean("is_verified", false) == true || authorVerified
-        val effAuthorProfileUrl = effUser?.optString("profile_pic_url").orEmpty().ifBlank { authorProfileUrl }
-        val effTakenAtSec = effectiveMain.optLong("taken_at", 0L).let { if (it > 0) it else takenAtSec }
-        val effLikeCount = effectiveMain.optInt("like_count", 0).let { if (it > 0) it else likeCount }
-        val effBody = postText(effectiveMain).ifBlank { body }
-        val effMedia = postMedia(effectiveMain).ifEmpty { media }
-
         // direct_replies 歸屬過濾：頂層串文（is_reply==false）沿用嚴格 root 檢查；
         // 子串分享（主本身 is_reply==true，如 D-JnnrknO/DzVwcgDJw 實測）root 指向最終祖先而非主，
         // 若仍要求 root==主會把 5+3 則子留言全滅 → 此時信任伺服器已限定的 direct_replies 全收，
@@ -183,7 +159,7 @@ object ThreadsSjsParser {
             val root = tpa?.optJSONObject("root_post_author")
                 ?: return@filter true
             // 子串：伺服器已限定範圍，直接放行（後續 resolveReplyAuthor/去重仍會擋空作者）
-            if (effectiveMain !== main) return@filter true
+            if (mainIsReply) return@filter true
             val rootPk = root.optString("pk").ifBlank { root.optString("id") }
             val rootUser = root.optString("username")
             val pkOk = rootPk.isNotBlank() && rootPk == mainAuthorPk
@@ -220,7 +196,7 @@ object ThreadsSjsParser {
             val text = commentText(p)
             val pMedia = postMedia(p)
             if (text.isBlank() && pMedia.isEmpty()) continue
-            if (text == effBody && pMedia.isEmpty()) continue
+            if (text == body && pMedia.isEmpty()) continue
             val author = resolveReplyAuthor(p)
             if (author.isBlank()) continue
             val key = p.optString("code").ifBlank { author + "||" + text }
@@ -242,12 +218,12 @@ object ThreadsSjsParser {
         // 舊 shape thread_items 回覆（新 shape 已由 direct_replies 收齊，此處僅補舊頁）
         for (p in legacyPosts) {
             if (comments.size >= MAX_COMMENTS) break
-            if (p === effectiveMain) continue
+            if (p === main) continue
             val pCode = p.optString("code")
             if (pCode.isNotBlank() && pCode == shortcode) continue
             val text = commentText(p)
             if (text.isBlank()) continue
-            if (text == effBody) continue
+            if (text == body) continue
             // 必須是真正的回覆：text_post_app_info.is_reply==true 或 reply_to_author 非空。
             // 頂層母串（is_reply==false 且無 reply_to）一律排除，否則會把同串前文當留言。
             if (!isTrueReply(p)) continue
@@ -277,11 +253,11 @@ object ThreadsSjsParser {
         if (comments.isEmpty()) {
             for (p in legacyPosts) {
                 if (comments.size >= MAX_COMMENTS) break
-                if (p === effectiveMain) continue
+                if (p === main) continue
                 val pCode = p.optString("code")
                 if (pCode.isNotBlank() && pCode == shortcode) continue
                 val text = commentText(p)
-                if (text.isBlank() || text == effBody) continue
+                if (text.isBlank() || text == body) continue
                 val author = resolveReplyAuthor(p)
                 if (author.isBlank()) continue
                 val key = p.optString("code").ifBlank { author + "||" + text }
@@ -306,29 +282,23 @@ object ThreadsSjsParser {
         // Dd1Ry_jlKfT 的母為 Dd0sfd4CCLT（他故意输给...+影片）。
         // 「留言的留言」（主回覆 B、B 回覆 A）則沿 reply_to 逐層上溯，得到完整鏈 [A, B]，
         // 存檔時編碼成多段 --- 分享 @... ---，詳情頁逐塊渲染，不再擠成 3 層亂文。
-        // 注意：若 effectiveMain 已回溯到根貼文，parentChain 應從 effectiveMain 重新計算，
-        // 否則會把根貼文的母文（不存在）或原留言的母文（根貼文自己）錯誤納入。
-        val parentChain = if (effectiveMain !== main) {
-            emptyList()  // 已回溯到根貼文，無母文鏈
-        } else {
-            findParentChain(main, allPosts, shortcode)
-        }
+        val parentChain = findParentChain(main, allPosts, shortcode)
         val parent = parentChain.firstOrNull()
 
         return SjsResult(
-            bodyText = effBody,
-            authorHandle = effAuthorHandle,
-            authorDisplayName = effAuthorHandle,
-            authorProfileUrl = effAuthorProfileUrl,
-            authorVerified = effAuthorVerified,
-            postedAtMs = if (effTakenAtSec > 0) effTakenAtSec * 1000 else 0L,
-            likeCount = effLikeCount,
-            media = effMedia,
+            bodyText = body,
+            authorHandle = authorHandle,
+            authorDisplayName = user?.optString("full_name").orEmpty().ifBlank { authorHandle },
+            authorProfileUrl = authorProfileUrl,
+            authorVerified = authorVerified,
+            postedAtMs = if (takenAtSec > 0) takenAtSec * 1000 else 0L,
+            likeCount = likeCount,
+            media = media,
             comments = comments,
             parent = parent,
             parentChain = parentChain,
-            topicTag = TopicTags.resolve(effectiveMain, effBody),
-            textAttachment = extractTextAttachment(effectiveMain)
+            topicTag = TopicTags.resolve(main, body),
+            textAttachment = extractTextAttachment(main)
         )
     }
 
@@ -782,6 +752,14 @@ object ThreadsSjsParser {
             val inner = postMedia(w, excludedUrls)
             if (inner.isNotEmpty()) return inner
         }
+
+        // 外部連結預覽圖（link_preview_attachment）
+        val linkPreview = tpa?.optJSONObject("link_preview_attachment")
+        val linkImg = linkPreview?.optString("image_url").orEmpty().takeUnless { it == "null" }.orEmpty()
+        if (linkImg.startsWith("http") && !isExcludedMediaUrl(linkImg, excludedUrls)) {
+            return listOf(FetchedMedia(kind = "IMAGE", remoteUrl = linkImg))
+        }
+
         return emptyList()
     }
 

@@ -43,16 +43,27 @@ object ThreadsHtmlParser {
 
     fun parse(html: String, shortcode: String): ParsedPage {
         if (html.isBlank()) return ParsedPage("", "", "", "", false, 0L, 0, emptyList(), emptyList(), false)
+        // 若 shortcode 仍為 /share/ 佔位符，嘗試從 HTML canonical / og:url 抽出真實短碼
+        val effectiveCode = if (shortcode.startsWith("share_") || shortcode.isBlank()) {
+            val canon = ThreadsPageFetcher.extractCanonicalUrl(html)
+            if (canon.isNotBlank()) {
+                ThreadsPageFetcher.extractIds(canon, shortcode).shortcode
+            } else {
+                shortcode
+            }
+        } else {
+            shortcode
+        }
         // /share/ 未解析時（shortcode 為 share_TOKEN 佔位符）：HTML 裡沒有本篇資料，
         // 所有 caption/og 猜測都會抓到別篇或殼內容 → 直接回空，交給分享文字草稿兜底。
         // 否則會出現「7 則留言顯示 12 則、@threads_reply 配不相關內文」的污染。
-        if (shortcode.startsWith("share_")) {
+        if (effectiveCode.startsWith("share_")) {
             return ParsedPage("", "", "", "", false, 0L, 0, emptyList(), emptyList(), false)
         }
 
         // 第一順位：SJS 內嵌 JSON（短碼精確匹配，最準；含留言鏈、輪播、GIF、計數）
         val sjs = try {
-            ThreadsSjsParser.parse(html, shortcode)
+            ThreadsSjsParser.parse(html, effectiveCode)
         } catch (_: Exception) {
             null
         }
@@ -80,7 +91,7 @@ object ThreadsHtmlParser {
         val sjsFallbackAuthor = sjs?.authorHandle.orEmpty()
 
         val (ogTitleHandle, ogTitleName) = parseOgTitle(html)
-        val embedded = parseEmbeddedPostJson(html, shortcode)
+        val embedded = parseEmbeddedPostJson(html, effectiveCode)
         val metaTitleBody = parseMetaTitleJson(html)
 
         var body = embedded.body.ifBlank { metaTitleBody }

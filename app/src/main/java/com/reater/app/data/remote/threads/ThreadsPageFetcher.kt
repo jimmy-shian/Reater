@@ -188,7 +188,23 @@ object ThreadsPageFetcher {
             }
         }
 
+        if (resolved.contains("/share/")) {
+            val canon = extractCanonicalUrl(html)
+            if (canon.isNotBlank()) resolved = canon
+        }
+
         return FetchResult(resolvedUrl = resolved, html = html, gotAnyHtml = got)
+    }
+
+    fun extractCanonicalUrl(html: String): String {
+        if (html.isBlank()) return ""
+        val canon = Regex("""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)?.trim().orEmpty()
+        if (canon.contains("/post/")) return canon.replace("&#064;", "@").replace("%40", "@")
+        val og = Regex("""<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)?.trim().orEmpty()
+        if (og.contains("/post/")) return og.replace("&#064;", "@").replace("%40", "@")
+        return ""
     }
 
     fun isLoginWall(html: String): Boolean {
@@ -208,7 +224,10 @@ object ThreadsPageFetcher {
     fun extractIds(resolvedUrl: String, fallbackShortcode: String): ExtractedIds {
         var code = fallbackShortcode
         var handle = ""
-        val post = Regex("""/@?([A-Za-z0-9_.]+)/post/([A-Za-z0-9_-]+)""").find(resolvedUrl)
+        val unescapedUrl = resolvedUrl
+            .replace("&#064;", "@")
+            .replace("%40", "@")
+        val post = Regex("""/@?([A-Za-z0-9_.]+)/post/([A-Za-z0-9_-]+)""").find(unescapedUrl)
         if (post != null) {
             handle = post.groupValues[1]
             code = post.groupValues[2]

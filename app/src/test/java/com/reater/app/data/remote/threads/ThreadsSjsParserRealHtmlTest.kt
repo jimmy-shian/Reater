@@ -155,4 +155,25 @@ class ThreadsSjsParserRealHtmlTest {
         println("FP_MEDIA=${p.media}")
         println("FP_COMMENTS=${p.comments.size}")
     }
+
+    @Test
+    fun parsesThreadConversationShareLinkPreservingReplyAndParentChain() {
+        val html = resource("threads_share_qUDfvMEg.html")
+        val parsed = ThreadsHtmlParser.parse(html, "share__qUDfvMEg")
+        assertTrue("parsed should succeed from SJS via canonical fallback", parsed.fromSjs)
+        assertEquals("ncueaul", parsed.authorHandleFromTitle)
+        assertTrue(parsed.bodyText.contains("Claude Code / Codex"))
+        assertTrue(parsed.bodyText.contains("taste-skill"))
+        assertEquals(1, parsed.media.size)
+        assertTrue(parsed.media.first().remoteUrl.startsWith("http"))
+        assertEquals(1, parsed.parentChain.size)
+        val parent = parsed.parentChain.first()
+        assertEquals("auriestudiotw", parent.authorHandle)
+        assertTrue(parent.bodyText.contains("我在自學作網站"))
+        assertTrue(parent.bodyText.contains("溫馨感"))
+        assertEquals(1, parent.media.size)
+        assertEquals(2, parsed.comments.size)
+        assertTrue(parsed.comments.any { it.author == "mik77550" && it.text.contains("這是") })
+        assertTrue(parsed.comments.any { it.author == "ncueaul" && it.text.contains("可以丟連結給你的 Ai") })
+    }
 }
