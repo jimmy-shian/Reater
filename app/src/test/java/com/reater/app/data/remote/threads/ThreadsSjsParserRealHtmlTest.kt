@@ -158,7 +158,7 @@ class ThreadsSjsParserRealHtmlTest {
 
     @Test
     fun parsesThreadConversationShareLinkPreservingReplyAndParentChain() {
-        val html = resource("threads_share_qUDfvMEg.html")
+        val html = resource("threads_share_conversation_sanitized.html")
         val parsed = ThreadsHtmlParser.parse(html, "share__qUDfvMEg")
         assertTrue("parsed should succeed from SJS via canonical fallback", parsed.fromSjs)
         assertEquals("ncueaul", parsed.authorHandleFromTitle)

@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-ci-test-*'
 
 permissions:
   contents: read
@@ -40,7 +41,7 @@ jobs:
           source = pathlib.Path('app/build.gradle.kts').read_text(encoding='utf-8')
           version = re.search(r'^\s*versionName\s*=\s*"([^"]+)"', source, re.M).group(1)
           tag = os.environ['GITHUB_REF_NAME']
-          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or tag != f'v{version}':
+          if tag != f'v{version}' and not re.fullmatch(re.escape(f'v{version}') + r'-ci-test-\d+', tag):
               raise SystemExit(f'Tag {tag} must match versionName v{version}')
           required = ('REATER_KEYSTORE_BASE64', 'REATER_KEY_ALIAS', 'REATER_STORE_PASS', 'REATER_KEY_PASS')
           missing = [name for name in required if not os.environ.get(name)]
@@ -95,19 +96,9 @@ jobs:
           REATER_KEY_PASS: ${{ secrets.REATER_KEY_PASS }}
         run: |
           set -euo pipefail
-          KEYSTORE="$RUNNER_TEMP/reater-release.jks"
-          trap 'rm -f "$KEYSTORE"' EXIT
-          umask 077
-          printf '%s' "$REATER_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           mkdir -p dist
-          "$BUILD_TOOLS/zipalign" -p -f 4 \
-            app/build/outputs/apk/release/app-release-unsigned.apk \
-            "$RUNNER_TEMP/reater-aligned.apk"
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks "$KEYSTORE" --ks-key-alias "$REATER_KEY_ALIAS" \
-            --ks-pass env:REATER_STORE_PASS --key-pass env:REATER_KEY_PASS \
-            --out "dist/Reater-${GITHUB_REF_NAME}.apk" "$RUNNER_TEMP/reater-aligned.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/Reater-${GITHUB_REF_NAME}.apk"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "dist/Reater-${GITHUB_REF_NAME}.apk" > "$RUNNER_TEMP/reater-signature.txt"
           python3 - <<'PY'
           import os
@@ -136,7 +127,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag \
+            flags=()
+            if [[ "$GITHUB_REF_NAME" == *-ci-test-* ]]; then flags+=(--prerelease); fi
+            gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" \
               --title "Reater $GITHUB_REF_NAME" --generate-notes
           fi
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
