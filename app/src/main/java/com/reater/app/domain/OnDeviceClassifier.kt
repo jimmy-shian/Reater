@@ -115,6 +115,8 @@ class OnDeviceClassifier @Inject constructor(
         }
 
         // 3. 歷史分類關聯學習（使用者過去把包含特定詞的文章分類到 A，下次出現該特徵詞自動歸入 A）
+        //    只採用「對特定分類具有區別度」的特徵詞，避免常見通用詞讓最大分類總是勝出。
+        val preHistoryScores = categoryScores.toMap()
         runCatching {
             val historySummaries = itemDao.getRecentCategorizedSummaries()
             if (historySummaries.isNotEmpty()) {
@@ -134,16 +136,30 @@ class OnDeviceClassifier @Inject constructor(
                     for ((term, catCounts) in termToCategoryCount) {
                         val totalHits = catCounts.values.sum()
                         if (totalHits <= 0) continue
+                        // 出現在超過 3 個不同分類的詞太通用，不具區別力，跳過
+                        if (catCounts.size > 3) continue
                         val isTitleHit = titleLower.contains(term)
                         val termBaseWeight = if (term.length >= 3) 6 else 4
                         for ((catId, count) in catCounts) {
                             val exclusivity = count.toFloat() / totalHits.toFloat()
-                            val weight = (count * termBaseWeight * exclusivity).toInt().coerceAtLeast(1)
+                            // 詞在該分類的佔比低於 40%，不具區別度，跳過
+                            if (exclusivity < 0.4f) continue
+                            // 限制單詞的歷史次數上限，避免大分類靠文章量取勝
+                            val cappedCount = count.coerceAtMost(5)
+                            val weight = (cappedCount * termBaseWeight * exclusivity).toInt().coerceAtLeast(1)
                             val finalBonus = if (isTitleHit) weight * 2 else weight
                             categoryScores[catId] = categoryScores.getOrDefault(catId, 0) + finalBonus
                         }
                     }
                 }
+            }
+        }
+        // 歷史學習的總貢獻上限：避免歷史信號壓過關鍵字比對
+        for ((catId, totalScore) in categoryScores.toMap()) {
+            val pre = preHistoryScores.getOrDefault(catId, 0)
+            val historyBonus = totalScore - pre
+            if (historyBonus > 40) {
+                categoryScores[catId] = pre + 40
             }
         }
 
@@ -212,10 +228,10 @@ class OnDeviceClassifier @Inject constructor(
             val w = m.value.trim().lowercase()
             if (w !in STOP_WORDS_EN) terms.add(w)
         }
-        // 4. CJK 分段短語滑窗（提取 2~4 字的常見連續詞）
+        // 4. CJK 分段短語滑窗（提取 3~4 字連續詞；2 字組合噪音太多，易讓最大分類靠通用詞取勝）
         val cleanCjk = text.replace(Regex("[^\\u4e00-\\u9fa5]"), " ")
-        for (chunk in cleanCjk.split(" ").filter { it.length in 2..20 }) {
-            for (len in 2..4.coerceAtMost(chunk.length)) {
+        for (chunk in cleanCjk.split(" ").filter { it.length in 3..20 }) {
+            for (len in 3..4.coerceAtMost(chunk.length)) {
                 for (i in 0..(chunk.length - len)) {
                     val sub = chunk.substring(i, i + len)
                     if (sub !in STOP_WORDS_ZH) {

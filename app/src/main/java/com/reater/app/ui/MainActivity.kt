@@ -260,7 +260,13 @@ private fun MainThemedScreen(
                 }
             }
         }
-        MainScreen(viewModel = viewModel)
+        var showSplashAd by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+        androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
+            MainScreen(viewModel = viewModel)
+            if (showSplashAd) {
+                SplashAdOverlay(onDismiss = { showSplashAd = false })
+            }
+        }
     }
 }
 

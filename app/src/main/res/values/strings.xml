@@ -21,4 +21,6 @@
     <string name="import_data">匯入資料</string>
     <string name="openai_api_key">OpenAI API Key (BYOK)</string>
     <string name="model_selection">AI 模型選擇</string>
+    <string name="admob_app_id">ca-app-pub-5458979489586580~8496333389</string>
+    <string name="admob_unit_splash">ca-app-pub-5458979489586580/9194959504</string>
 </resources>

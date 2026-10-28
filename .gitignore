@@ -23,3 +23,14 @@ __pycache__/
 
 # Local scripts with private keystore
 build-release.ps1
+
+# Private signing, temporary tooling and incomplete ad configuration
+*.jks
+*.keystore
+**/keystore.properties
+**/signing.properties
+/keystores/key.txt
+/keystores/*base64*.txt
+/AD_UNITS_CONFIG.xlsx
+/ad_config.json
+/admob-config.json

@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -32,8 +33,31 @@ android {
         buildConfigField("String", "PRO_PRODUCT_ID", "\"pro_unlock\"")
     }
 
+    val signingProperties = Properties()
+    val signingFile = rootProject.file("../keystores/signing.properties")
+    if (signingFile.exists()) signingFile.inputStream().use { signingProperties.load(it) }
+    fun signingValue(name: String, vararg env: String): String? =
+        env.firstNotNullOfOrNull { System.getenv(it)?.takeIf { value -> value.isNotBlank() } }
+            ?: signingProperties.getProperty(name)
+    val releaseStore = signingValue("storeFile", "REATER_KEYSTORE_FILE", "KEYSTORE_FILE", "ANDROID_KEYSTORE_PATH")
+    val releasePassword = signingValue("storePassword", "REATER_STORE_PASS", "KEYSTORE_PASSWORD", "ANDROID_KEYSTORE_PASSWORD")
+    val releaseAlias = signingValue("keyAlias", "REATER_KEY_ALIAS", "KEY_ALIAS", "ANDROID_KEY_ALIAS")
+    val releaseKeyPassword = signingValue("keyPassword", "REATER_KEY_PASS", "KEY_PASSWORD", "ANDROID_KEY_PASSWORD")
+    if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } &&
+        listOf(releaseStore, releasePassword, releaseAlias, releaseKeyPassword).any { it.isNullOrBlank() }) {
+        error("Release signing requires environment variables or central keystores/signing.properties")
+    }
+    signingConfigs {
+        create("release") {
+            releaseStore?.let { storeFile = file(it) }
+            storePassword = releasePassword
+            keyAlias = releaseAlias
+            keyPassword = releaseKeyPassword
+        }
+    }
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -107,4 +131,5 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.tink.android)
     implementation(libs.androidx.billing.ktx)
+    implementation("com.google.android.gms:play-services-ads:25.4.0")
 }

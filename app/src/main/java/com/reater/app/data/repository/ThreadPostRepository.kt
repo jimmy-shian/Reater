@@ -147,7 +147,10 @@ class ThreadPostRepository @Inject constructor(
                 titleScope = titlePrefix + authorHandle + " " + bodyText.take(80),
                 bodyScope = bodyText + " " + commentsText
             )
-            return classResult.categoryId
+            // 只在有足夠信心時才回傳分類結果，避免無關鍵字命中時落入預設分類
+            if (classResult.categoryId != null && classResult.score >= 2) {
+                return classResult.categoryId
+            }
         }
 
         return null

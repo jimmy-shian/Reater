@@ -63,6 +63,49 @@ class OnDeviceClassifierTest {
         assertEquals("AI科技", result.categoryName)
     }
 
+    /**
+     * 迴歸測試：歷史文章數量懸殊時，少量分類的文章若有明確關鍵字命中，
+     * 不應被大量分類的歷史記錄搶走。
+     */
+    @Test
+    fun largestCategoryDoesNotStealFromSmallerOneWithBetterKeywordMatch() = runBlocking {
+        val catAi = CategoryEntity(id = 1, name = "AI科技", colorArgb = 0)
+        val catFood = CategoryEntity(id = 2, name = "美食日記", colorArgb = 0)
+
+        val categoryDao = FakeCategoryDao(listOf(catAi, catFood))
+        // AI 有 50 篇歷史、美食只有 2 篇
+        val history = (1..50).map {
+            CategorizedItemSummary(
+                categoryId = 1,
+                topicTag = "AI",
+                bodyText = "這篇文章討論了人工智慧的最新發展，包含模型分析。"
+            )
+        } + listOf(
+            CategorizedItemSummary(
+                categoryId = 2,
+                topicTag = "美食",
+                bodyText = "今天去了一間超棒的拉麵店，湯頭濃郁好吃。"
+            ),
+            CategorizedItemSummary(
+                categoryId = 2,
+                topicTag = "美食",
+                bodyText = "推薦台北東區的火鍋店，食材新鮮必吃。"
+            )
+        )
+        val itemDao = createMockItemDao(history)
+
+        val classifier = OnDeviceClassifier(categoryDao, itemDao)
+
+        // 新文章明確談美食，不應被 AI 分類搶走
+        val result = classifier.classify(
+            titleScope = "台北必吃拉麵推薦",
+            bodyScope = "這間拉麵店的豚骨湯頭超級濃郁，菜單選擇多，推薦大家去吃看看。"
+        )
+
+        assertEquals(2L, result.categoryId)
+        assertEquals("美食日記", result.categoryName)
+    }
+
     private fun createMockItemDao(summaries: List<CategorizedItemSummary>): ItemDao {
         return Proxy.newProxyInstance(
             ItemDao::class.java.classLoader,

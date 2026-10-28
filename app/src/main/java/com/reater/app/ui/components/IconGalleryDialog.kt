@@ -1,4 +1,4 @@
-package com.reater.app.ui.components
+﻿package com.reater.app.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
@@ -66,7 +66,7 @@ fun IconGalleryDialog(
     onOpenUnlock: () -> Unit,
     onDismiss: () -> Unit,
     currentAvatarUri: String? = null,
-    onSelectCustomAvatar: (String) -> Unit = {}
+    onSelectCustomAvatar: (String?) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -160,12 +160,17 @@ fun IconGalleryDialog(
         )
     }
     pendingDelete?.let { path ->
+        val isDeletingCurrent = (path == currentAvatarUri)
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("刪除歷史頭像？") },
-            text = { Text("將刪除此頭像的原圖與編輯紀錄。") },
+            title = { Text(if (isDeletingCurrent) "刪除目前頭像？" else "刪除歷史頭像？") },
+            text = { Text(if (isDeletingCurrent) "將刪除目前使用的自訂頭像並回復為內建圖示。" else "將刪除此頭像的原圖與編輯紀錄。") },
             confirmButton = { TextButton(onClick = {
-                if (AvatarStorage.canDeleteHistory(path, currentAvatarUri)) {
+                if (isDeletingCurrent) {
+                    onSelectCustomAvatar(null)
+                    AvatarStorage.deleteHistory(context, path, null)
+                    history = AvatarStorage.listHistoryPaths(context)
+                } else if (AvatarStorage.canDeleteHistory(path, currentAvatarUri)) {
                     AvatarStorage.deleteHistory(context, path, currentAvatarUri)
                     history = AvatarStorage.listHistoryPaths(context)
                 }
@@ -554,7 +559,8 @@ fun IconGalleryDialog(
                                                     Text("編輯", style = MaterialTheme.typography.labelMedium)
                                                 }
 
-                                                if (!isSelected && AvatarStorage.canDeleteHistory(path, currentAvatarUri)) {
+                                                // 目前使用中或歷史頭像都可刪除
+                                                if (isSelected || AvatarStorage.canDeleteHistory(path, currentAvatarUri)) {
                                                     IconButton(
                                                         onClick = { pendingDelete = path },
                                                         enabled = !busy,
