@@ -10,7 +10,7 @@ REM    5. copy final APK to repository root & cleanup artifacts
 REM
 REM  Usage:
 REM    build-release.bat                      Normal build (clean rebuild)
-REM    build-release.bat --skip-build         Skip compilation, re-sign only
+REM    build-release.bat --skip-build         Skip compilation and package the existing release APK
 REM    build-release.bat --keep-daemon        Do not stop Gradle daemon after build
 REM    build-release.bat --dry-run            Display version and paths without building
 REM    build-release.bat --help               Show usage help
@@ -58,7 +58,7 @@ echo Reater One-Click Release Builder
 echo.
 echo Usage:
 echo   build-release.bat                      Build release APK (clean rebuild)
-echo   build-release.bat --skip-build         Skip build, re-sign only
+echo   build-release.bat --skip-build         Skip build and package the existing release APK
 echo   build-release.bat --keep-daemon        Keep Gradle daemon running after build
 echo   build-release.bat --dry-run            Show version and paths without building
 echo   build-release.bat [keystore] [alias] [storepass] [keypass]
@@ -170,8 +170,10 @@ REM ---------- Paths ----------
 :set_paths
 set "OUTDIR=!ROOT!\app\build\outputs\apk\release"
 set "UNSIGNED=!OUTDIR!\app-release-unsigned.apk"
+set "GRADLE_SIGNED=!OUTDIR!\app-release.apk"
 set "ALIGNED=!OUTDIR!\app-release-aligned.apk"
 set "SIGNED=!OUTDIR!\app-release-signed.apk"
+set "SIGNED_SOURCE=!SIGNED!"
 set "SIGNEDIDSIG=!SIGNED!.idsig"
 set "FINAL=!ROOT!\Reater-v!VERSION!.apk"
 
@@ -223,7 +225,7 @@ goto check_unsigned
 
 :skip_build
 echo.
-echo === [1/5] Skip compilation (Re-sign only) ===
+echo === [1/5] Skip compilation (use existing release APK) ===
 goto check_unsigned
 
 :build_fail
@@ -240,12 +242,19 @@ pause
 exit /b 1
 
 :check_unsigned
-if not exist "!UNSIGNED!" goto no_unsigned
-goto do_align
+if exist "!UNSIGNED!" goto do_align
+if exist "!GRADLE_SIGNED!" goto use_gradle_signed
+goto no_release_apk
 
-:no_unsigned
-echo [ERROR] Unsigned APK not found:
+:use_gradle_signed
+echo [INFO] Gradle produced a signed APK; verifying and packaging it directly.
+set "SIGNED_SOURCE=!GRADLE_SIGNED!"
+goto do_verify
+
+:no_release_apk
+echo [ERROR] Release APK not found. Expected one of:
 echo   !UNSIGNED!
+echo   !GRADLE_SIGNED!
 echo.
 pause
 exit /b 1
@@ -289,19 +298,19 @@ exit /b 1
 REM ---------- 4. Verify ----------
 :do_verify
 echo.
-echo === [5/5] apksigner verify ===
-if not exist "!SIGNED!" goto verify_missing_fail
+echo === apksigner verify ===
+if not exist "!SIGNED_SOURCE!" goto verify_missing_fail
 if exist "!APKSIGNER_JAR!" (
-    "!JAVA_BIN!" -Xmx1024M -jar "!APKSIGNER_JAR!" verify --verbose "!SIGNED!"
+    "!JAVA_BIN!" -Xmx1024M -jar "!APKSIGNER_JAR!" verify --verbose "!SIGNED_SOURCE!"
 ) else (
-    call "!BT!\apksigner.bat" verify --verbose "!SIGNED!"
+    call "!BT!\apksigner.bat" verify --verbose "!SIGNED_SOURCE!"
 )
 if errorlevel 1 goto verify_fail
 goto do_copy
 
 :verify_missing_fail
 echo [ERROR] Cannot verify: signed APK does not exist:
-echo   !SIGNED!
+echo   !SIGNED_SOURCE!
 echo.
 pause
 exit /b 1
@@ -316,7 +325,7 @@ REM ---------- 5. Copy to root directory ----------
 :do_copy
 echo.
 echo === Copying output APK to root directory ===
-copy /Y "!SIGNED!" "!FINAL!" >nul
+copy /Y "!SIGNED_SOURCE!" "!FINAL!" >nul
 if errorlevel 1 goto copy_fail
 for %%F in ("!FINAL!") do set "SIZEB=%%~zF"
 set /a "SIZEMB=!SIZEB! / 1048576"

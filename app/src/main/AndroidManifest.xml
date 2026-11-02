@@ -83,7 +83,7 @@
         </provider>
 
     
-        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5458979489586580~8496333389"/>
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-2415998114933157~8828014028"/>
     </application>
 
 </manifest>

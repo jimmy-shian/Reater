@@ -23,6 +23,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +42,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.roundToInt
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -379,6 +384,8 @@ fun AnimatedDropdownPopup(
     onDismiss: () -> Unit,
     matchAnchorWidth: Boolean = true,
     anchorWidth: Dp? = null,
+    focusable: Boolean = true,
+    maxHeight: Dp? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val visible = remember { MutableTransitionState(false) }
@@ -386,6 +393,7 @@ fun AnimatedDropdownPopup(
     if (visible.currentState || visible.targetState) {
         val density = androidx.compose.ui.platform.LocalDensity.current
         var measuredAnchorWidthDp by remember { mutableStateOf<Dp>(0.dp) }
+        var availableRoomPx by remember { mutableStateOf<Int?>(null) }
         Popup(
             popupPositionProvider = remember {
                 object : PopupPositionProvider {
@@ -403,8 +411,14 @@ fun AnimatedDropdownPopup(
                         val spaceAbove = anchorBounds.top
                         val gapPx = with(density) { 4.dp.roundToPx() }
                         val y = if (spaceBelow >= popupContentSize.height || spaceBelow >= spaceAbove) {
+                            // 優先在錨點下方展開（不遮擋輸入框），並回傳下方可用空間供內容自鉗高度
+                            val room = spaceBelow - gapPx
+                            if (availableRoomPx != room) availableRoomPx = room
                             anchorBounds.bottom + gapPx
                         } else {
+                            // 上方空間明顯較大時才翻轉，靠齊錨點頂緣；同樣回傳上方可用空間
+                            val room = spaceAbove - gapPx
+                            if (availableRoomPx != room) availableRoomPx = room
                             (anchorBounds.top - popupContentSize.height - gapPx).coerceAtLeast(0)
                         }
                         return IntOffset(x, y)
@@ -412,7 +426,7 @@ fun AnimatedDropdownPopup(
                 }
             },
             onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true)
+            properties = PopupProperties(focusable = focusable)
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 androidx.compose.ui.platform.LocalDensity provides density
@@ -434,6 +448,11 @@ fun AnimatedDropdownPopup(
                     } else {
                         Modifier.widthIn(max = 420.dp).padding(horizontal = 16.dp)
                     }
+                    // 高度自鉗：取「呼叫端上限」與「定位器回報的可用空間」較小者，面板永遠不超出視窗、也不遮擋錨點
+                    val roomDp = availableRoomPx?.takeIf { it > 0 }?.let { with(density) { it.toDp() } }
+                    val heightCap = listOfNotNull(maxHeight, roomDp).minOrNull()
+                    val scrollState = rememberScrollState()
+                    var viewportHeightPx by remember { mutableStateOf(0) }
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         shadowElevation = 6.dp,
@@ -442,7 +461,34 @@ fun AnimatedDropdownPopup(
                         modifier = surfaceModifier
                             .graphicsLayer { scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }
                     ) {
-                        Column(content = content)
+                        Box(
+                            modifier = (if (heightCap != null) Modifier.heightIn(max = heightCap) else Modifier)
+                                .onSizeChanged { viewportHeightPx = it.height }
+                        ) {
+                            Column(
+                                modifier = Modifier.verticalScroll(scrollState),
+                                content = content
+                            )
+                            // 限高且內容可捲動時，顯示右緣細捲軸指示
+                            if (scrollState.maxValue > 0 && viewportHeightPx > 0) {
+                                val thumbFraction = viewportHeightPx * 1f / (viewportHeightPx + scrollState.maxValue)
+                                val thumbHeight = (viewportHeightPx * thumbFraction)
+                                    .coerceAtLeast(with(density) { 12.dp.toPx() }).toInt()
+                                val progress = scrollState.value * 1f / scrollState.maxValue
+                                val thumbY = (progress * (viewportHeightPx - thumbHeight)).roundToInt()
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(end = 2.dp)
+                                        .offset { IntOffset(0, thumbY) }
+                                        .size(width = 3.dp, height = with(density) { thumbHeight.toDp() })
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                            RoundedCornerShape(2.dp)
+                                        )
+                                )
+                            }
+                        }
                     }
                 }
             }

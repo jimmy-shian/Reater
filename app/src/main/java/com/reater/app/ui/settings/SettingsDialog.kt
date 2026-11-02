@@ -27,10 +27,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -72,6 +72,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -95,13 +99,14 @@ import com.reater.app.ui.components.DismissFocusOnScroll
 import com.reater.app.ui.components.dismissFocusOnTap
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.platform.LocalConfiguration
 import com.reater.app.ui.AvatarIcons
+import com.reater.app.ui.components.AnimatedDropdownPopup
 import com.reater.app.ui.components.UserAvatarView
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -141,8 +146,11 @@ fun SettingsDialog(
     var aiExpanded by rememberSaveable { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
     var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
-    var modelFetchInProgress by remember { mutableStateOf(false) }
     var modelFetchError by remember { mutableStateOf<String?>(null) }
+    // Model ID 欄位聚焦狀態與位置（用於鍵盤彈起時自動捲動到可視區頂部，保留下拉選單顯示空間）
+    var modelFieldFocused by remember { mutableStateOf(false) }
+    var modelFieldRootY by remember { mutableStateOf(0) }
+    var scrollContainerRootY by remember { mutableStateOf(0) }
 
     LaunchedEffect(currentBaseUrl) {
         if (!isBaseUrlUserEdited && currentBaseUrl.isNotBlank()) {
@@ -166,12 +174,10 @@ fun SettingsDialog(
         modelFetchError = null
         if (baseUrlInput.isBlank()) return@LaunchedEffect
         delay(600)
-        modelFetchInProgress = true
         val key = apiKeyInput.ifBlank { viewModel.getSavedApiKey().orEmpty() }
         viewModel.fetchAvailableModels(key, baseUrlInput)
             .onSuccess { models -> availableModels = models }
             .onFailure { modelFetchError = it.message }
-        modelFetchInProgress = false
     }
 
     fun dismissWithApply() {
@@ -226,6 +232,19 @@ fun SettingsDialog(
             } else dismissWithApply()
         }
 
+        val density = LocalDensity.current
+        // Model ID 欄位聚焦且鍵盤彈起時，自動把該輸入框捲動到可視區頂部，
+        // 讓下拉選單在輸入框與鍵盤之間保有足夠的顯示高度（不被壓縮成一兩項）
+        LaunchedEffect(modelFieldFocused, imeVisible) {
+            if (modelFieldFocused) {
+                delay(80) // 等待 imePadding 位移排版完成後再測量
+                val fieldContentOffset = modelFieldRootY - scrollContainerRootY + settingsScrollState.value
+                val topGapPx = with(density) { 24.dp.roundToPx() }
+                val target = (fieldContentOffset - topGapPx).coerceIn(0, settingsScrollState.maxValue)
+                settingsScrollState.animateScrollTo(target)
+            }
+        }
+
         val handleTapOutside = {
             focusManager.clearFocus()
             keyboard?.hide()
@@ -262,6 +281,7 @@ fun SettingsDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(settingsScrollState)
+                        .onGloballyPositioned { scrollContainerRootY = it.positionInRoot().y.roundToInt() }
                         .dismissFocusOnTap(focusManager)
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
@@ -858,140 +878,157 @@ fun SettingsDialog(
 
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Text(
+                                        text = "Model ID",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+                                            modelFieldRootY = coords.positionInRoot().y.roundToInt()
+                                        }
                                     ) {
-                                        Text(
-                                            text = "Model ID",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Medium,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Box(modifier = Modifier.padding(start = 8.dp)) {
-                                            Text(
-                                                text = when {
-                                                    modelFetchInProgress -> "讀取模型…"
-                                                    availableModels.isNotEmpty() -> "選取可用模型 ▾"
-                                                    else -> "輸入 URL 後取得"
-                                                },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .clickable(enabled = availableModels.isNotEmpty()) { showModelDropdown = true }
-                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                                            )
-                                            DropdownMenu(
-                                                expanded = showModelDropdown && availableModels.isNotEmpty(),
-                                                onDismissRequest = { showModelDropdown = false }
-                                            ) {
+                                        OutlinedTextField(
+                                            value = modelInput,
+                                            onValueChange = {
+                                                modelInput = it
+                                                isModelUserEdited = true
+                                                showModelDropdown = true
+                                            },
+                                            placeholder = {
                                                 Text(
-                                                    text = "從目前 API Base URL 取得",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.outline,
-                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                                    "從 API 取得的 Model ID",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
-                                                HorizontalDivider()
-                                                availableModels.forEach { modelId ->
-                                                    DropdownMenuItem(
-                                                        text = {
-                                                            Text(modelId, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                                        },
-                                                        onClick = {
-                                                            modelInput = modelId
-                                                            isModelUserEdited = true
-                                                            showModelDropdown = false
-                                                        }
+                                            },
+                                            trailingIcon = {
+                                                IconButton(
+                                                    enabled = availableModels.isNotEmpty(),
+                                                    onClick = { showModelDropdown = !showModelDropdown }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ArrowDropDown,
+                                                        contentDescription = "展開可用模型清單",
+                                                        tint = MaterialTheme.colorScheme.outline
                                                     )
                                                 }
+                                            },
+                                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                                .onFocusChanged {
+                                                    modelFieldFocused = it.isFocused
+                                                    if (it.isFocused) showModelDropdown = true
+                                                },
+                                            shape = RoundedCornerShape(8.dp),
+                                            singleLine = false,
+                                            minLines = 1,
+                                            maxLines = 3,
+                                            textStyle = MaterialTheme.typography.bodyMedium,
+                                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                            keyboardActions = KeyboardActions(onDone = {
+                                                showModelDropdown = false
+                                                focusManager.clearFocus()
+                                                keyboard?.hide()
+                                            }),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                        )
+                                        val configuration = LocalConfiguration.current
+                                        val modelListMaxHeight = (configuration.screenHeightDp * 0.55f).dp.coerceIn(240.dp, 440.dp)
+                                        // 比對規則：
+                                        // - 預設以「整段輸入」在型號字串中比對（等同 %關鍵字% 子字串包含，不分大小寫）
+                                        // - 僅允許以空白 " " 切分關鍵字；多段關鍵字各自整串比對後取 OR
+                                        val modelQuery = modelInput.trim()
+                                        val filteredModels = if (modelQuery.isBlank()) {
+                                            availableModels
+                                        } else {
+                                            val tokens = modelQuery.split(' ').map { it.trim() }.filter { it.isNotEmpty() }
+                                            if (tokens.size <= 1) {
+                                                availableModels.filter { it.contains(modelQuery, ignoreCase = true) }
+                                            } else {
+                                                availableModels.filter { model -> tokens.any { model.contains(it, ignoreCase = true) } }
                                             }
                                         }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    OutlinedTextField(
-                                        value = modelInput,
-                                        onValueChange = {
-                                            modelInput = it
-                                            isModelUserEdited = true
-                                        },
-                                        placeholder = {
-                                            Text(
-                                                "從 API 取得的 Model ID",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        },
-                                        trailingIcon = {
-                                            IconButton(
-                                                enabled = availableModels.isNotEmpty(),
-                                                onClick = { showModelDropdown = !showModelDropdown }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ArrowDropDown,
-                                                    contentDescription = "展開常用模型清單",
-                                                    tint = MaterialTheme.colorScheme.outline
-                                                )
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        singleLine = false,
-                                        minLines = 1,
-                                        maxLines = 3,
-                                        textStyle = MaterialTheme.typography.bodyMedium,
-                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(onDone = {
-                                            focusManager.clearFocus()
-                                            keyboard?.hide()
-                                        }),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                        )
-                                    )
-
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    if (availableModels.isNotEmpty()) {
-                                        Text(
-                                            text = "可用模型：",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                    }
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        availableModels.forEach { chipModel ->
-                                            val isSelected = modelInput == chipModel
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                                border = BorderStroke(
-                                                    1.dp,
-                                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                                                ),
-                                                modifier = Modifier.clickable {
-                                                    modelInput = chipModel
-                                                }
-                                            ) {
+                                        AnimatedDropdownPopup(
+                                            expanded = showModelDropdown,
+                                            onDismiss = { showModelDropdown = false },
+                                            focusable = false,
+                                            maxHeight = modelListMaxHeight
+                                        ) {
+                                            if (filteredModels.isEmpty()) {
                                                 Text(
-                                                    text = chipModel,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                                    text = if (availableModels.isEmpty()) {
+                                                        "尚未取得可用模型清單"
+                                                    } else {
+                                                        "沒有符合「${modelQuery}」的模型"
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.outline,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp)
                                                 )
+                                            } else {
+                                                filteredModels.forEachIndexed { index, modelId ->
+                                                    val isCurrent = modelId == currentModel
+                                                    if (index > 0) {
+                                                        // 每一項之間以分隔線做出視覺區隔
+                                                        HorizontalDivider(
+                                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                                                            modifier = Modifier.padding(horizontal = 10.dp)
+                                                        )
+                                                    }
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .background(
+                                                                if (isCurrent) {
+                                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                                                } else {
+                                                                    MaterialTheme.colorScheme.surface
+                                                                }
+                                                            )
+                                                            .clickable {
+                                                                modelInput = modelId
+                                                                isModelUserEdited = true
+                                                                showModelDropdown = false
+                                                            }
+                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // 名稱換行完整顯示（同輸入框樣式），不做單行截斷
+                                                        Text(
+                                                            text = modelId,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isCurrent) {
+                                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                                            } else {
+                                                                MaterialTheme.colorScheme.onSurface
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        if (isCurrent) {
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Icon(
+                                                                imageVector = Icons.Default.Check,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

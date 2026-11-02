@@ -23,8 +23,8 @@ android {
         applicationId = "com.reater.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.5"
+        versionCode = 8
+        versionName = "1.0.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -59,6 +59,7 @@ android {
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
+            ndk.debugSymbolLevel = "SYMBOL_TABLE"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
