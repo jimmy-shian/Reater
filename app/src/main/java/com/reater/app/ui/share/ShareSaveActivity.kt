@@ -496,6 +496,8 @@ fun ShareSaveScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (state.webResolving) "正在以內建瀏覽器解析分享連結（含留言與媒體）..."
+                            else if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM)
+                                "正在自動分析 Instagram 內容與下載離線媒體..."
                             else "正在自動分析 Threads 內容與下載離線媒體...",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -583,7 +585,11 @@ fun ShareSaveScreen(
                     onValueChange = { viewModel.onBodyTextChanged(it) },
                     placeholder = {
                         Text(
-                            if (state.isFetching || state.webResolving) "正在自動擷取 Threads 內容中…"
+                            if (state.isFetching || state.webResolving) {
+                                if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM)
+                                    "正在自動擷取 Instagram 內容中…"
+                                else "正在自動擷取 Threads 內容中…"
+                            }
                             else stringResource(R.string.body_placeholder)
                         )
                     },

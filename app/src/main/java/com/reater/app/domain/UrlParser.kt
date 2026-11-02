@@ -236,6 +236,112 @@ object UrlParser {
         }
     }
 
+    // ───────────────────────── Instagram ─────────────────────────
+    //
+    // IG 分享連結形態（實測 Instagram App 分享鈕輸出）：
+    //  1. 貼文  https://www.instagram.com/p/{code}/（可帶 ?vrfl=… / ?igsh=… 等追蹤參數）
+    //  2. Reels https://www.instagram.com/reel/{code}/ 或 /reels/{code}/
+    //  3. IGTV  https://www.instagram.com/tv/{code}/
+    //  4. 短鏈  https://instagram.com/share/{token}（需 redirect，抓取層處理）
+    private val IG_VALID_HOSTS = setOf(
+        "instagram.com",
+        "www.instagram.com",
+        "instagr.am",
+        "www.instagr.am"
+    )
+    private val IG_POST_PATH_REGEX = Regex("""/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)""")
+    private val IG_SHARE_PATH_REGEX = Regex("""/share/([A-Za-z0-9_-]+)""")
+
+    /** 平台常數（items.platform 欄位值） */
+    const val PLATFORM_THREADS = "THREADS"
+    const val PLATFORM_INSTAGRAM = "INSTAGRAM"
+
+    data class ParsedInstagramUrl(
+        val shortcode: String,
+        /** 正規形 https://www.instagram.com/p/{code}/ */
+        val canonicalUrl: String,
+        /** 實際拿去抓取的 URL（去 query 但保留 path 原樣） */
+        val fetchUrl: String,
+        val kindLabel: String,
+        val isShareLink: Boolean,
+        val shareToken: String = ""
+    )
+
+    /** 是否為 Instagram 連結（host 為 instagram 相關網域） */
+    fun isInstagramHost(rawUrl: String): Boolean {
+        if (rawUrl.isBlank()) return false
+        return try {
+            val host = URI(rawUrl.split("?")[0].trim()).host?.lowercase() ?: return false
+            IG_VALID_HOSTS.contains(host)
+        } catch (_: Exception) {
+            rawUrl.contains("instagram.com")
+        }
+    }
+
+    /** 從分享文字中抽出第一個 Instagram 連結（容錯規則同 Threads 版）。 */
+    fun extractFirstInstagramUrl(text: String): String? {
+        val urlRegex = Regex("""https?://[^\s<>"']+""")
+        for (match in urlRegex.findAll(text)) {
+            var url = match.value
+                .trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
+                .trimEnd('。', '，', '、', '！', '？', '；', '：', '「', '」', '『', '』', '【', '】', '…')
+            if (url.endsWith("...")) continue
+            url = url.trimStart('(', '[', '{', '「', '『', '【', '<')
+            if (isInstagramHost(url)) return url
+        }
+        return null
+    }
+
+    /**
+     * 解析 Instagram 連結（貼文/reel/tv/share 短鏈）。
+     * 貼文 canonical 為 https://www.instagram.com/p/{code}/；
+     * /share/ 直接保留原鏈（token 不是短碼，需抓取層 redirect 展開）。
+     */
+    fun parseInstagramUrl(rawUrl: String): ParsedInstagramUrl? {
+        return try {
+            val trimmed = rawUrl.trim().trimEnd('/', '\\', '"', '\'', '。', '，', '！', '？')
+            if (trimmed.isBlank() || !isInstagramHost(trimmed)) return null
+            val withoutQuery = trimmed.split("?")[0].trim().trimEnd('/')
+            val uri = URI(withoutQuery)
+            val path = uri.path.orEmpty().trimEnd('/')
+            val host = uri.host?.lowercase() ?: return null
+            if (host !in IG_VALID_HOSTS) return null
+
+            val shareMatch = IG_SHARE_PATH_REGEX.find(path)
+            if (shareMatch != null) {
+                val token = shareMatch.groupValues[1]
+                return ParsedInstagramUrl(
+                    shortcode = "igshare_$token",
+                    canonicalUrl = withoutQuery,
+                    fetchUrl = withoutQuery,
+                    kindLabel = "IG 分享",
+                    isShareLink = true,
+                    shareToken = token
+                )
+            }
+            val postMatch = IG_POST_PATH_REGEX.find(path) ?: return null
+            val code = postMatch.groupValues[1]
+            if (code.isBlank()) return null
+            val type = Regex("""/(p|reel|reels|tv)/""").find(path)?.groupValues?.get(1) ?: "p"
+            val canonicalType = if (type == "p" || type == "tv") "p" else "reel"
+            ParsedInstagramUrl(
+                shortcode = code,
+                canonicalUrl = "https://www.instagram.com/$canonicalType/$code/",
+                fetchUrl = "https://www.instagram.com/$canonicalType/$code/",
+                kindLabel = if (canonicalType == "reel") "Reels" else "貼文",
+                isShareLink = false
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 去除 IG 追蹤參數（?igsh=?vrfl=?utm_* 等），顯示／複製／外部開啟一律走此 helper。 */
+    fun stripInstagramParams(rawUrl: String): String {
+        if (rawUrl.isBlank()) return rawUrl
+        return rawUrl.split("?")[0].trim().trimEnd('/').trim()
+    }
+
     private fun sha256(input: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }

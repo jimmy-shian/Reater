@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!--
+      「全部平台」圖示：Material Symbols 的 apps（九宮格）SVG 路徑
+      來源：https://fonts.google.com/icons?selected=Material+Symbols+Outlined:apps （Apache-2.0）
+      與 Threads / Instagram 相同以 Compose Icon 的 tint 依主題著色。
+      路徑已正規化為 Android PathParser 相容格式（每個指令獨立、數字以空白分隔）。
+    -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 4 8 h 4 V 4 H 4 v 4 Z m 6 12 h 4 v -4 h -4 v 4 Z m -6 0 h 4 v -4 H 4 v 4 Z m 0 -6 h 4 v -4 H 4 v 4 Z m 6 0 h 4 v -4 h -4 v 4 Z m 6 -10 v 4 h 4 V 4 h -4 Z m -6 4 h 4 V 4 h -4 v 4 Z m 6 6 h 4 v -4 h -4 v 4 Z m 0 6 h 4 v -4 h -4 v 4 Z" />
+</vector>

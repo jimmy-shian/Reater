@@ -126,6 +126,8 @@ data class ExportedItem(
     val lastFetchStatus: String = "NOT_FETCHED",
     val lastFetchAt: Long = 0,
     val rawJsonMin: String = "",
+    /** THREADS（預設，舊備份）/ INSTAGRAM */
+    val platform: String = com.reater.app.domain.UrlParser.PLATFORM_THREADS,
     val deletedAt: Long? = null,
     val userBodyOverride: String? = null,
     val editedAt: Long? = null,
@@ -429,6 +431,7 @@ class BackupManager @Inject constructor(
                     lastFetchStatus = detail.item.lastFetchStatus,
                     lastFetchAt = detail.item.lastFetchAt,
                     rawJsonMin = detail.item.rawJsonMin,
+                    platform = detail.item.platform,
                     deletedAt = detail.item.deletedAt,
                     userBodyOverride = detail.userEdit?.userBodyOverride,
                     editedAt = detail.userEdit?.editedAt,
@@ -865,6 +868,7 @@ class BackupManager @Inject constructor(
                         lastFetchStatus = item.lastFetchStatus,
                         lastFetchAt = item.lastFetchAt,
                         rawJsonMin = item.rawJsonMin,
+                        platform = item.platform,
                         isDeleted = item.isDeleted,
                         deletedAt = item.deletedAt
                     )

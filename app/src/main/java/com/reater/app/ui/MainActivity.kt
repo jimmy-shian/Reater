@@ -886,6 +886,30 @@ fun MainScreen(
             else -> base.filter { it.userEdit?.categoryId == proCategoryFilter }
         }
     }
+    // 平台篩選（全部 / Threads / IG）：與分類、搜尋組成多重篩選
+    var platformFilter by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf("ALL")
+    }
+    val platformCounts = remember(allPosts) {
+        mapOf(
+            "ALL" to allPosts.size,
+            com.reater.app.domain.UrlParser.PLATFORM_THREADS to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_THREADS },
+            com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM }
+        )
+    }
+    // 與 PostListTab 顯示一致的雙重篩選（平台 + 分類），供上方分享鍵複製「畫面上看到的」清單
+    val applyFeedFilters: (List<ItemDetail>) -> List<ItemDetail> = { base ->
+        base.filter { detail ->
+            platformFilter == "ALL" || detail.item.platform == platformFilter
+        }.filter { detail ->
+            when (proCategoryFilter) {
+                null -> true
+                -1L -> detail.userEdit?.categoryId == null
+                else -> detail.userEdit?.categoryId == proCategoryFilter
+            }
+        }
+    }
+
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val ioScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -1321,21 +1345,28 @@ fun MainScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        val activePosts = if (currentTab == 3) proFilteredPosts else posts
+                        // 與畫面顯示一致：分頁基準清單 → 平台/分類雙重篩選，取代先前無視篩選的「全部」複製
+                        val activePosts = when (currentTab) {
+                            3 -> proFilteredPosts
+                            0 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts else allPosts)
+                            1 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts)
+                            2 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts)
+                            else -> emptyList()
+                        }
                         if (activePosts.isNotEmpty()) {
                             val shareText = activePosts.joinToString("\n") { detail ->
                                 formatPostShareText(detail)
                             }
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("Reater Group Share", shareText))
-                            Toast.makeText(context, "已複製分組共 ${activePosts.size} 則網址與摘要", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "已複製目前篩選共 ${activePosts.size} 則網址與摘要", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(context, "目前分組無貼文", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "目前篩選無貼文", Toast.LENGTH_SHORT).show()
                         }
                     }) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "複製分組所有網址與摘要",
+                            contentDescription = "複製目前篩選的所有網址與摘要",
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -1566,9 +1597,12 @@ fun MainScreen(
                             categories = categories,
                             selectedFilter = proCategoryFilter,
                             onFilterSelect = viewModel::setProCategoryFilter,
+                            selectedPlatform = platformFilter,
+                            onPlatformSelect = { platformFilter = it },
+                            platformCounts = platformCounts,
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容"
-                            else "目前尚無內容\n在 Threads 中點擊分享至 Reater 即可保存！",
+                            else "目前尚無內容\n在 Threads 或 Instagram 中點擊分享至 Reater 即可保存！",
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1602,6 +1636,9 @@ fun MainScreen(
                             categories = categories,
                             selectedFilter = proCategoryFilter,
                             onFilterSelect = viewModel::setProCategoryFilter,
+                            selectedPlatform = platformFilter,
+                            onPlatformSelect = { platformFilter = it },
+                            platformCounts = platformCounts,
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容"
                             else "太棒了！所有貼文皆已閱讀完畢",
@@ -1638,6 +1675,9 @@ fun MainScreen(
                             categories = categories,
                             selectedFilter = proCategoryFilter,
                             onFilterSelect = viewModel::setProCategoryFilter,
+                            selectedPlatform = platformFilter,
+                            onPlatformSelect = { platformFilter = it },
+                            platformCounts = platformCounts,
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容"
                             else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！",
@@ -1737,9 +1777,16 @@ private fun PostListTab(
     onDelete: (ItemDetail) -> Unit,
     selectedFilter: Long? = null,
     onFilterSelect: (Long?) -> Unit = {},
+    /** 平台篩選："ALL" | UrlParser.PLATFORM_THREADS | PLATFORM_INSTAGRAM */
+    selectedPlatform: String = "ALL",
+    onPlatformSelect: (String) -> Unit = {},
+    platformCounts: Map<String, Int> = emptyMap(),
     active: Boolean = true
 ) {
-    val filtered = posts.filter { detail ->
+    // 雙重篩選第一層：平台（全部 / Threads / IG）
+    val platformFiltered = if (selectedPlatform == "ALL") posts
+    else posts.filter { it.item.platform == selectedPlatform }
+    val filtered = platformFiltered.filter { detail ->
         when (selectedFilter) {
             null -> true
             -1L -> detail.userEdit?.categoryId == null
@@ -1749,8 +1796,11 @@ private fun PostListTab(
     Column(Modifier.fillMaxSize()) {
         com.reater.app.ui.components.CategoryFilterBar(
             categories = categories, selectedId = selectedFilter,
-            counts = posts.groupingBy { it.userEdit?.categoryId ?: -1L }.eachCount(),
-            totalCount = posts.size, onSelect = onFilterSelect,
+            counts = platformFiltered.groupingBy { it.userEdit?.categoryId ?: -1L }.eachCount(),
+            totalCount = platformFiltered.size, onSelect = onFilterSelect,
+            selectedPlatform = selectedPlatform,
+            onPlatformSelect = onPlatformSelect,
+            platformCounts = platformCounts,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), active = active
         )
     if (filtered.isEmpty()) {

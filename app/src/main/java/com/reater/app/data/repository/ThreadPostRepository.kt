@@ -217,7 +217,8 @@ class ThreadPostRepository @Inject constructor(
         categoryExplicitlySelected: Boolean = false,
         manualNoteEdited: Boolean = false,
         saveAsNew: Boolean = false,
-        overwriteConfirmed: Boolean = false
+        overwriteConfirmed: Boolean = false,
+        platform: String = com.reater.app.domain.UrlParser.PLATFORM_THREADS
     ): Long = database.withWriteTransaction {
         // 子串分享（母文存在時）：免 DB 遷移，把母文前綴進 body、母文媒體排前面合併存檔。
         // 例 D-J：【母文 @yw202087】下一位勇者… + 分享 @l.m.sheng_1024 永遠空租吧；媒體 = 母圖 + 子（子無圖則只有母圖）。
@@ -281,12 +282,15 @@ class ThreadPostRepository @Inject constructor(
           val existing = if (saveAsNew) null else (
               itemDao.getItemByCanonicalUrl(canonicalUrl) ?: itemDao.getItemByShortcode(shortcode)
           )
-          if (existing != null && !overwriteConfirmed) throw SaveConflictException(existing.isDeleted)
+          // 平台互斥：同短碼但來自不同平台不視為同一篇（Threads/IG 短碼可能撞名）
+          val existingRunnable = existing?.takeIf { it.platform == platform }
+          if (existingRunnable != null && !overwriteConfirmed) throw SaveConflictException(existingRunnable.isDeleted)
           // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
           val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
               .ifBlank { TopicTags.firstHashtag(combinedBody) }
-          val itemId = if (existing != null) {
-              val updated = existing.copy(
+          val itemId = if (existingRunnable != null) {
+              val updated = existingRunnable.copy(
+                  platform = platform,
                   shortcode = shortcode,
                   authorHandle = authorHandle.ifBlank { existing.authorHandle },
                   topicTag = resolvedTopic.ifBlank { existing.topicTag },
@@ -324,7 +328,8 @@ class ThreadPostRepository @Inject constructor(
                 replyCount = fetchedResult?.replyCount ?: 0,
                 repostCount = fetchedResult?.repostCount ?: 0,
                 lastFetchStatus = fetchedResult?.status ?: "COMPLETE",
-                rawJsonMin = resolvedRawJson
+                rawJsonMin = resolvedRawJson,
+                platform = platform
             )
             itemDao.insertItem(newItem)
         }

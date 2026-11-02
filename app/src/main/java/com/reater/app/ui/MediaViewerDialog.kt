@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.*
@@ -316,10 +317,12 @@ private fun ZoomableViewerImage(
                         lastTime = now
                         onDismissDrag(pan.y)
                         event.changes.forEach { it.consume() }
-                    } else if ((pointers > 1 || scale > 1.01f || transforming) && (moved || transforming)) {
+                    } else if (pointers > 0 && (pointers > 1 || scale > 1.01f || transforming) && (moved || transforming)) {
+                        val centroid = event.calculateCentroid(useCurrent = false)
+                        if (!centroid.isSpecified) continue
                         val old = scale
                         scale = (scale * zoom).coerceIn(1f, 5f)
-                        val center = event.calculateCentroid(useCurrent = false) - Offset(size.width / 2f, size.height / 2f)
+                        val center = centroid - Offset(size.width / 2f, size.height / 2f)
                         val bound = bounds(scale)
                         val proposedX = offsetX * scale / old + center.x * (1 - scale / old) + pan.x
                         val proposedY = offsetY * scale / old + center.y * (1 - scale / old) + pan.y

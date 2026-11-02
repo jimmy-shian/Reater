@@ -21,6 +21,9 @@ tools/licenses_issued_*.bak
 __pycache__/
 *.pyc
 
+# Raw share-page capture (unreferenced; the sanitized sample is the committed fixture)
+/app/src/test/resources/threads_share_qUDfvMEg.html
+
 # Local scripts with private keystore
 build-release.ps1
 

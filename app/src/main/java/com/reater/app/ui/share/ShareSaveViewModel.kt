@@ -8,6 +8,7 @@ import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.ThreadsGraphQLClient
+import com.reater.app.data.remote.instagram.InstagramClient
 import com.reater.app.data.repository.SettingsRepository
 import com.reater.app.data.repository.ThreadPostRepository
 import com.reater.app.domain.UrlParser
@@ -61,6 +62,8 @@ data class ShareSaveUiState(
     val saveError: String? = null,
     val showCreateCategoryDialog: Boolean = false,
     val showProLimitNotice: Boolean = false,
+    /** items.platform：THREADS / INSTAGRAM（影響存檔欄位與分類篩選） */
+    val platform: String = com.reater.app.domain.UrlParser.PLATFORM_THREADS,
     val fetchedResult: FetchedPostResult? = null,
     val hasApiKey: Boolean = false,
     val aiAnalyzeOnSave: Boolean = false
@@ -71,6 +74,7 @@ class ShareSaveViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: ThreadPostRepository,
     private val graphQLClient: ThreadsGraphQLClient,
+    private val instagramClient: InstagramClient,
     private val categoryDao: CategoryDao,
     private val settingsRepository: SettingsRepository,
     @ApplicationContext private val appContext: Context
@@ -127,6 +131,40 @@ class ShareSaveViewModel @Inject constructor(
     fun processIncomingText(sharedText: String) {
         if (_uiState.value.rawText == sharedText && _uiState.value.targetUrl.isNotBlank()) return
         _uiState.update { it.copy(rawText = sharedText) }
+
+        // ── 平台路由：Instagram 優先辨識（連結內容不同於 Threads 樣式）──
+        val igRaw = UrlParser.extractFirstInstagramUrl(sharedText)
+            // 分享文字只帶短連結無 https 前綴時（罕見）直接嘗試整段
+            ?: (if (UrlParser.isInstagramHost(sharedText.trim())) sharedText.trim() else null)
+        val igParsed = igRaw?.let { UrlParser.parseInstagramUrl(it) }
+        if (igParsed != null) {
+            val draft = UrlParser.extractBodyDraft(sharedText, igRaw)
+            httpDone = false; webDone = true; httpResult = null; webResult = null
+            lastAppliedComments = ""
+            suggestionJob?.cancel(); suggestionJob = null
+            _uiState.update {
+                it.copy(
+                    targetUrl = igParsed.canonicalUrl,
+                    fetchUrl = igParsed.fetchUrl,
+                    shareKindLabel = igParsed.kindLabel,
+                    shortcode = igParsed.shortcode,
+                    authorHandle = "",
+                    bodyText = draft,
+                    bodyDraft = draft,
+                    hadMediaSuffix = false,
+                    platform = UrlParser.PLATFORM_INSTAGRAM,
+                    isFetching = true,
+                    isFetchFailed = false,
+                    webResolving = false,
+                    webResolveAttempted = false,
+                    fetchedResult = null
+                )
+            }
+            refreshCategorySuggestion()
+            fetchInstagramData(igParsed.fetchUrl, igParsed.shortcode)
+            return
+        }
+
         val extractedUrl = UrlParser.extractFirstThreadsUrl(sharedText) ?: sharedText.trim()
         val parsed = UrlParser.parseAndCanonicalize(extractedUrl)
 
@@ -168,6 +206,7 @@ class ShareSaveViewModel @Inject constructor(
                 bodyText = draft,
                 bodyDraft = draft,
                 hadMediaSuffix = parsed?.hadMediaSuffix == true,
+                platform = UrlParser.PLATFORM_THREADS,
                 isFetching = true,
                 isFetchFailed = false,
                 webResolving = false,
@@ -221,6 +260,18 @@ class ShareSaveViewModel @Inject constructor(
     private fun fetchRemoteData(urlOrTarget: String, shortcode: String) {
         viewModelScope.launch {
             val result = graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode)
+            result.onSuccess { fetched ->
+                httpResult = fetched
+            }
+            httpDone = true
+            applyMerged()
+        }
+    }
+
+    /** IG 抓取路徑：單路即可（WebView 路徑僅 Threads /share/ 需要） */
+    private fun fetchInstagramData(url: String, shortcode: String) {
+        viewModelScope.launch {
+            val result = instagramClient.fetchPost(url, shortcode)
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -563,6 +614,8 @@ class ShareSaveViewModel @Inject constructor(
                         )
                     val fresh = if (hasExistingContent) {
                         existingFetched
+                    } else if (state.platform == UrlParser.PLATFORM_INSTAGRAM) {
+                        instagramClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
                     } else {
                         graphQLClient.fetchPostByPostIdOrShortcode(
                             state.targetUrl, state.shortcode
@@ -600,7 +653,8 @@ class ShareSaveViewModel @Inject constructor(
                     fetchedResult = state.fetchedResult,
                     isFavorite = state.isFavorite,
                     saveAsNew = saveAsNew == true,
-                    overwriteConfirmed = saveAsNew == false
+                    overwriteConfirmed = saveAsNew == false,
+                    platform = state.platform
                 )
                 val shouldAnalyze = triggerAiAnalysis ?: (state.aiAnalyzeOnSave && state.hasApiKey)
                 if (shouldAnalyze) {

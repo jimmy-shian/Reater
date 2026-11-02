@@ -40,7 +40,7 @@ import com.reater.app.data.local.entity.UserEditEntity
         SavedCollectionEntity::class,
         SavedQueryEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,6 +56,11 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_10_11: Migration = Migration(10, 11) { connection ->
             connection.execSql("ALTER TABLE `comments` ADD COLUMN `authorProfileUrl` TEXT NOT NULL DEFAULT ''")
             connection.execSql("ALTER TABLE `comments` ADD COLUMN `authorProfileLocalPath` TEXT NOT NULL DEFAULT ''")
+        }
+
+        /** IG 抓取模組：items 新增 platform 欄位（THREADS/INSTAGRAM），舊資料全為 THREADS */
+        val MIGRATION_11_12: Migration = Migration(11, 12) { connection ->
+            connection.execSql("ALTER TABLE `items` ADD COLUMN `platform` TEXT NOT NULL DEFAULT 'THREADS'")
         }
 
         val MIGRATION_9_10: Migration = Migration(9, 10) { connection ->

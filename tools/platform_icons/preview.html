@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reater 平台圖示（Threads / Instagram / 全部）預覽</title>
+<style>
+body{font-family:system-ui,"Noto Sans TC",sans-serif;background:radial-gradient(1200px 600px at 20% -10%,#1c2450 0%,#0b0e14 60%);color:#e8ecf3;margin:0;padding:32px}
+h1{font-size:24px;background:linear-gradient(90deg,#FDE68A,#F59E0B,#EC4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:16px;color:#FDE68A;letter-spacing:.1em;margin-top:28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px}
+.card{background:linear-gradient(180deg,#171e30,#101524);border:1px solid #2a3552;border-radius:18px;padding:22px 12px;text-align:center;box-shadow:0 8px 24px #0008}
+.card img{width:64px;height:64px;filter:drop-shadow(0 4px 12px #0009)}
+.card b{display:block;margin-top:10px;font-size:14px}.card span{font-size:12px;color:#9aa4b2}
+.sm img{width:20px;height:20px}
+</style></head><body>
+<h1>Reater 平台篩選圖示</h1>
+<p style="color:#9aa4b2">官方品牌 SVG（Simple Icons）與 Material Symbols，全部為單色填色路徑，於 App 內以 Compose Icon 的 tint 依主題著色。</p>
+<h2>放大檢視</h2>
+<div class="grid">
+<div class="card"><img src="instagram.svg"><b>Instagram</b><span>instagram.svg</span></div>
+<div class="card"><img src="threads.svg"><b>Threads</b><span>threads.svg</span></div>
+<div class="card"><img src="all.svg"><b>All platforms</b><span>all.svg</span></div>
+</div>
+<h2>App 內實際尺寸（20dp）</h2>
+<div class="grid">
+<div class="card sm"><img src="instagram.svg"><b>Instagram</b><span>instagram.svg</span></div>
+<div class="card sm"><img src="threads.svg"><b>Threads</b><span>threads.svg</span></div>
+<div class="card sm"><img src="all.svg"><b>All platforms</b><span>all.svg</span></div>
+</div>
+<p style="margin-top:24px;color:#9aa4b2">App 內：<code>app/src/main/res/drawable/ic_threads.xml</code>、<code>ic_instagram.xml</code>、<code>ic_platform_all.xml</code>（路徑已正規化為 Android PathParser 相容格式）。</p>
+</body></html>
