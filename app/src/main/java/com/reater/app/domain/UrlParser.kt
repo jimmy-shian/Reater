@@ -342,6 +342,292 @@ object UrlParser {
         return rawUrl.split("?")[0].trim().trimEnd('/').trim()
     }
 
+    // ───────────────────────── X (Twitter) ─────────────────────────
+    //
+    // X 貼文連結形態（官方 App 分享鈕輸出 + web 常見變體）：
+    //  1. https://x.com/{handle}/status/{id}（可帶 ?s=20 / ?t=… 等追蹤參數）
+    //  2. https://twitter.com/{handle}/status/{id}（舊網域）
+    //  3. https://mobile.twitter.com/{handle}/status/{id}、https://www.x.com/...
+    //  4. https://x.com/i/web/status/{id}（web app 內部路徑，無 handle）
+    //  尾端 /photo/1、/video/1、/analytics 為媒體/統計頁，屬同一則貼文，正規化時去除。
+    private val X_VALID_HOSTS = setOf(
+        "x.com",
+        "www.x.com",
+        "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
+        "m.twitter.com"
+    )
+    private val X_STATUS_PATH_REGEX =
+        Regex("""/i/web/status/(\d+)|/([A-Za-z0-9_]{1,20})/status(?:es)?/(\d+)""")
+    private val X_MEDIA_SUFFIX_REGEX = Regex("""/(?:photo|video)/\d+$|/analytics$""")
+
+    /** 平台常數（items.platform 欄位值）——X (Twitter) */
+    const val PLATFORM_X = "X"
+
+    // ───────────────────────── Facebook ─────────────────────────
+    private val FB_VALID_HOSTS = setOf(
+        "facebook.com",
+        "www.facebook.com",
+        "m.facebook.com",
+        "web.facebook.com",
+        "fb.com",
+        "fb.watch"
+    )
+    /** 平台常數（items.platform 欄位值）——Facebook */
+    const val PLATFORM_FACEBOOK = "FACEBOOK"
+
+    // ───────────────────────── YouTube ─────────────────────────
+    private val YT_VALID_HOSTS = setOf(
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be"
+    )
+    /** 平台常數（items.platform 欄位值）——YouTube */
+    const val PLATFORM_YOUTUBE = "YOUTUBE"
+
+    data class ParsedXUrl(
+        /** 可能為空（/i/web/status/ 形無 handle；抓取後由 API 補齊） */
+        val handle: String,
+        val statusId: String,
+        /** 正規形 https://x.com/{handle|'i/web'}/status/{id} */
+        val canonicalUrl: String,
+        /** 實際拿去抓取的 URL（去 query；fxtwitter API 同一路徑格式） */
+        val fetchUrl: String,
+        /** UI 顯示用 */
+        val kindLabel: String = "X 貼文",
+        /** 是否帶 /photo|video/N 或 /analytics 尾綴（同一則） */
+        val hadMediaSuffix: Boolean = false
+    )
+
+    /** 是否為 X/Twitter 連結（host 為 x.com / twitter 相關網域） */
+    fun isXHost(rawUrl: String): Boolean {
+        if (rawUrl.isBlank()) return false
+        return try {
+            val host = URI(rawUrl.split("?")[0].trim()).host?.lowercase() ?: return false
+            X_VALID_HOSTS.contains(host)
+        } catch (_: Exception) {
+            rawUrl.contains("x.com/") || rawUrl.contains("twitter.com/")
+        }
+    }
+
+    /** 從分享文字中抽出第一個 X 連結（容錯規則同 Threads 版）。 */
+    fun extractFirstXUrl(text: String): String? {
+        val urlRegex = Regex("""https?://[^\s<>"']+""")
+        for (match in urlRegex.findAll(text)) {
+            var url = match.value
+                .trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
+                .trimEnd('。', '，', '、', '！', '？', '；', '：', '「', '」', '『', '』', '【', '】', '…')
+            if (url.endsWith("...")) continue
+            url = url.trimStart('(', '[', '{', '「', '『', '【', '<')
+            if (isXHost(url)) return url
+        }
+        return null
+    }
+
+    /** 去除 X 追蹤參數（?s=09 / ?t=… / ?utm_* 等），顯示／複製／外部開啟一律走此 helper。 */
+    fun stripXParams(rawUrl: String): String {
+        if (rawUrl.isBlank()) return rawUrl
+        return rawUrl.split("?")[0].trim().trimEnd('/').trim()
+    }
+
+    /**
+     * 解析 X 貼文連結。canonical 取 handle（無 handle 退 /i/web/status/），
+     * 抓取層（fxtwitter）會補齊真實 handle 與作者資訊。
+     */
+    fun parseXUrl(rawUrl: String): ParsedXUrl? {
+        return try {
+            val trimmed = rawUrl.trim().trimEnd('/', '\\', '"', '\'', '。', '，', '！', '？')
+            if (trimmed.isBlank() || !isXHost(trimmed)) return null
+            val withoutQuery = trimmed.split("?")[0].trim().trimEnd('/')
+            val uri = try { URI(withoutQuery) } catch (_: Exception) { return null }
+            val host = uri.host?.lowercase() ?: return null
+            if (host !in X_VALID_HOSTS) return null
+
+            val path = uri.path.orEmpty().trimEnd('/')
+            val hadSuffix = X_MEDIA_SUFFIX_REGEX.containsMatchIn(path)
+            val cleanPath = X_MEDIA_SUFFIX_REGEX.replace(path, "")
+            val m = X_STATUS_PATH_REGEX.find(cleanPath) ?: return null
+            val handle: String
+            val statusId: String
+            if (m.groupValues[1].isNotBlank()) {
+                // /i/web/status/{id}：無 handle
+                handle = ""
+                statusId = m.groupValues[1]
+            } else {
+                handle = m.groupValues[2]
+                statusId = m.groupValues[3]
+            }
+            if (statusId.isBlank()) return null
+
+            val canonicalPath = if (handle.isNotBlank()) "/$handle/status/$statusId"
+            else "/i/web/status/$statusId"
+            ParsedXUrl(
+                handle = handle,
+                statusId = statusId,
+                canonicalUrl = "https://x.com$canonicalPath",
+                fetchUrl = "https://x.com$canonicalPath",
+                hadMediaSuffix = hadSuffix
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    data class ParsedFacebookUrl(
+        val postId: String,
+        val canonicalUrl: String,
+        val fetchUrl: String,
+        val kindLabel: String = "FB 貼文",
+        val isShareLink: Boolean = false
+    )
+
+    /** 是否為 Facebook 連結 */
+    fun isFacebookHost(rawUrl: String): Boolean {
+        if (rawUrl.isBlank()) return false
+        return try {
+            val host = URI(rawUrl.split("?")[0].trim()).host?.lowercase() ?: return false
+            FB_VALID_HOSTS.contains(host) || host.endsWith(".facebook.com")
+        } catch (_: Exception) {
+            rawUrl.contains("facebook.com/") || rawUrl.contains("fb.watch/")
+        }
+    }
+
+    /** 從分享文字中抽出第一個 Facebook 連結 */
+    fun extractFirstFacebookUrl(text: String): String? {
+        val urlRegex = Regex("""https?://[^\s<>"']+""")
+        for (match in urlRegex.findAll(text)) {
+            var url = match.value
+                .trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
+                .trimEnd('。', '，', '、', '！', '？', '；', '：', '「', '」', '『', '』', '【', '】', '…')
+            if (url.endsWith("...")) continue
+            url = url.trimStart('(', '[', '{', '「', '『', '【', '<')
+            if (isFacebookHost(url)) return url
+        }
+        return null
+    }
+
+    /** 去除 Facebook 追蹤參數（?mibextid=... / ?rdid=... / ?share_id=... 等） */
+    fun stripFacebookParams(rawUrl: String): String {
+        if (rawUrl.isBlank()) return rawUrl
+        return rawUrl.split("?")[0].trim().trimEnd('/').trim()
+    }
+
+    /** 解析 Facebook 連結（貼文、Reels、影片或 share 短鏈） */
+    fun parseFacebookUrl(rawUrl: String): ParsedFacebookUrl? {
+        return try {
+            val trimmed = rawUrl.trim().trimEnd('/', '\\', '"', '\'', '。', '，', '！', '？')
+            if (trimmed.isBlank() || !isFacebookHost(trimmed)) return null
+            val withoutQuery = trimmed.split("?")[0].trim().trimEnd('/')
+            val uri = try { URI(withoutQuery) } catch (_: Exception) { return null }
+            val host = uri.host?.lowercase() ?: return null
+            if (!FB_VALID_HOSTS.contains(host) && !host.endsWith(".facebook.com")) return null
+
+            val path = uri.path.orEmpty().trimEnd('/')
+            val shareMatch = Regex("""/share/(?:p|r|v)/([A-Za-z0-9_-]+)""").find(path)
+            val isShare = shareMatch != null
+            val id = shareMatch?.groupValues?.get(1)
+                ?: Regex("""/(?:posts|videos|reel)/([A-Za-z0-9_-]+)""").find(path)?.groupValues?.get(1)
+                ?: "fb_${sha256(trimmed).take(12)}"
+
+            val label = when {
+                path.contains("/share/r/") || path.contains("/reel/") -> "FB Reels"
+                path.contains("/share/v/") || path.contains("/videos/") || host == "fb.watch" -> "FB 影片"
+                else -> "FB 貼文"
+            }
+            ParsedFacebookUrl(
+                postId = id,
+                canonicalUrl = withoutQuery,
+                fetchUrl = trimmed,
+                kindLabel = label,
+                isShareLink = isShare
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    data class ParsedYouTubeUrl(
+        val videoId: String,
+        val canonicalUrl: String,
+        val fetchUrl: String,
+        val kindLabel: String = "YouTube 影片",
+        val isShorts: Boolean = false
+    )
+
+    /** 是否為 YouTube 連結 */
+    fun isYouTubeHost(rawUrl: String): Boolean {
+        if (rawUrl.isBlank()) return false
+        return try {
+            val host = URI(rawUrl.split("?")[0].trim()).host?.lowercase() ?: return false
+            YT_VALID_HOSTS.contains(host) || host.endsWith(".youtube.com")
+        } catch (_: Exception) {
+            rawUrl.contains("youtube.com/") || rawUrl.contains("youtu.be/")
+        }
+    }
+
+    /** 從分享文字中抽出第一個 YouTube 連結 */
+    fun extractFirstYouTubeUrl(text: String): String? {
+        val urlRegex = Regex("""https?://[^\s<>"']+""")
+        for (match in urlRegex.findAll(text)) {
+            var url = match.value
+                .trimEnd('.', ',', ')', ']', '}', '?', '!', ';', ':')
+                .trimEnd('。', '，', '、', '！', '？', '；', '：', '「', '」', '『', '』', '【', '】', '…')
+            if (url.endsWith("...")) continue
+            url = url.trimStart('(', '[', '{', '「', '『', '【', '<')
+            if (isYouTubeHost(url)) return url
+        }
+        return null
+    }
+
+    /** 去除 YouTube 追蹤與播放清單多餘參數（保留 watch?v=... 或 shorts/...） */
+    fun stripYouTubeParams(rawUrl: String): String {
+        return parseYouTubeUrl(rawUrl)?.canonicalUrl ?: rawUrl.trim()
+    }
+
+    /** 解析 YouTube 連結（標準影片、Shorts、youtu.be 短鏈） */
+    fun parseYouTubeUrl(rawUrl: String): ParsedYouTubeUrl? {
+        return try {
+            val trimmed = rawUrl.trim().trimEnd('/', '\\', '"', '\'', '。', '，', '！', '？')
+            if (trimmed.isBlank() || !isYouTubeHost(trimmed)) return null
+
+            val uri = try { URI(trimmed) } catch (_: Exception) { return null }
+            val host = uri.host?.lowercase() ?: return null
+            if (!YT_VALID_HOSTS.contains(host) && !host.endsWith(".youtube.com")) return null
+
+            val path = uri.path.orEmpty()
+            val videoId = when {
+                host == "youtu.be" -> path.trim('/').split("/").firstOrNull()?.takeIf { it.isNotBlank() }
+                path.contains("/shorts/") -> Regex("""/shorts/([A-Za-z0-9_-]+)""").find(path)?.groupValues?.get(1)
+                path.contains("/watch") -> {
+                    val query = uri.query.orEmpty()
+                    query.split("&").mapNotNull {
+                        val p = it.split("=")
+                        if (p.size == 2 && p[0] == "v") p[1] else null
+                    }.firstOrNull()
+                }
+                path.contains("/embed/") -> Regex("""/embed/([A-Za-z0-9_-]+)""").find(path)?.groupValues?.get(1)
+                else -> null
+            }
+            if (videoId.isNullOrBlank()) return null
+
+            val isShorts = path.contains("/shorts/")
+            val canonical = if (isShorts) "https://www.youtube.com/shorts/$videoId"
+            else "https://www.youtube.com/watch?v=$videoId"
+
+            ParsedYouTubeUrl(
+                videoId = videoId,
+                canonicalUrl = canonical,
+                fetchUrl = canonical,
+                kindLabel = if (isShorts) "YouTube Shorts" else "YouTube 影片",
+                isShorts = isShorts
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun sha256(input: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }

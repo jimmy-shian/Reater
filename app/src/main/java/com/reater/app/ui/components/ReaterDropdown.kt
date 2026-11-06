@@ -119,7 +119,7 @@ fun ReaterDropdownArrow(
     Icon(
         imageVector = Icons.Default.ArrowDropDown,
         contentDescription = if (expanded) "收合選單" else "展開選單",
-        tint = MaterialTheme.colorScheme.outline,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
             .size(22.dp)
             .rotate(rotation)
@@ -143,7 +143,7 @@ fun ReaterDropdownTrigger(
     contentExtra: (RowScope.() -> Unit)? = null
 ) {
     val elevation by animateDpAsState(
-        targetValue = if (expanded) (if (compact) 4.dp else 8.dp) else 1.dp,
+        targetValue = if (expanded) (if (compact) 4.dp else 8.dp) else 0.dp,
         animationSpec = tween(ReaterDropdownMotion.ExpandMs, easing = FastOutSlowInEasing),
         label = "dropdownTriggerShadow"
     )

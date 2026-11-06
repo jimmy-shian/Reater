@@ -38,7 +38,7 @@ data class ItemEntity(
     val lastFetchStatus: String = "NOT_FETCHED", // COMPLETE, PARTIAL, FAILED, NOT_FETCHED
     val lastFetchAt: Long = System.currentTimeMillis(),
     val rawJsonMin: String = "",
-    /** 來源平台：UrlParser.PLATFORM_THREADS（預設，舊資料）| PLATFORM_INSTAGRAM */
+    /** 來源平台：UrlParser.PLATFORM_THREADS（預設，舊資料）| PLATFORM_INSTAGRAM | PLATFORM_X */
     val platform: String = com.reater.app.domain.UrlParser.PLATFORM_THREADS,
     val isDeleted: Boolean = false,
     val deletedAt: Long? = null

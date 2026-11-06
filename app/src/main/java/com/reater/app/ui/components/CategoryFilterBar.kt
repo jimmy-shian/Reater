@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.reater.app.R
 import com.reater.app.data.local.entity.CategoryEntity
@@ -26,7 +27,7 @@ import com.reater.app.domain.UrlParser
 /**
  * 分類篩選列：緊湊 Dropdown、套用全域字體 Theme Typography、寬度對齊 Header、
  * 限制最大高度並支援內部捲動。
- * 與「全部 / Threads / IG」平台切換（3 合 1 圖示按鈕）並排在同一列，
+ * 與「平台切換」（動態來源篩選鈕）並排在同一列，
  * 組成雙重篩選：平台 × 分類。
  */
 @Composable
@@ -38,15 +39,38 @@ fun CategoryFilterBar(
     onSelect: (Long?) -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = true,
-    /** 平台篩選："ALL" | UrlParser.PLATFORM_THREADS | UrlParser.PLATFORM_INSTAGRAM */
+    /** 平台篩選："ALL" | THREADS | INSTAGRAM | X | FACEBOOK | YOUTUBE */
     selectedPlatform: String = "ALL",
     onPlatformSelect: (String) -> Unit = {},
-    /** 各平台計數（地圖 key：ALL / THREADS / INSTAGRAM），僅供圖示的無障礙說明 */
+    /** 各平台計數（地圖 key：ALL / THREADS / INSTAGRAM / X / FACEBOOK / YOUTUBE） */
     platformCounts: Map<String, Int> = emptyMap()
 ) {
     var expanded by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(active) { if (!active) expanded = false }
+
+    val allOptions = remember {
+        listOf(
+            PlatformOption("全部", "ALL", R.drawable.ic_platform_all),
+            PlatformOption("Threads", UrlParser.PLATFORM_THREADS, R.drawable.ic_threads),
+            PlatformOption("Instagram", UrlParser.PLATFORM_INSTAGRAM, R.drawable.ic_instagram),
+            PlatformOption("X", UrlParser.PLATFORM_X, R.drawable.ic_x),
+            PlatformOption("Facebook", UrlParser.PLATFORM_FACEBOOK, R.drawable.ic_facebook),
+            PlatformOption("YouTube", UrlParser.PLATFORM_YOUTUBE, R.drawable.ic_youtube)
+        )
+    }
+
+    // 只保留「有存文章」的平台
+    val activePlatforms = remember(platformCounts) {
+        allOptions.filter { it.key != "ALL" && (platformCounts[it.key] ?: 0) > 0 }
+    }
+
+    // 若使用者只存了 1 種平台（或 0 種），直接隱藏平台篩選按鈕
+    val showPlatformButton = activePlatforms.size > 1
+
+    val availableOptions = remember(activePlatforms) {
+        listOf(allOptions.first { it.key == "ALL" }) + activePlatforms
+    }
 
     val label = when (selectedId) {
         null -> "全部分類"
@@ -57,18 +81,20 @@ fun CategoryFilterBar(
     val configuration = LocalConfiguration.current
     val maxDropdownListHeight = (configuration.screenHeightDp * 0.42f).dp.coerceIn(180.dp, 280.dp)
 
-    // 單列排版：左側「3 合 1」平台切換按鈕 + 右側原本的標籤（分類）選擇器
+    // 單列排版：左側平台切換按鈕（僅在有多種平台時出現） + 右側分類選擇器
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PlatformSwitchButton(
-            selectedPlatform = selectedPlatform,
-            onPlatformSelect = onPlatformSelect,
-            platformCounts = platformCounts
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
+        if (showPlatformButton) {
+            PlatformSwitchButton(
+                selectedPlatform = selectedPlatform,
+                onPlatformSelect = onPlatformSelect,
+                platformCounts = platformCounts,
+                availableOptions = availableOptions
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
 
         BoxWithConstraints(modifier = Modifier.weight(1f)) {
             val barWidth = maxWidth
@@ -217,53 +243,108 @@ fun CategoryFilterBar(
 }
 
 /**
- * 平台切換按鈕（3 合 1）：**單一**緊湊按鈕，以 SVG 圖示代表目前的平台篩選，
- * 點擊後依「全部 → Threads → Instagram → 全部」循環切換，圖示同步變化。
- * - 僅顯示圖示，各平台筆數由右側「全部分類」下拉顯示，文字不再擠壓或裁切。
- * - 與分類篩選組成雙重篩選：平台 × 分類。
+ * 平台切換按鈕：
+ * - 當選項 <= 3（例如 全部 + Threads + IG = 3）：點擊按順序循環切換。
+ * - 當選項 > 3（例如 全部 + Threads + IG + X = 4）：點擊展開下拉選單供直接選擇。
  */
 @Composable
 internal fun PlatformSwitchButton(
     selectedPlatform: String,
     onPlatformSelect: (String) -> Unit,
     platformCounts: Map<String, Int>,
+    availableOptions: List<PlatformOption>,
     modifier: Modifier = Modifier
 ) {
-    val options = listOf(
-        PlatformOption("全部", "ALL", R.drawable.ic_platform_all),
-        PlatformOption("Threads", UrlParser.PLATFORM_THREADS, R.drawable.ic_threads),
-        PlatformOption("Instagram", UrlParser.PLATFORM_INSTAGRAM, R.drawable.ic_instagram)
-    )
-    val currentIndex = options.indexOfFirst { it.key == selectedPlatform }.coerceAtLeast(0)
-    val current = options[currentIndex]
-    val next = options[(currentIndex + 1) % options.size]
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val currentIndex = availableOptions.indexOfFirst { it.key == selectedPlatform }.let {
+        if (it >= 0) it else 0
+    }
+    val current = availableOptions[currentIndex]
     val count = platformCounts[current.key] ?: 0
 
-    Surface(
-        onClick = { onPlatformSelect(next.key) },
-        modifier = modifier.size(42.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            // 切換時以淡入淡出 + 縮放做圖示變化動效
-            Crossfade(targetState = current.key, label = "platformIcon") { key ->
-                val option = options.first { it.key == key }
-                Icon(
-                    painter = painterResource(option.iconRes),
-                    contentDescription = "平台篩選：${option.label}（$count 筆），點擊切換至${next.label}",
-                    modifier = Modifier.size(21.dp),
-                    tint = if (option.key == "ALL") MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.primary
-                )
+    // 超過 3 個選項時切換為下拉選單
+    val useDropdown = availableOptions.size > 3
+
+    Box(modifier = modifier) {
+        Surface(
+            onClick = {
+                if (useDropdown) {
+                    menuExpanded = !menuExpanded
+                } else {
+                    val next = availableOptions[(currentIndex + 1) % availableOptions.size]
+                    onPlatformSelect(next.key)
+                }
+            },
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Crossfade(targetState = current.key, label = "platformIcon") { key ->
+                    val option = availableOptions.firstOrNull { it.key == key } ?: current
+                    Icon(
+                        painter = painterResource(option.iconRes),
+                        contentDescription = "平台篩選：${option.label}（$count 筆）",
+                        modifier = Modifier.size(21.dp),
+                        tint = if (option.key == "ALL") MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        if (useDropdown) {
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                modifier = Modifier.widthIn(min = 160.dp)
+            ) {
+                availableOptions.forEach { opt ->
+                    val optCount = platformCounts[opt.key] ?: 0
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = opt.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (opt.key == selectedPlatform) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (opt.key == selectedPlatform) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "$optCount 筆",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(opt.iconRes),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (opt.key == selectedPlatform) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        onClick = {
+                            onPlatformSelect(opt.key)
+                            menuExpanded = false
+                        }
+                    )
+                }
             }
         }
     }
 }
 
 /** 平台切換項目：顯示名稱、篩選鍵值與圖示資源。 */
-private data class PlatformOption(
+internal data class PlatformOption(
     val label: String,
     val key: String,
     val iconRes: Int

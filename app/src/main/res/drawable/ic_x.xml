@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!--
+      X (Twitter) 官方標誌（Simple Icons 路徑，viewBox 0 0 24 24）
+      來源：https://simpleicons.org/icons/x （CC0-1.0）
+      單一填色路徑，由 Compose Icon 的 tint 依主題著色。
+    -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 18.901 1.153 h 3.68 l -8.04 9.19 L 24 22.846 h -7.406 l -5.8 -7.584 l -6.638 7.584 H 0.474 l 8.6 -9.83 L 0 1.154 h 7.594 l 5.243 6.932 Z M 17.61 20.644 h 2.039 L 6.486 3.24 H 4.298 Z" />
+</vector>

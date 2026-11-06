@@ -258,7 +258,8 @@ fun SettingsDialog(
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(16.dp)),
-            color = MaterialTheme.colorScheme.surface
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(
                 modifier = Modifier
@@ -274,7 +275,7 @@ fun SettingsDialog(
                     modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                 )
                 HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Column(
@@ -352,8 +353,9 @@ fun SettingsDialog(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             colors = androidx.compose.material3.CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            )
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
@@ -445,8 +447,9 @@ fun SettingsDialog(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             colors = androidx.compose.material3.CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            )
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1157,7 +1160,7 @@ fun SettingsDialog(
                                 }
                             },
                         shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(
                             1.dp,
                             if (keepDataAfterUninstall) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)

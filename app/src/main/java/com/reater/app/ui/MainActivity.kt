@@ -255,8 +255,8 @@ private fun MainThemedScreen(
                 @Suppress("DEPRECATION")
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = if (isDark) android.graphics.Color.BLACK
-                    else android.graphics.Color.WHITE
+                    window.navigationBarColor = if (isDark) android.graphics.Color.parseColor("#151A20")
+                    else android.graphics.Color.parseColor("#F6F3EE")
                 }
             }
         }
@@ -575,7 +575,7 @@ class MainViewModel @Inject constructor(
             categoryDao.getOrCreateCategory(
                 CategoryEntity(
                     name = name.trim(),
-                    colorArgb = 0xFF5C6BC0.toInt(),
+                    colorArgb = 0xFF8B5D34.toInt(),
                     avatarIcon = avatarIcon.ifBlank { "life" }
                 )
             )
@@ -603,7 +603,7 @@ class MainViewModel @Inject constructor(
             val newId = existing?.id ?: categoryDao.getOrCreateCategory(
                 CategoryEntity(
                     name = normalized,
-                    colorArgb = 0xFF5C6BC0.toInt(),
+                    colorArgb = 0xFF8B5D34.toInt(),
                     avatarIcon = avatarIcon.ifBlank { "life" }
                 )
             )
@@ -894,8 +894,17 @@ fun MainScreen(
         mapOf(
             "ALL" to allPosts.size,
             com.reater.app.domain.UrlParser.PLATFORM_THREADS to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_THREADS },
-            com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM }
+            com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM },
+            com.reater.app.domain.UrlParser.PLATFORM_X to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_X },
+            com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK },
+            com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE }
         )
+    }
+    // 若選取平台的文章被全數刪除，自動退回 "ALL"
+    LaunchedEffect(platformCounts, platformFilter) {
+        if (platformFilter != "ALL" && (platformCounts[platformFilter] ?: 0) == 0) {
+            platformFilter = "ALL"
+        }
     }
     // 與 PostListTab 顯示一致的雙重篩選（平台 + 分類），供上方分享鍵複製「畫面上看到的」清單
     val applyFeedFilters: (List<ItemDetail>) -> List<ItemDetail> = { base ->
@@ -1307,8 +1316,8 @@ fun MainScreen(
         topBar = {
             TopAppBar(
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
                     actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 title = {
@@ -1423,8 +1432,8 @@ fun MainScreen(
                     .padding(horizontal = 16.dp, vertical = 4.dp)
                     .height(38.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(
                     modifier = Modifier
@@ -1506,7 +1515,9 @@ fun MainScreen(
             // Tab 標籤列：點擊切換；左右滑動切換由下方 HorizontalPager 跟手處理
             ScrollableTabRow(
                 selectedTabIndex = pagerState.currentPage,
-                edgePadding = 16.dp
+                edgePadding = 16.dp,
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.primary
             ) {
                 Tab(
                     selected = pagerState.currentPage == 0,
@@ -1777,13 +1788,13 @@ private fun PostListTab(
     onDelete: (ItemDetail) -> Unit,
     selectedFilter: Long? = null,
     onFilterSelect: (Long?) -> Unit = {},
-    /** 平台篩選："ALL" | UrlParser.PLATFORM_THREADS | PLATFORM_INSTAGRAM */
+    /** 平台篩選："ALL" | UrlParser.PLATFORM_THREADS | PLATFORM_INSTAGRAM | PLATFORM_X */
     selectedPlatform: String = "ALL",
     onPlatformSelect: (String) -> Unit = {},
     platformCounts: Map<String, Int> = emptyMap(),
     active: Boolean = true
 ) {
-    // 雙重篩選第一層：平台（全部 / Threads / IG）
+    // 雙重篩選第一層：平台（全部 / Threads / IG / X）
     val platformFiltered = if (selectedPlatform == "ALL") posts
     else posts.filter { it.item.platform == selectedPlatform }
     val filtered = platformFiltered.filter { detail ->

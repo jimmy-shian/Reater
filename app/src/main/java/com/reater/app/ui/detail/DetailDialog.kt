@@ -332,7 +332,7 @@ private fun isLegacyMergedMedia(item: ItemDetail, blocks: List<ThreadPostBlock>)
 }
 
 private val AVATAR_PALETTE = listOf(
-    Color(0xFF6750A4),
+    Color(0xFF8B5D34),
     Color(0xFF386A20),
     Color(0xFF006874),
     Color(0xFF984061),

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -106,10 +107,10 @@ fun PostCard(
             },
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (itemDetail.isRead) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            else MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (itemDetail.isRead) 1.dp else 2.5.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header Row: 左側讀取狀態選單 + 作者/分類，右側操作按鈕
@@ -124,15 +125,15 @@ fun PostCard(
                         .weight(1f)
                         .padding(end = 4.dp)
                 ) {
-                    // 左上方已/未讀狀態選單（不再是單擊切換，點擊展開選單供手動變更或標為未讀）
+                    // 左上方已/未讀狀態選單（未讀：選取標籤背景+強調字；已讀：次級容器背景+次要字）
                     Box {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(
-                                    if (!itemDetail.isRead) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                    if (!itemDetail.isRead) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant
                                 )
                                 .clickable { showMenu = true }
                                 .padding(horizontal = 6.dp, vertical = 3.dp)
@@ -150,9 +151,9 @@ fun PostCard(
                             Text(
                                 text = if (!itemDetail.isRead) "未讀" else "已讀",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = if (!itemDetail.isRead) FontWeight.Bold else FontWeight.Medium,
                                 color = if (!itemDetail.isRead) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -222,7 +223,7 @@ fun PostCard(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Icon(
@@ -236,7 +237,7 @@ fun PostCard(
                                 text = category.name,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis
@@ -438,7 +439,7 @@ fun PostCard(
                 Text(
                     text = "包含 ${itemDetail.comments.size} 則精華留言",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -447,7 +448,7 @@ fun PostCard(
             Text(
                 text = formatSavedTime(itemDetail.item.sourceFetchedAt),
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.outline
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

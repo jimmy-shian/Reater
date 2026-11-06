@@ -1047,8 +1047,8 @@ fun FullscreenVideoViewer(
                             .fillMaxWidth()
                             .height(26.dp),
                         colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFFB39DDB),
-                            activeTrackColor = Color(0xFFB39DDB),
+                            thumbColor = Color(0xFF9BAFB9),
+                            activeTrackColor = Color(0xFF9BAFB9),
                             inactiveTrackColor = Color.White.copy(alpha = 0.28f)
                         )
                     )
@@ -1224,7 +1224,7 @@ fun FullscreenVideoViewer(
                                     ) {
                                         Text(
                                             text = if (speed == 1.0f) "1.0x (正常)" else "${speed}x",
-                                            color = if (isSelected) Color(0xFFB39DDB) else Color.White,
+                                            color = if (isSelected) Color(0xFF9BAFB9) else Color.White,
                                             fontSize = 14.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -1232,7 +1232,7 @@ fun FullscreenVideoViewer(
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "已選擇",
-                                                tint = Color(0xFFB39DDB),
+                                                tint = Color(0xFF9BAFB9),
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }

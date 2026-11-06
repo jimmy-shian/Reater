@@ -37,3 +37,4 @@ build-release.ps1
 /AD_UNITS_CONFIG.xlsx
 /ad_config.json
 /admob-config.json
+/app/src/main/res/values/ad_bypass_reset.xml

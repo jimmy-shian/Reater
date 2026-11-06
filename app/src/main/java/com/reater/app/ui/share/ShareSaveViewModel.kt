@@ -9,6 +9,7 @@ import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.data.remote.instagram.InstagramClient
+import com.reater.app.data.remote.x.XClient
 import com.reater.app.data.repository.SettingsRepository
 import com.reater.app.data.repository.ThreadPostRepository
 import com.reater.app.domain.UrlParser
@@ -75,6 +76,9 @@ class ShareSaveViewModel @Inject constructor(
     private val repository: ThreadPostRepository,
     private val graphQLClient: ThreadsGraphQLClient,
     private val instagramClient: InstagramClient,
+    private val xClient: XClient,
+    private val facebookClient: com.reater.app.data.remote.facebook.FacebookClient,
+    private val youtubeClient: com.reater.app.data.remote.youtube.YouTubeClient,
     private val categoryDao: CategoryDao,
     private val settingsRepository: SettingsRepository,
     @ApplicationContext private val appContext: Context
@@ -162,6 +166,102 @@ class ShareSaveViewModel @Inject constructor(
             }
             refreshCategorySuggestion()
             fetchInstagramData(igParsed.fetchUrl, igParsed.shortcode)
+            return
+        }
+
+        // ── 平台路由：X (Twitter) ──（x.com / twitter.com 貼文；fxtwitter 主文＋媒體）
+        val xRaw = UrlParser.extractFirstXUrl(sharedText)
+            ?: (if (UrlParser.isXHost(sharedText.trim())) sharedText.trim() else null)
+        val xParsed = xRaw?.let { UrlParser.parseXUrl(it) }
+        if (xParsed != null) {
+            val draft = UrlParser.extractBodyDraft(sharedText, xRaw)
+            httpDone = false; webDone = true; httpResult = null; webResult = null
+            lastAppliedComments = ""
+            suggestionJob?.cancel(); suggestionJob = null
+            _uiState.update {
+                it.copy(
+                    targetUrl = xParsed.canonicalUrl,
+                    fetchUrl = xParsed.fetchUrl,
+                    shareKindLabel = xParsed.kindLabel,
+                    shortcode = xParsed.statusId,
+                    authorHandle = xParsed.handle,
+                    bodyText = draft,
+                    bodyDraft = draft,
+                    hadMediaSuffix = xParsed.hadMediaSuffix,
+                    platform = UrlParser.PLATFORM_X,
+                    isFetching = true,
+                    isFetchFailed = false,
+                    webResolving = false,
+                    webResolveAttempted = false,
+                    fetchedResult = null
+                )
+            }
+            refreshCategorySuggestion()
+            fetchXData(xParsed.fetchUrl, xParsed.statusId)
+            return
+        }
+
+        // ── 平台路由：YouTube ──（youtube.com / youtu.be 影片與 Shorts）
+        val ytRaw = UrlParser.extractFirstYouTubeUrl(sharedText)
+            ?: (if (UrlParser.isYouTubeHost(sharedText.trim())) sharedText.trim() else null)
+        val ytParsed = ytRaw?.let { UrlParser.parseYouTubeUrl(it) }
+        if (ytParsed != null) {
+            val draft = UrlParser.extractBodyDraft(sharedText, ytRaw)
+            httpDone = false; webDone = true; httpResult = null; webResult = null
+            lastAppliedComments = ""
+            suggestionJob?.cancel(); suggestionJob = null
+            _uiState.update {
+                it.copy(
+                    targetUrl = ytParsed.canonicalUrl,
+                    fetchUrl = ytParsed.fetchUrl,
+                    shareKindLabel = ytParsed.kindLabel,
+                    shortcode = ytParsed.videoId,
+                    authorHandle = "",
+                    bodyText = draft,
+                    bodyDraft = draft,
+                    hadMediaSuffix = false,
+                    platform = UrlParser.PLATFORM_YOUTUBE,
+                    isFetching = true,
+                    isFetchFailed = false,
+                    webResolving = false,
+                    webResolveAttempted = false,
+                    fetchedResult = null
+                )
+            }
+            refreshCategorySuggestion()
+            fetchYouTubeData(ytParsed.fetchUrl, ytParsed.videoId)
+            return
+        }
+
+        // ── 平台路由：Facebook ──（facebook.com / fb.watch 貼文、Reels 與分享連結）
+        val fbRaw = UrlParser.extractFirstFacebookUrl(sharedText)
+            ?: (if (UrlParser.isFacebookHost(sharedText.trim())) sharedText.trim() else null)
+        val fbParsed = fbRaw?.let { UrlParser.parseFacebookUrl(it) }
+        if (fbParsed != null) {
+            val draft = UrlParser.extractBodyDraft(sharedText, fbRaw)
+            httpDone = false; webDone = true; httpResult = null; webResult = null
+            lastAppliedComments = ""
+            suggestionJob?.cancel(); suggestionJob = null
+            _uiState.update {
+                it.copy(
+                    targetUrl = fbParsed.canonicalUrl,
+                    fetchUrl = fbParsed.fetchUrl,
+                    shareKindLabel = fbParsed.kindLabel,
+                    shortcode = fbParsed.postId,
+                    authorHandle = "",
+                    bodyText = draft,
+                    bodyDraft = draft,
+                    hadMediaSuffix = false,
+                    platform = UrlParser.PLATFORM_FACEBOOK,
+                    isFetching = true,
+                    isFetchFailed = false,
+                    webResolving = false,
+                    webResolveAttempted = false,
+                    fetchedResult = null
+                )
+            }
+            refreshCategorySuggestion()
+            fetchFacebookData(fbParsed.fetchUrl, fbParsed.postId)
             return
         }
 
@@ -272,6 +372,40 @@ class ShareSaveViewModel @Inject constructor(
     private fun fetchInstagramData(url: String, shortcode: String) {
         viewModelScope.launch {
             val result = instagramClient.fetchPost(url, shortcode)
+            result.onSuccess { fetched ->
+                httpResult = fetched
+            }
+            httpDone = true
+            applyMerged()
+        }
+    }
+
+    /** X 抓取路徑：fxtwitter 主文＋媒體，單路即可 */
+    private fun fetchXData(url: String, statusId: String) {
+        viewModelScope.launch {
+            val result = xClient.fetchPost(url, statusId)
+            result.onSuccess { fetched ->
+                httpResult = fetched
+            }
+            httpDone = true
+            applyMerged()
+        }
+    }
+
+    private fun fetchYouTubeData(url: String, videoId: String) {
+        viewModelScope.launch {
+            val result = youtubeClient.fetchPost(url, videoId)
+            result.onSuccess { fetched ->
+                httpResult = fetched
+            }
+            httpDone = true
+            applyMerged()
+        }
+    }
+
+    private fun fetchFacebookData(url: String, postId: String) {
+        viewModelScope.launch {
+            val result = facebookClient.fetchPost(url, postId)
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -576,7 +710,7 @@ class ShareSaveViewModel @Inject constructor(
                 return@launch
             }
             val newId = existing?.id ?: categoryDao.getOrCreateCategory(CategoryEntity(
-                name = normalized, colorArgb = 0xFF5C6BC0.toInt(), avatarIcon = avatarIcon.ifBlank { "life" }
+                name = normalized, colorArgb = 0xFF8B5D34.toInt(), avatarIcon = avatarIcon.ifBlank { "life" }
             ))
             onCategorySelected(newId)
             savedStateHandle["categoryQuery"] = normalized
@@ -616,6 +750,12 @@ class ShareSaveViewModel @Inject constructor(
                         existingFetched
                     } else if (state.platform == UrlParser.PLATFORM_INSTAGRAM) {
                         instagramClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
+                    } else if (state.platform == UrlParser.PLATFORM_X) {
+                        xClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
+                    } else if (state.platform == UrlParser.PLATFORM_FACEBOOK) {
+                        facebookClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
+                    } else if (state.platform == UrlParser.PLATFORM_YOUTUBE) {
+                        youtubeClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
                     } else {
                         graphQLClient.fetchPostByPostIdOrShortcode(
                             state.targetUrl, state.shortcode
