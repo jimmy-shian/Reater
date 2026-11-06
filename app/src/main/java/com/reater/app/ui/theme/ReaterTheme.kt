@@ -30,7 +30,8 @@ object ReaterPalette {
     val LightOnSurfaceVariant = Color(0xFF655F58) // 次要文字 / 日期 / 來源
     val LightTagSelectedBg = Color(0xFFEFE0CC) // 標籤選取背景
     val LightTagSelectedText = Color(0xFF76502E) // 標籤選取文字
-    val LightOutline = Color(0xFFDDD4C8)   // 邊框 / 分隔線
+    val LightOutline = Color(0xFF746B62)   // 輔助文字 / 次要提示 / URL / 未選中圖示（足夠深，清晰易讀）
+    val LightOutlineVariant = Color(0xFFDDD4C8) // 邊框 / 分隔線
     val LightError = Color(0xFFBA1A1A)
     val LightOnError = Color(0xFFFFFFFF)
 
@@ -46,7 +47,7 @@ object ReaterPalette {
     val DarkOnSurfaceVariant = Color(0xFF9FA995)   // 次要文字 / 日期 / 來源
     val DarkTagSelectedBg = Color(0xFF323F2A)      // 標籤選取背景（貼近 App Icon #3C4A30）
     val DarkTagSelectedText = Color(0xFFFAF2DF)    // 標籤選取文字（App Icon #FAF2DF）
-    val DarkOutline = Color(0xFF3D4C35)            // 邊框
+    val DarkOutline = Color(0xFF96A58E)            // 輔助文字 / 次要提示 / URL / 未選中圖示（足夠亮，清晰易讀）
     val DarkOutlineVariant = Color(0xFF2B3625)     // 分隔線
     val DarkError = Color(0xFFFFB4AB)
     val DarkOnError = Color(0xFF690005)
@@ -72,7 +73,7 @@ val LightColorScheme: ColorScheme = lightColorScheme(
     surfaceVariant = ReaterPalette.LightSurfaceVariant,
     onSurfaceVariant = ReaterPalette.LightOnSurfaceVariant,
     outline = ReaterPalette.LightOutline,
-    outlineVariant = ReaterPalette.LightOutline,
+    outlineVariant = ReaterPalette.LightOutlineVariant,
     error = ReaterPalette.LightError,
     onError = ReaterPalette.LightOnError,
     errorContainer = Color(0xFFFFDAD6),
