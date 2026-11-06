@@ -378,6 +378,12 @@ fun PostCard(
                             remoteUrl = firstMedia.remoteUrl,
                             localPath = firstMedia.localPath,
                             autoPlay = false,
+                            // 音訊（無畫面）：以同篇封面圖當海報
+                            posterUrl = if (firstMedia.kind.equals("AUDIO", ignoreCase = true)) {
+                                itemDetail.media.firstOrNull { it.kind.equals("IMAGE", ignoreCase = true) }
+                                    ?.let { if (it.localPath.isNotBlank() && File(it.localPath).exists()) it.localPath else it.remoteUrl }
+                                    .orEmpty()
+                            } else "",
                             modifier = Modifier.fillMaxSize()
                         )
                         Box(

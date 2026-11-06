@@ -51,11 +51,19 @@ internal fun DetailMediaPager(
             Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { onOpen(entry) }, contentAlignment = Alignment.Center) {
-                if (entry.kind.equals("VIDEO", ignoreCase = true)) {
+                val entryKind = entry.kind
+                if (entryKind.equals("VIDEO", ignoreCase = true) || entryKind.equals("AUDIO", ignoreCase = true)) {
                     InlineVideoPlayer(
                         remoteUrl = entry.remoteUrl,
                         localPath = entry.localPath,
                         autoPlay = false,
+                        // 音訊（無畫面）：以鄰近封面圖當海報，看起來像「影片」播放
+                        posterUrl = if (entryKind.equals("AUDIO", ignoreCase = true)) {
+                            val cover = media.getOrNull(index - 1)?.takeIf { it.kind.equals("IMAGE", true) }
+                                ?: media.getOrNull(index + 1)?.takeIf { it.kind.equals("IMAGE", true) }
+                                ?: media.firstOrNull { it.kind.equals("IMAGE", true) }
+                            cover?.let { if (it.localPath.isNotBlank() && File(it.localPath).exists()) it.localPath else it.remoteUrl }.orEmpty()
+                        } else "",
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

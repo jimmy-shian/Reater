@@ -67,7 +67,8 @@ data class ShareSaveUiState(
     val platform: String = com.reater.app.domain.UrlParser.PLATFORM_THREADS,
     val fetchedResult: FetchedPostResult? = null,
     val hasApiKey: Boolean = false,
-    val aiAnalyzeOnSave: Boolean = false
+    val aiAnalyzeOnSave: Boolean = false,
+    val downloadProgress: com.reater.app.data.remote.DownloadProgress? = null
 )
 
 @HiltViewModel
@@ -225,7 +226,8 @@ class ShareSaveViewModel @Inject constructor(
                     isFetchFailed = false,
                     webResolving = false,
                     webResolveAttempted = false,
-                    fetchedResult = null
+                    fetchedResult = null,
+                    downloadProgress = null
                 )
             }
             refreshCategorySuggestion()
@@ -257,7 +259,8 @@ class ShareSaveViewModel @Inject constructor(
                     isFetchFailed = false,
                     webResolving = false,
                     webResolveAttempted = false,
-                    fetchedResult = null
+                    fetchedResult = null,
+                    downloadProgress = null
                 )
             }
             refreshCategorySuggestion()
@@ -394,7 +397,9 @@ class ShareSaveViewModel @Inject constructor(
 
     private fun fetchYouTubeData(url: String, videoId: String) {
         viewModelScope.launch {
-            val result = youtubeClient.fetchPost(url, videoId)
+            val result = youtubeClient.fetchPost(url, videoId) { p ->
+                _uiState.update { it.copy(downloadProgress = p) }
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -405,7 +410,9 @@ class ShareSaveViewModel @Inject constructor(
 
     private fun fetchFacebookData(url: String, postId: String) {
         viewModelScope.launch {
-            val result = facebookClient.fetchPost(url, postId)
+            val result = facebookClient.fetchPost(url, postId) { p ->
+                _uiState.update { it.copy(downloadProgress = p) }
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -753,9 +760,13 @@ class ShareSaveViewModel @Inject constructor(
                     } else if (state.platform == UrlParser.PLATFORM_X) {
                         xClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
                     } else if (state.platform == UrlParser.PLATFORM_FACEBOOK) {
-                        facebookClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
+                        facebookClient.fetchPost(state.targetUrl, state.shortcode) { p ->
+                            _uiState.update { it.copy(downloadProgress = p) }
+                        }.getOrNull() ?: existingFetched
                     } else if (state.platform == UrlParser.PLATFORM_YOUTUBE) {
-                        youtubeClient.fetchPost(state.targetUrl, state.shortcode).getOrNull() ?: existingFetched
+                        youtubeClient.fetchPost(state.targetUrl, state.shortcode) { p ->
+                            _uiState.update { it.copy(downloadProgress = p) }
+                        }.getOrNull() ?: existingFetched
                     } else {
                         graphQLClient.fetchPostByPostIdOrShortcode(
                             state.targetUrl, state.shortcode

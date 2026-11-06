@@ -733,13 +733,14 @@ object ThreadsSjsParser {
             val out = mutableListOf<FetchedMedia>()
             for (i in 0 until minOf(carousel.length(), 10)) {
                 val item = carousel.optJSONObject(i) ?: continue
-                mediaFromItem(item, excludedUrls)?.let { out.add(it) }
+                out.addAll(mediaFromItem(item, excludedUrls))
             }
             if (out.isNotEmpty()) return out.take(6)
         }
 
-        // 單一媒體
-        mediaFromItem(post, excludedUrls)?.let { return listOf(it) }
+        // 單一媒體（可能回傳多筆：音訊附件 = 聲音 + 封面圖）
+        val single = mediaFromItem(post, excludedUrls)
+        if (single.isNotEmpty()) return single
 
         // 轉發包裝：quoted_attachment_post / linked_inline_media（遞迴一層）
         val tpa = post.optJSONObject("text_post_app_info")
@@ -763,14 +764,14 @@ object ThreadsSjsParser {
         return emptyList()
     }
 
-    private fun mediaFromItem(item: JSONObject, excludedUrls: Set<String>): FetchedMedia? {
+    private fun mediaFromItem(item: JSONObject, excludedUrls: Set<String>): List<FetchedMedia> {
         // video_versions：同檔多版，取首個有效 url（cobalt 同策略）
         val videos = item.optJSONArray("video_versions")
         if (videos != null) {
             for (i in 0 until videos.length()) {
                 val url = videos.optJSONObject(i)?.optString("url").orEmpty()
                 if (url.startsWith("http") && !isExcludedMediaUrl(url, excludedUrls)) {
-                    return FetchedMedia(kind = "VIDEO", remoteUrl = url)
+                    return listOf(FetchedMedia(kind = "VIDEO", remoteUrl = url))
                 }
             }
         }
@@ -781,16 +782,99 @@ object ThreadsSjsParser {
                 val c = candidates.optJSONObject(i) ?: continue
                 val url = c.optString("url")
                 if (url.startsWith("http") && !isExcludedMediaUrl(url, excludedUrls)) {
-                    return FetchedMedia(
-                        kind = "IMAGE",
-                        remoteUrl = url,
-                        width = c.optInt("width", 0),
-                        height = c.optInt("height", 0)
+                    return listOf(
+                        FetchedMedia(
+                            kind = "IMAGE",
+                            remoteUrl = url,
+                            width = c.optInt("width", 0),
+                            height = c.optInt("height", 0)
+                        )
                     )
                 }
             }
         }
+        // 音訊附件（2026-11 實測 music 貼文 DfTrNv0D9nw / share/BAckR3y4Sp）：
+        // 聲音貼文 image_versions2.candidates 為空、video_versions 為 null，
+        // 聲音本體在 text_app_music_info 的 DASH manifest（BaseURL 為可直接播放的 mp4）。
+        audioFromItem(item)?.let { return it }
+        return emptyList()
+    }
+
+    /**
+     * 音訊附件抽取（聲音貼文 / 音樂貼文）。
+     *
+     * 確認 shape（text_app_music_info，__typename=XDTMusicConsumableVideo）：
+     *   text_app_music_info.music_consumable_video.audio_metadata.audio_asset{
+     *     dash_manifest: "<MPD…><BaseURL>https://video-*.fbcdn.net/….mp4?…</BaseURL>…"（JSON 字串內嵌 XML）
+     *     display_title.text / display_artist.text（歌曲名 / 歌手）
+     *     large_display_image.downloadable_uri（封面大圖）、display_image.downloadable_uri（封面小圖）
+     *   }
+     *
+     * 回傳 [AUDIO(聲音mp4), IMAGE(封面)] 兩筆：封面讓詳情頁看得到內容，
+     * AUDIO 走既有影片播放器（VideoView 可直接播 audio-only mp4，畫面以封面當海報）。
+     * 另容錯未來語音貼文可能的 audio{audio_src|audio_url|url} 形狀。
+     */
+    private fun audioFromItem(item: JSONObject): List<FetchedMedia>? {
+        val asset = item.optJSONObject("text_app_music_info")
+            ?.optJSONObject("music_consumable_video")
+            ?.optJSONObject("audio_metadata")
+            ?.optJSONObject("audio_asset")
+
+        val out = mutableListOf<FetchedMedia>()
+        if (asset != null) {
+            val audioUrl = extractDashAudioBaseUrl(asset.optString("dash_manifest").orEmpty())
+            if (audioUrl.startsWith("http")) out.add(FetchedMedia(kind = "AUDIO", remoteUrl = audioUrl))
+            // 封面：大圖優先，退回小圖（dl=1 參數保留，CDN 直連用）
+            fun coverUri(obj: JSONObject?): String {
+                val uri = obj?.optString("downloadable_uri").orEmpty()
+                return uri.takeIf { it.startsWith("http") }.orEmpty()
+            }
+            val cover = coverUri(asset.optJSONObject("large_display_image"))
+                .ifBlank { coverUri(asset.optJSONObject("display_image")) }
+            if (cover.isNotBlank()) {
+                out.add(FetchedMedia(kind = "IMAGE", remoteUrl = cover))
+            }
+        }
+        if (out.isNotEmpty()) return out
+
+        // 未來語音貼文容錯：post.audio{audio_src|audio_url|url}（目前實測值為 null）
+        val audio = item.optJSONObject("audio")
+        if (audio != null) {
+            for (key in listOf("audio_src", "audio_url", "url", "uri")) {
+                val u = audio.optString(key).orEmpty()
+                if (u.startsWith("http") && !u.equals("null", ignoreCase = true)) {
+                    return listOf(FetchedMedia(kind = "AUDIO", remoteUrl = u))
+                }
+            }
+        }
         return null
+    }
+
+    /**
+     * 從 DASH manifest（MPD XML 字串）抽出可直接播放的音訊 URL。
+     * 音樂貼文的 manifest 只有一個 audio AdaptationSet；防未來混入 video 時
+     * 優先取 mimeType/contentType 為 audio 的 Representation 的 BaseURL。
+     * XML 內 URL 參數帶 & 實體，需還原成 &（否則 CDN 參數會被截斷）。
+     */
+    private fun extractDashAudioBaseUrl(mpd: String): String {
+        if (mpd.isBlank() || !mpd.contains("<BaseURL")) return ""
+        // \u0026 = &。實體字串用 unicode escape 組裝，避免原始碼被實體解碼破壞。
+        val amp = "\u0026"
+        fun unescapeXml(s: String): String = s
+            .replace("${amp}amp;", amp)
+            .replace("${amp}lt;", "<")
+            .replace("${amp}gt;", ">")
+            .replace("${amp}quot;", "\"")
+            .replace("${amp}apos;", "'")
+        val reps = Regex("""<Representation\b[^>]*>.*?</Representation>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(mpd).toList()
+        val audioRep = reps.firstOrNull { block ->
+            block.value.contains("mimeType=\"audio", ignoreCase = true) ||
+                block.value.contains("contentType=\"audio", ignoreCase = true)
+        } ?: reps.firstOrNull()
+        val scope = audioRep?.value ?: mpd
+        val bu = Regex("""<BaseURL>(.*?)</BaseURL>""", RegexOption.DOT_MATCHES_ALL).find(scope) ?: return ""
+        return unescapeXml(bu.groupValues[1].trim())
     }
 
     private fun profileImageUrls(post: JSONObject): Set<String> = buildSet {

@@ -99,6 +99,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -146,6 +148,8 @@ fun InlineVideoPlayer(
     remoteUrl: String,
     localPath: String = "",
     autoPlay: Boolean = false,
+    /** 音訊（無畫面）來源的海報圖：緩衝中與整段播放期間顯示，看起來像影片封面 */
+    posterUrl: String = "",
     modifier: Modifier = Modifier
 ) {
     val playerId = remember { java.util.UUID.randomUUID().toString() }
@@ -159,6 +163,9 @@ fun InlineVideoPlayer(
     var isMuted by rememberSaveable(remoteUrl, localPath) { mutableStateOf(true) }
     var videoView by remember { mutableStateOf<VideoView?>(null) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
+    // audio-only mp4（Threads 音訊貼文等）：videoWidth 永遠為 0 → 顯示海報代替黑畫面
+    var isAudioOnly by remember { mutableStateOf(false) }
+    val showPoster = posterUrl.isNotBlank() && (isAudioOnly || !isPrepared)
     var position by rememberSaveable(remoteUrl, localPath) { mutableIntStateOf(0) }
     var duration by remember { mutableIntStateOf(0) }
 
@@ -352,6 +359,8 @@ fun InlineVideoPlayer(
                         duration = mp.duration
                         val w = mp.videoWidth
                         val h = mp.videoHeight
+                        // 無視軌 → 純音訊（audio-only mp4 也能正常播放/seek）
+                        isAudioOnly = w == 0 || h == 0
                         if (fileDims == null && w > 0 && h > 0) {
                             videoWidth = w
                             videoHeight = h
@@ -412,6 +421,15 @@ fun InlineVideoPlayer(
                 released.stopPlayback()
             }
         )
+        }
+        // 海報層：音訊（無畫面）或尚未 prepare 時顯示封面，避免純黑畫面
+        if (showPoster) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = "音訊封面",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
         }
         if (playbackError) {
             Column(Modifier.background(Color.Black.copy(alpha = .85f)).padding(16.dp),
@@ -529,6 +547,8 @@ fun FullscreenVideoViewer(
     startMuted: Boolean = true,
     initialVideoWidth: Int = 0,
     initialVideoHeight: Int = 0,
+    /** 音訊（無畫面）來源的海報圖：顯示封面代替黑畫面 */
+    posterUrl: String = "",
     onDismissDrag: (Float) -> Unit = {},
     onDismissEnd: (Float) -> Unit = {},
     onClose: (finalPosition: Int, isPlaying: Boolean, isMuted: Boolean) -> Unit
@@ -571,6 +591,9 @@ fun FullscreenVideoViewer(
     var playbackSpeed by rememberSaveable(remoteUrl, localPath) { mutableFloatStateOf(1.0f) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     var vvRef by remember { mutableStateOf<VideoView?>(null) }
+    // audio-only mp4（Threads 音訊貼文等）：videoWidth 永遠為 0 → 顯示海報代替黑畫面
+    var isAudioOnly by remember { mutableStateOf(false) }
+    val showPoster = posterUrl.isNotBlank() && (isAudioOnly || !isPrepared)
 
     // 真實轉向：切換 Activity.requestedOrientation（Manifest 有 configChanges，不會重建）
     val activity = context.findPlayerActivity()
@@ -705,6 +728,10 @@ fun FullscreenVideoViewer(
                         isPrepared = true
                         playbackError = false
                         isBuffering = false
+                        // 無視軌 → 純音訊（audio-only mp4 也能正常播放/seek）
+                        val w0 = mp.videoWidth
+                        val h0 = mp.videoHeight
+                        isAudioOnly = w0 == 0 || h0 == 0
                         // 依影片實際寬高比自動決定直/橫向（僅進場時判斷一次）
                         if (!orientationDecided) {
                             val w = mp.videoWidth
@@ -771,6 +798,15 @@ fun FullscreenVideoViewer(
         )
         }
 
+        // 海報層：音訊（無畫面）顯示封面代替黑畫面（控制列/手勢層在其上）
+        if (showPoster) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = "音訊封面",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        }
 
         // 觸控手勢感應層：垂直主導手勢觸發上下滑動關閉檢視器；無拖曳時觸發單擊切換控制列與左右雙擊快退/快進
         Box(

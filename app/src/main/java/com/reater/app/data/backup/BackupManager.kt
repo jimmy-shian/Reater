@@ -276,7 +276,7 @@ class BackupManager @Inject constructor(
                 val knownExtensions = setOf("mp4", "mov", "webm", "m4v", "jpg", "jpeg", "png", "webp", "gif", "avif")
                 val extension = File(local.ifBlank { remote.substringBefore('?') }).extension.lowercase()
                 val ext = extension.takeIf { it in knownExtensions }
-                    ?: if (kind.equals("VIDEO", true)) "mp4" else "jpg"
+                    ?: if (kind.equals("VIDEO", true) || kind.equals("AUDIO", true)) "mp4" else "jpg"
                 val name = "media/${archiveFiles.size}.$ext"
                 val destination = File(staging, name).apply { parentFile?.mkdirs() }
                 val remaining = ReaterArchive.MAX_ARCHIVE_BYTES - archiveFiles.values.sumOf { it.length() }

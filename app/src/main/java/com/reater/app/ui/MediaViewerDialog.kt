@@ -51,7 +51,7 @@ data class ViewerMedia(
     val remoteUrl: String,
     val localPath: String = ""
 ) {
-    val isVideo: Boolean get() = kind.equals("VIDEO", ignoreCase = true)
+    val isVideo: Boolean get() = kind.equals("VIDEO", ignoreCase = true) || kind.equals("AUDIO", ignoreCase = true)
 
     fun bestSource(): Any =
         if (localPath.isNotBlank() && File(localPath).exists()) File(localPath) else remoteUrl
@@ -160,6 +160,14 @@ fun MediaViewerDialog(
                         localPath = item.localPath,
                         startPosition = 0,
                         startPlaying = true,
+                        // 音訊（無畫面）：以鄰近封面圖當海報
+                        posterUrl = if (item.kind.equals("AUDIO", ignoreCase = true)) {
+                            val idx = media.indexOfFirst { it === item }
+                            val cover = media.getOrNull(idx - 1)?.takeIf { !it.isVideo }
+                                ?: media.getOrNull(idx + 1)?.takeIf { !it.isVideo }
+                                ?: media.firstOrNull { !it.isVideo }
+                            cover?.let { if (it.localPath.isNotBlank()) it.localPath else it.remoteUrl }.orEmpty()
+                        } else "",
                         onDismissDrag = { updateDismissDrag(it) },
                         onDismissEnd = { endDismissDrag(it) },
                         onClose = { _, _, _ -> dismissCallback() }
