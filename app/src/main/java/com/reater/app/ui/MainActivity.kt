@@ -255,7 +255,7 @@ private fun MainThemedScreen(
                 @Suppress("DEPRECATION")
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.navigationBarColor = if (isDark) android.graphics.Color.parseColor("#151A20")
+                    window.navigationBarColor = if (isDark) android.graphics.Color.parseColor("#131711")
                     else android.graphics.Color.parseColor("#F6F3EE")
                 }
             }
@@ -886,35 +886,39 @@ fun MainScreen(
             else -> base.filter { it.userEdit?.categoryId == proCategoryFilter }
         }
     }
-    // 平台篩選（全部 / Threads / IG）：與分類、搜尋組成多重篩選
-    var platformFilter by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableStateOf("ALL")
-    }
-    val platformCounts = remember(allPosts) {
-        mapOf(
-            "ALL" to allPosts.size,
-            com.reater.app.domain.UrlParser.PLATFORM_THREADS to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_THREADS },
-            com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM },
-            com.reater.app.domain.UrlParser.PLATFORM_X to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_X },
-            com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK },
-            com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE to allPosts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE }
-        )
-    }
-    // 若選取平台的文章被全數刪除，自動退回 "ALL"
-    LaunchedEffect(platformCounts, platformFilter) {
-        if (platformFilter != "ALL" && (platformCounts[platformFilter] ?: 0) == 0) {
-            platformFilter = "ALL"
+    // 收藏、未讀、全部：三者的平台篩選與分類篩選各自獨立，數量與選取狀態互不混雜
+    var allPlatformFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("ALL") }
+    var unreadPlatformFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("ALL") }
+    var favoritePlatformFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("ALL") }
+
+    var allCategoryFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    var unreadCategoryFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    var favoriteCategoryFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+
+    // 當從外部（如 PRO 分類點擊 openCategory）切換過來時，同步至「全部」分類篩選
+    LaunchedEffect(proCategoryFilter) {
+        if (proCategoryFilter != null) {
+            allCategoryFilter = proCategoryFilter
         }
     }
-    // 與 PostListTab 顯示一致的雙重篩選（平台 + 分類），供上方分享鍵複製「畫面上看到的」清單
-    val applyFeedFilters: (List<ItemDetail>) -> List<ItemDetail> = { base ->
-        base.filter { detail ->
-            platformFilter == "ALL" || detail.item.platform == platformFilter
+
+    // 分類被刪除時，自動清除各分頁無效的篩選
+    LaunchedEffect(categories) {
+        val validIds = categories.map { it.id }.toSet()
+        if (allCategoryFilter != null && allCategoryFilter != -1L && allCategoryFilter !in validIds) allCategoryFilter = null
+        if (unreadCategoryFilter != null && unreadCategoryFilter != -1L && unreadCategoryFilter !in validIds) unreadCategoryFilter = null
+        if (favoriteCategoryFilter != null && favoriteCategoryFilter != -1L && favoriteCategoryFilter !in validIds) favoriteCategoryFilter = null
+    }
+
+    // 與畫面各分頁獨立篩選一致的雙重篩選（平台 + 分類），供上方分享鍵複製當前畫面上看到的清單
+    fun applyTabFilters(base: List<ItemDetail>, platform: String, categoryId: Long?): List<ItemDetail> {
+        return base.filter { detail ->
+            platform == "ALL" || detail.item.platform == platform
         }.filter { detail ->
-            when (proCategoryFilter) {
+            when (categoryId) {
                 null -> true
                 -1L -> detail.userEdit?.categoryId == null
-                else -> detail.userEdit?.categoryId == proCategoryFilter
+                else -> detail.userEdit?.categoryId == categoryId
             }
         }
     }
@@ -1357,9 +1361,9 @@ fun MainScreen(
                         // 與畫面顯示一致：分頁基準清單 → 平台/分類雙重篩選，取代先前無視篩選的「全部」複製
                         val activePosts = when (currentTab) {
                             3 -> proFilteredPosts
-                            0 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts else allPosts)
-                            1 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts)
-                            2 -> applyFeedFilters(if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts)
+                            0 -> applyTabFilters(if (searchQuery.isNotBlank()) posts else allPosts, allPlatformFilter, allCategoryFilter)
+                            1 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts, unreadPlatformFilter, unreadCategoryFilter)
+                            2 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts, favoritePlatformFilter, favoriteCategoryFilter)
                             else -> emptyList()
                         }
                         if (activePosts.isNotEmpty()) {
@@ -1606,11 +1610,13 @@ fun MainScreen(
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            selectedFilter = proCategoryFilter,
-                            onFilterSelect = viewModel::setProCategoryFilter,
-                            selectedPlatform = platformFilter,
-                            onPlatformSelect = { platformFilter = it },
-                            platformCounts = platformCounts,
+                            selectedFilter = allCategoryFilter,
+                            onFilterSelect = {
+                                allCategoryFilter = it
+                                viewModel.setProCategoryFilter(it)
+                            },
+                            selectedPlatform = allPlatformFilter,
+                            onPlatformSelect = { allPlatformFilter = it },
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容"
                             else "目前尚無內容\n在 Threads 或 Instagram 中點擊分享至 Reater 即可保存！",
@@ -1645,11 +1651,10 @@ fun MainScreen(
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            selectedFilter = proCategoryFilter,
-                            onFilterSelect = viewModel::setProCategoryFilter,
-                            selectedPlatform = platformFilter,
-                            onPlatformSelect = { platformFilter = it },
-                            platformCounts = platformCounts,
+                            selectedFilter = unreadCategoryFilter,
+                            onFilterSelect = { unreadCategoryFilter = it },
+                            selectedPlatform = unreadPlatformFilter,
+                            onPlatformSelect = { unreadPlatformFilter = it },
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容"
                             else "太棒了！所有貼文皆已閱讀完畢",
@@ -1684,11 +1689,10 @@ fun MainScreen(
                         PostListTab(
                             posts = displayList,
                             categories = categories,
-                            selectedFilter = proCategoryFilter,
-                            onFilterSelect = viewModel::setProCategoryFilter,
-                            selectedPlatform = platformFilter,
-                            onPlatformSelect = { platformFilter = it },
-                            platformCounts = platformCounts,
+                            selectedFilter = favoriteCategoryFilter,
+                            onFilterSelect = { favoriteCategoryFilter = it },
+                            selectedPlatform = favoritePlatformFilter,
+                            onPlatformSelect = { favoritePlatformFilter = it },
                             active = currentTab == page,
                             emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容"
                             else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！",
@@ -1791,9 +1795,28 @@ private fun PostListTab(
     /** 平台篩選："ALL" | UrlParser.PLATFORM_THREADS | PLATFORM_INSTAGRAM | PLATFORM_X */
     selectedPlatform: String = "ALL",
     onPlatformSelect: (String) -> Unit = {},
-    platformCounts: Map<String, Int> = emptyMap(),
+    platformCounts: Map<String, Int>? = null,
     active: Boolean = true
 ) {
+    // 依據本分頁文章清單獨立計算各平台數量（完全獨立，不與其他分頁混雜）
+    val tabPlatformCounts = remember(posts, platformCounts) {
+        platformCounts ?: mapOf(
+            "ALL" to posts.size,
+            com.reater.app.domain.UrlParser.PLATFORM_THREADS to posts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_THREADS },
+            com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM to posts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM },
+            com.reater.app.domain.UrlParser.PLATFORM_X to posts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_X },
+            com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK to posts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK },
+            com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE to posts.count { it.item.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE }
+        )
+    }
+
+    // 當此分頁中選取的平台數量歸零時，該分頁自動退回 "ALL"，不影響其他分頁
+    LaunchedEffect(tabPlatformCounts, selectedPlatform) {
+        if (selectedPlatform != "ALL" && (tabPlatformCounts[selectedPlatform] ?: 0) == 0) {
+            onPlatformSelect("ALL")
+        }
+    }
+
     // 雙重篩選第一層：平台（全部 / Threads / IG / X）
     val platformFiltered = if (selectedPlatform == "ALL") posts
     else posts.filter { it.item.platform == selectedPlatform }
@@ -1811,7 +1834,7 @@ private fun PostListTab(
             totalCount = platformFiltered.size, onSelect = onFilterSelect,
             selectedPlatform = selectedPlatform,
             onPlatformSelect = onPlatformSelect,
-            platformCounts = platformCounts,
+            platformCounts = tabPlatformCounts,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), active = active
         )
     if (filtered.isEmpty()) {
@@ -2553,4 +2576,3 @@ fun TrashCard(
         }
     }
 }
-

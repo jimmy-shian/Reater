@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.Density
 /**
  * Reater 全域語意色彩 Token：
  * - 淺色模式：暖銅金 × 米白紙感
- * - 深色模式：霧鋼藍 × 冷調深灰
+ * - 深色模式：森林墨綠 × 象牙米紙感（依 App Icon #3C4A30 / #FAF2DF 設計）
  */
 object ReaterPalette {
     // 淺色模式（Light Theme）
@@ -34,17 +34,20 @@ object ReaterPalette {
     val LightError = Color(0xFFBA1A1A)
     val LightOnError = Color(0xFFFFFFFF)
 
-    // 深色模式（Dark Theme）
-    val DarkAppBackground = Color(0xFF151A20)
-    val DarkSurface = Color(0xFF252D35)
-    val DarkSurfaceVariant = Color(0xFF303A44)
-    val DarkBrandSteelBlue = Color(0xFF9BAFB9) // 品牌主色 / 霧鋼藍 / 主要操作色
-    val DarkOnPrimary = Color(0xFF151A20)      // 主要按鈕文字
-    val DarkOnSurface = Color(0xFFE4EBEF)      // 主要文字 / 標題 / 內文
-    val DarkOnSurfaceVariant = Color(0xFFB2C0CA) // 次要文字 / 日期 / 來源
-    val DarkTagSelectedBg = Color(0xFF344650)  // 標籤選取背景
-    val DarkTagSelectedText = Color(0xFFDAE8EE) // 標籤選取文字
-    val DarkOutline = Color(0xFF414C56)        // 邊框 / 分隔線
+    // 深色模式（Dark Theme）—— 依 App Icon #3C4A30 與 #FAF2DF 設計，深沉墨綠與溫潤象牙米紙感
+    val DarkAppBackground = Color(0xFF131711)      // 最底層森林深黑
+    val DarkSurface = Color(0xFF1D2319)            // 卡片 / 視窗表面深墨綠
+    val DarkSurfaceVariant = Color(0xFF273123)     // 次級容器 / 輸入框深橄欖
+    val DarkBrandGreen = Color(0xFF8FA876)         // 品牌主色 / 鼠尾草綠 / 主要操作色
+    val DarkBrandSteelBlue = DarkBrandGreen        // 相容舊引用
+    val DarkPrimary = DarkBrandGreen
+    val DarkOnPrimary = Color(0xFF12180F)          // 主要按鈕深色文字
+    val DarkOnSurface = Color(0xFFE8E2D2)          // 主要文字 / 內文（溫潤象牙米，不刺眼）
+    val DarkOnSurfaceVariant = Color(0xFF9FA995)   // 次要文字 / 日期 / 來源
+    val DarkTagSelectedBg = Color(0xFF323F2A)      // 標籤選取背景（貼近 App Icon #3C4A30）
+    val DarkTagSelectedText = Color(0xFFFAF2DF)    // 標籤選取文字（App Icon #FAF2DF）
+    val DarkOutline = Color(0xFF3D4C35)            // 邊框
+    val DarkOutlineVariant = Color(0xFF2B3625)     // 分隔線
     val DarkError = Color(0xFFFFB4AB)
     val DarkOnError = Color(0xFF690005)
 }
@@ -80,15 +83,15 @@ val LightColorScheme: ColorScheme = lightColorScheme(
 )
 
 val DarkColorScheme: ColorScheme = darkColorScheme(
-    primary = ReaterPalette.DarkBrandSteelBlue,
+    primary = ReaterPalette.DarkBrandGreen,
     onPrimary = ReaterPalette.DarkOnPrimary,
     primaryContainer = ReaterPalette.DarkTagSelectedBg,
     onPrimaryContainer = ReaterPalette.DarkTagSelectedText,
-    secondary = ReaterPalette.DarkBrandSteelBlue,
+    secondary = ReaterPalette.DarkBrandGreen,
     onSecondary = ReaterPalette.DarkOnPrimary,
     secondaryContainer = ReaterPalette.DarkTagSelectedBg,
     onSecondaryContainer = ReaterPalette.DarkTagSelectedText,
-    tertiary = ReaterPalette.DarkBrandSteelBlue,
+    tertiary = ReaterPalette.DarkBrandGreen,
     onTertiary = ReaterPalette.DarkOnPrimary,
     tertiaryContainer = ReaterPalette.DarkSurfaceVariant,
     onTertiaryContainer = ReaterPalette.DarkTagSelectedText,
@@ -99,7 +102,7 @@ val DarkColorScheme: ColorScheme = darkColorScheme(
     surfaceVariant = ReaterPalette.DarkSurfaceVariant,
     onSurfaceVariant = ReaterPalette.DarkOnSurfaceVariant,
     outline = ReaterPalette.DarkOutline,
-    outlineVariant = ReaterPalette.DarkOutline,
+    outlineVariant = ReaterPalette.DarkOutlineVariant,
     error = ReaterPalette.DarkError,
     onError = ReaterPalette.DarkOnError,
     errorContainer = Color(0xFF93000A),
