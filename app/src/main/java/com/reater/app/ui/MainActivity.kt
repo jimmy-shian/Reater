@@ -3,6 +3,16 @@ package com.reater.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.Manifest
+import android.app.Activity
+import android.os.Build
+import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -127,6 +137,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -925,6 +936,63 @@ fun MainScreen(
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    // 通知開關與系統權限確認：App 內預設開啟；若 App 內開啟但系統未授權，每次打開 App 主動詢問；若 App 內關閉則不詢問。
+    val reviewDigestEnabled by viewModel.reviewDigestEnabled.collectAsState()
+    val unreadNudgeEnabled by viewModel.unreadNudgeEnabled.collectAsState()
+    val appNotifyWanted = reviewDigestEnabled || unreadNudgeEnabled
+
+    var showNotifPermissionDialog by rememberSaveable { mutableStateOf(false) }
+    var hasPromptedNotifThisSession by rememberSaveable { mutableStateOf(false) }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            val canNotifyNow = com.reater.app.notify.NotifyCenter.canNotify(context)
+            if (!canNotifyNow) {
+                showNotifPermissionDialog = true
+            }
+        }
+    }
+
+    val checkAndPromptNotificationPermission = remember(appNotifyWanted, context) {
+        {
+            if (appNotifyWanted && !hasPromptedNotifThisSession) {
+                val systemGranted = com.reater.app.notify.NotifyCenter.canNotify(context)
+                if (!systemGranted) {
+                    hasPromptedNotifThisSession = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val activity = context as? Activity
+                        val shouldShowRationale = activity?.let {
+                            ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.POST_NOTIFICATIONS)
+                        } ?: false
+                        if (shouldShowRationale) {
+                            showNotifPermissionDialog = true
+                        } else {
+                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    } else {
+                        showNotifPermissionDialog = true
+                    }
+                }
+            }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, checkAndPromptNotificationPermission) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                checkAndPromptNotificationPermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val ioScope = androidx.compose.runtime.rememberCoroutineScope()
 
     val customAvatarId by viewModel.customAvatarId.collectAsState()
@@ -1110,6 +1178,58 @@ fun MainScreen(
             Toast.LENGTH_LONG
         ).show()
         if (!success) showUnlockDialog = true
+    }
+
+    if (showNotifPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotifPermissionDialog = false },
+            title = {
+                Text(
+                    text = "開啟通知權限",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "您已開啟閱讀提醒通知，但目前系統尚未允許通知權限。\n\n請允許通知權限，才能在預定時間收到未讀文章推播提醒。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showNotifPermissionDialog = false
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                        } else {
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", context.packageName, null)
+                            }
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(fallback)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                ) {
+                    Text("前往設定", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNotifPermissionDialog = false }) {
+                    Text("稍後再說")
+                }
+            }
+        )
     }
 
     if (itemToDelete != null) {
@@ -1318,19 +1438,26 @@ fun MainScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                title = {
+            Surface(
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(start = 16.dp, end = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
+                            .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { showIconGallery = true }
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .padding(vertical = 4.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.app_name),
@@ -1355,53 +1482,55 @@ fun MainScreen(
                             }
                         }
                     }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        // 與畫面顯示一致：分頁基準清單 → 平台/分類雙重篩選，取代先前無視篩選的「全部」複製
-                        val activePosts = when (currentTab) {
-                            3 -> proFilteredPosts
-                            0 -> applyTabFilters(if (searchQuery.isNotBlank()) posts else allPosts, allPlatformFilter, allCategoryFilter)
-                            1 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts, unreadPlatformFilter, unreadCategoryFilter)
-                            2 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts, favoritePlatformFilter, favoriteCategoryFilter)
-                            else -> emptyList()
-                        }
-                        if (activePosts.isNotEmpty()) {
-                            val shareText = activePosts.joinToString("\n") { detail ->
-                                formatPostShareText(detail)
+
+                    IconButton(
+                        onClick = {
+                            val activePosts = when (currentTab) {
+                                3 -> proFilteredPosts
+                                0 -> applyTabFilters(if (searchQuery.isNotBlank()) posts else allPosts, allPlatformFilter, allCategoryFilter)
+                                1 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { !it.isRead } else unreadPosts, unreadPlatformFilter, unreadCategoryFilter)
+                                2 -> applyTabFilters(if (searchQuery.isNotBlank()) posts.filter { it.isFavorite } else favoritePosts, favoritePlatformFilter, favoriteCategoryFilter)
+                                else -> emptyList()
                             }
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Reater Group Share", shareText))
-                            Toast.makeText(context, "已複製目前篩選共 ${activePosts.size} 則網址與摘要", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "目前篩選無貼文", Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
+                            if (activePosts.isNotEmpty()) {
+                                val shareText = activePosts.joinToString("\n") { detail ->
+                                    formatPostShareText(detail)
+                                }
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Reater Group Share", shareText))
+                                Toast.makeText(context, "已複製目前篩選共 ${activePosts.size} 則網址與摘要", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "目前篩選無貼文", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Share,
                             contentDescription = "複製目前篩選的所有網址與摘要",
-                            tint = MaterialTheme.colorScheme.outline
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    // 個人頭像：未解鎖也顯示頭像本體（不再是鎖圖示）。
-                    // 未解鎖點擊 → Pro 開通 UI；已解鎖點擊 → 同 Reater 標題的 15 頭像設定頁。
+
                     IconButton(
                         onClick = {
                             if (isPro) showIconGallery = true
                             else showUnlockDialog = true
-                        }
+                        },
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             UserAvatarView(
                                 avatarId = customAvatarId,
                                 avatarUri = customAvatarUri,
-                                size = 32.dp
+                                size = 30.dp
                             )
                             if (!isPro) {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
-                                        .size(14.dp)
+                                        .size(13.dp)
                                         .background(Color(0xFFFFB300), CircleShape)
                                         .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape),
                                     contentAlignment = Alignment.Center
@@ -1410,17 +1539,25 @@ fun MainScreen(
                                         imageVector = Icons.Default.Lock,
                                         contentDescription = null,
                                         tint = Color.Black,
-                                        modifier = Modifier.size(9.dp)
+                                        modifier = Modifier.size(8.dp)
                                     )
                                 }
                             }
                         }
                     }
-                    IconButton(onClick = { showSettingsDialog = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+
+                    IconButton(
+                        onClick = { showSettingsDialog = true },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
-            )
+            }
         }
     ) { padding ->
         Column(
@@ -1433,8 +1570,8 @@ fun MainScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .height(38.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 2.dp)
+                    .height(36.dp),
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -1524,6 +1661,7 @@ fun MainScreen(
                 contentColor = MaterialTheme.colorScheme.primary
             ) {
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 0,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } },
                     text = { Text(stringResource(R.string.tab_all)) }
@@ -1536,6 +1674,7 @@ fun MainScreen(
                     else -> unreadCount.toString()
                 }
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = isUnreadSelected,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(1) } },
                     text = {
@@ -1576,21 +1715,25 @@ fun MainScreen(
                     }
                 )
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 2,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(2) } },
                     text = { Text(stringResource(R.string.tab_favorite)) }
                 )
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 3,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(3) } },
                     text = { Text("PRO 分類") }
                 )
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 4,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(4) } },
                     text = { Text("垃圾桶 (30天)") }
                 )
                 Tab(
+                    modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 5,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(5) } },
                     text = { Text("分析") }
@@ -1835,7 +1978,7 @@ private fun PostListTab(
             selectedPlatform = selectedPlatform,
             onPlatformSelect = onPlatformSelect,
             platformCounts = tabPlatformCounts,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), active = active
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp), active = active
         )
     if (filtered.isEmpty()) {
         Box(

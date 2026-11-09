@@ -209,6 +209,17 @@ interface ItemDao {
     """)
     suspend fun countUnreadSince(since: Long): Int
 
+    /** 取得最新一篇未讀文章（定時通知主推文章用） */
+    @Transaction
+    @Query("""
+        SELECT items.* FROM items
+        LEFT JOIN user_edits ON items.id = user_edits.itemId
+        WHERE items.isDeleted = 0 AND (user_edits.isRead = 0 OR user_edits.isRead IS NULL)
+        ORDER BY items.id DESC
+        LIMIT 1
+    """)
+    suspend fun getLatestUnreadItemDetail(): ItemDetail?
+
     /**
      * 同作者最常用的分類（用於儲存時預選）：
      * 次數最多者勝；次數相同取最近使用（符合「上次給的」語意）。

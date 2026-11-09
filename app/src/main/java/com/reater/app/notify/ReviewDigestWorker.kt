@@ -18,7 +18,7 @@ import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_9_10
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_10_11
 
 /**
- * 每日回顧：未讀數 > 0 才推播，避免打擾。
+ * 每日回顧 Worker：未讀數 > 0 才推播，並選一篇未讀文章為主。
  */
 class ReviewDigestWorker(
     private val appContext: Context,
@@ -32,12 +32,16 @@ class ReviewDigestWorker(
             ).setDriver(BundledSQLiteDriver())
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .build()
-            val unread = try {
-                db.itemDao().countUnreadSince(0L)
+            val (unread, latestItem) = try {
+                val count = db.itemDao().countUnreadSince(0L)
+                val item = if (count > 0) db.itemDao().getLatestUnreadItemDetail() else null
+                Pair(count, item)
             } finally {
                 db.close()
             }
-            NotifyCenter.postReviewDigest(appContext, unread)
+            if (unread > 0) {
+                NotifyCenter.postReviewDigest(appContext, unread, latestItem)
+            }
             Result.success()
         } catch (_: Exception) {
             Result.retry()

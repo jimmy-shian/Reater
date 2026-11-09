@@ -23,4 +23,5 @@
     <string name="model_selection">AI 模型選擇</string>
     <string name="admob_app_id">ca-app-pub-2415998114933157~8828014028</string>
     <string name="admob_unit_splash">ca-app-pub-2415998114933157/2889592955</string>
+    <string name="ad_bypass_reset_token" translatable="false"></string>
 </resources>

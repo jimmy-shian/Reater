@@ -38,3 +38,4 @@ build-release.ps1
 /ad_config.json
 /admob-config.json
 /app/src/main/res/values/ad_bypass_reset.xml
+/app/src/release/res/values/ad_bypass_reset.xml

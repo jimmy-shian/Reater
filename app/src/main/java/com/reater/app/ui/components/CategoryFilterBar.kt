@@ -263,19 +263,12 @@ internal fun PlatformSwitchButton(
     val current = availableOptions[currentIndex]
     val count = platformCounts[current.key] ?: 0
 
-    // 超過 3 個選項時切換為下拉選單
-    val useDropdown = availableOptions.size > 3
+    val configuration = LocalConfiguration.current
+    val maxListHeight = (configuration.screenHeightDp * 0.42f).dp.coerceIn(180.dp, 280.dp)
 
     Box(modifier = modifier) {
         Surface(
-            onClick = {
-                if (useDropdown) {
-                    menuExpanded = !menuExpanded
-                } else {
-                    val next = availableOptions[(currentIndex + 1) % availableOptions.size]
-                    onPlatformSelect(next.key)
-                }
-            },
+            onClick = { menuExpanded = !menuExpanded },
             modifier = Modifier.size(42.dp),
             shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -295,41 +288,32 @@ internal fun PlatformSwitchButton(
             }
         }
 
-        if (useDropdown) {
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
-                modifier = Modifier.widthIn(min = 160.dp)
+        AnimatedDropdownPopup(
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            matchAnchorWidth = false,
+            anchorWidth = 200.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(200.dp)
+                    .heightIn(max = maxListHeight)
+                    .verticalScroll(rememberScrollState())
             ) {
                 availableOptions.forEach { opt ->
                     val optCount = platformCounts[opt.key] ?: 0
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = opt.label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (opt.key == selectedPlatform) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (opt.key == selectedPlatform) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = "$optCount 筆",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        },
-                        leadingIcon = {
+                    ReaterDropdownOption(
+                        text = opt.label,
+                        selected = opt.key == selectedPlatform,
+                        compact = true,
+                        subLabel = "$optCount 筆",
+                        leading = {
                             Icon(
                                 painter = painterResource(opt.iconRes),
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = if (opt.key == selectedPlatform) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                modifier = Modifier.size(16.dp),
+                                tint = if (opt.key == selectedPlatform) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         onClick = {
@@ -343,7 +327,6 @@ internal fun PlatformSwitchButton(
     }
 }
 
-/** 平台切換項目：顯示名稱、篩選鍵值與圖示資源。 */
 internal data class PlatformOption(
     val label: String,
     val key: String,
