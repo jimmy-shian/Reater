@@ -278,6 +278,16 @@ class ThreadPostRepository @Inject constructor(
         } else {
             resolvedRawJsonBase
         }
+        // 音訊 metadata（曲名/歌手/封面/歌詞）免遷移注入 rawJsonMin：以 normalizeKey(remoteUrl) 為鍵，
+        // 詳情頁歌詞卡與匯出（封面影片/含 metadata 音樂檔）用 remoteUrl 反查
+        val audioMetaMap = LinkedHashMap<String, com.reater.app.domain.AudioMetaStore.AudioMeta>()
+        for (m in combinedMedia) {
+            val meta = com.reater.app.domain.AudioMetaStore.decode(m.audioMetaJson) ?: continue
+            val key = com.reater.app.data.remote.MediaDedup.normalizeKey(m.remoteUrl)
+            if (key.isNotBlank()) audioMetaMap.putIfAbsent(key, meta)
+        }
+        val resolvedRawJsonWithAudio = if (audioMetaMap.isEmpty()) resolvedRawJson else
+            com.reater.app.domain.AudioMetaStore.withAudioMeta(resolvedRawJson, audioMetaMap)
           // Upsert ItemEntity
           val existing = if (saveAsNew) null else (
               itemDao.getItemByCanonicalUrl(canonicalUrl) ?: itemDao.getItemByShortcode(shortcode)
@@ -303,7 +313,7 @@ class ThreadPostRepository @Inject constructor(
                 likeCount = fetchedResult?.likeCount ?: existing.likeCount,
                 replyCount = fetchedResult?.replyCount ?: existing.replyCount,
                 repostCount = fetchedResult?.repostCount ?: existing.repostCount,
-                rawJsonMin = resolvedRawJson.ifBlank { existing.rawJsonMin },
+                rawJsonMin = resolvedRawJsonWithAudio.ifBlank { existing.rawJsonMin },
                 sourceVersion = existing.sourceVersion + 1,
                 lastFetchStatus = fetchedResult?.status ?: existing.lastFetchStatus,
                 lastFetchAt = System.currentTimeMillis(),
@@ -328,7 +338,7 @@ class ThreadPostRepository @Inject constructor(
                 replyCount = fetchedResult?.replyCount ?: 0,
                 repostCount = fetchedResult?.repostCount ?: 0,
                 lastFetchStatus = fetchedResult?.status ?: "COMPLETE",
-                rawJsonMin = resolvedRawJson,
+                rawJsonMin = resolvedRawJsonWithAudio,
                 platform = platform
             )
             itemDao.insertItem(newItem)

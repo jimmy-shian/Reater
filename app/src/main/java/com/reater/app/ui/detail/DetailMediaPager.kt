@@ -28,6 +28,8 @@ internal fun DetailMediaPager(
     selectedUrl: String,
     onPageChanged: (String) -> Unit,
     onScrollChanged: (Boolean) -> Unit,
+    /** media 內 AUDIO 媒體的 metadata JSON（normalizeKey→JSON），片段內以 URL 反查 */
+    audioMetaJsonByUrl: Map<String, String> = emptyMap(),
     onOpen: (MediaEntity) -> Unit
 ) {
     if (media.isEmpty()) return
@@ -63,6 +65,10 @@ internal fun DetailMediaPager(
                                 ?: media.getOrNull(index + 1)?.takeIf { it.kind.equals("IMAGE", true) }
                                 ?: media.firstOrNull { it.kind.equals("IMAGE", true) }
                             cover?.let { if (it.localPath.isNotBlank() && File(it.localPath).exists()) it.localPath else it.remoteUrl }.orEmpty()
+                        } else "",
+                        // 音訊 metadata（曲名/歌手/歌詞）：全螢幕匯出用
+                        audioMetaJson = if (entryKind.equals("AUDIO", ignoreCase = true)) {
+                            com.reater.app.domain.AudioMetaStore.pickJson(audioMetaJsonByUrl, entry.remoteUrl)
                         } else "",
                         modifier = Modifier.fillMaxSize()
                     )

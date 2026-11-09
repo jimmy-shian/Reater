@@ -80,6 +80,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.key
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.runtime.rememberCoroutineScope
@@ -151,6 +153,8 @@ fun InlineVideoPlayer(
     autoPlay: Boolean = false,
     /** 音訊（無畫面）來源的海報圖：緩衝中與整段播放期間顯示，看起來像影片封面 */
     posterUrl: String = "",
+    /** AUDIO 媒體附帶的 metadata JSON（AudioMetaStore.encode 格式；匯出時嵌入曲名/歌手/歌詞） */
+    audioMetaJson: String = "",
     modifier: Modifier = Modifier
 ) {
     val playerId = remember { java.util.UUID.randomUUID().toString() }
@@ -322,6 +326,10 @@ fun InlineVideoPlayer(
                     startMuted = isMuted,
                     initialVideoWidth = videoWidth,
                     initialVideoHeight = videoHeight,
+                    // 音訊（無畫面）必須把海報帶進全螢幕，否則開全螢幕只剩黑畫面
+                    posterUrl = posterUrl,
+                    // 音訊 metadata（曲名/歌手/歌詞）：匯出「音樂版/影片版」時嵌入用
+                    audioMetaJson = audioMetaJson,
                     onDismissDrag = { updateDismissDrag(it) },
                     onDismissEnd = { endDismissDrag(it) },
                     onClose = { finalPos, finalPlaying, finalMuted ->
@@ -550,6 +558,8 @@ fun FullscreenVideoViewer(
     initialVideoHeight: Int = 0,
     /** 音訊（無畫面）來源的海報圖：顯示封面代替黑畫面 */
     posterUrl: String = "",
+    /** AUDIO 媒體 metadata JSON（AudioMetaStore.encode 格式；空字串=無，匯出用） */
+    audioMetaJson: String = "",
     onDismissDrag: (Float) -> Unit = {},
     onDismissEnd: (Float) -> Unit = {},
     onClose: (finalPosition: Int, isPlaying: Boolean, isMuted: Boolean) -> Unit
@@ -701,6 +711,75 @@ fun FullscreenVideoViewer(
         onClose(finalPosition, isPlaying, isMuted)
     }
     BackHandler { handleClose() }
+
+    // 音訊（無畫面）匯出：先問「影片版還是音樂版」，匯出中顯示進度視窗
+    var showAudioExportChooser by remember { mutableStateOf(false) }
+    var audioExportLabel by remember { mutableStateOf<String?>(null) }
+    if (showAudioExportChooser) {
+        AlertDialog(
+            onDismissRequest = { showAudioExportChooser = false },
+            title = { Text("選擇下載格式") },
+            text = {
+                Text(
+                    "這是一則音訊（音樂）貼文，可選擇要儲存的版本：\n\n" +
+                        "🎵 音樂版（.m4a）\n純音訊檔，內嵌曲名／歌手／封面圖／歌詞 metadata，" +
+                        "存到手機「音樂/Reater」；音樂 App 會自動顯示專輯封面與歌詞。\n\n" +
+                        "🎬 影片版（.mp4）\n把封面做成畫面的影片，存到相簿「Movies/Reater」，" +
+                        "可直接播放或分享到其他 App（畫面為靜態封面）。",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = {
+                        showAudioExportChooser = false
+                        audioExportLabel = "正在寫入音樂檔（含封面/歌詞）…"
+                        coroutineScope.launch {
+                            exportAudioAsTaggedMusicWithFeedback(
+                                context = context,
+                                localPath = localPath,
+                                remoteUrl = remoteUrl,
+                                posterUrl = posterUrl,
+                                audioMetaJson = audioMetaJson
+                            )
+                            audioExportLabel = null
+                        }
+                    }) { Text("音樂版") }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextButton(onClick = {
+                        showAudioExportChooser = false
+                        audioExportLabel = "正在合成影片（含封面畫面）…"
+                        coroutineScope.launch {
+                            exportAudioAsCoverVideoWithFeedback(
+                                context = context,
+                                localPath = localPath,
+                                remoteUrl = remoteUrl,
+                                posterUrl = posterUrl
+                            )
+                            audioExportLabel = null
+                        }
+                    }) { Text("影片版") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAudioExportChooser = false }) { Text("取消") }
+            }
+        )
+    }
+    if (audioExportLabel != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("匯出中") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(audioExportLabel.orEmpty(), fontSize = 14.sp)
+                }
+            },
+            confirmButton = {}
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -1143,13 +1222,19 @@ fun FullscreenVideoViewer(
                                     .clickable {
                                     controlsVisible = true
                                     lastInteractionTime = System.currentTimeMillis()
-                                    coroutineScope.launch {
-                                        saveMediaToGalleryWithFeedback(
-                                            context = context,
-                                            isVideo = true,
-                                            localPath = localPath,
-                                            remoteUrl = remoteUrl
-                                        )
+                                    if (isAudioOnly) {
+                                        // 音訊（音樂）貼文：先選「影片版/音樂版」再匯出
+                                        showAudioExportChooser = true
+                                    } else {
+                                        coroutineScope.launch {
+                                            saveMediaToGalleryWithFeedback(
+                                                context = context,
+                                                isVideo = true,
+                                                localPath = localPath,
+                                                remoteUrl = remoteUrl,
+                                                isAudio = false
+                                            )
+                                        }
                                     }
                                     }
                             ) {

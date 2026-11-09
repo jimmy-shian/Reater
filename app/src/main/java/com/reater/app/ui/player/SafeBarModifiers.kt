@@ -518,7 +518,9 @@ suspend fun saveMediaToGalleryWithFeedback(
     context: Context,
     isVideo: Boolean,
     localPath: String,
-    remoteUrl: String
+    remoteUrl: String,
+    /** 純音訊（無視軌的 mp4）：存成 .m4a 進音樂資料庫，避免以影片身份在相簿顯示全黑 */
+    isAudio: Boolean = false
 ) {
     val localFile = if (localPath.isNotBlank()) File(localPath).takeIf { it.exists() && it.length() > 0 } else null
 
@@ -531,38 +533,194 @@ suspend fun saveMediaToGalleryWithFeedback(
 
     if (localFile != null) {
         val ok = withContext(Dispatchers.IO) {
-            copyFileToGallery(context, localFile, isVideo)
+            copyFileToGallery(context, localFile, isVideo, isAudio)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, if (ok) "已儲存到相簿" else "儲存失敗", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (ok) (if (isAudio) "已儲存到音樂" else "已儲存到相簿") else "儲存失敗", Toast.LENGTH_SHORT).show()
         }
         return
     }
 
     // 需由遠端網址下載
     withContext(Dispatchers.Main) {
-        Toast.makeText(context, if (isVideo) "正在下載影片至相簿..." else "正在下載圖片至相簿...", Toast.LENGTH_SHORT).show()
+        val what = when {
+            isAudio -> "音訊"
+            isVideo -> "影片"
+            else -> "圖片"
+        }
+        Toast.makeText(context, "正在下載$what...", Toast.LENGTH_SHORT).show()
     }
 
     val ok = withContext(Dispatchers.IO) {
-        val downloaded = downloadToTemp(context, remoteUrl, isVideo) ?: return@withContext false
+        val downloaded = downloadToTemp(context, remoteUrl, isVideo, isAudio) ?: return@withContext false
         try {
-            copyFileToGallery(context, downloaded, isVideo)
+            copyFileToGallery(context, downloaded, isVideo, isAudio)
         } finally {
             runCatching { downloaded.delete() }
         }
     }
 
     withContext(Dispatchers.Main) {
-        Toast.makeText(context, if (ok) "已儲存到相簿" else "下載或儲存失敗，請檢查網路連線", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, if (ok) (if (isAudio) "已儲存到音樂" else "已儲存到相簿") else "下載或儲存失敗，請檢查網路連線", Toast.LENGTH_SHORT).show()
     }
 }
 
-fun copyFileToGallery(context: Context, src: File, isVideo: Boolean): Boolean {
+/**
+ * 將音訊貼文匯出成「音樂版 .m4a」：純音訊 + ilst metadata（©nam 曲名/©ART 歌手/
+ * ©lyr 歌詞/covr 封面），內部先寫暫存檔再進音樂資料庫。
+ */
+suspend fun exportAudioAsTaggedMusicWithFeedback(
+    context: Context,
+    localPath: String,
+    remoteUrl: String,
+    posterUrl: String,
+    audioMetaJson: String
+): Boolean {
+    val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
+    if (audioFile == null) {
+        withContext(Dispatchers.Main) { Toast.makeText(context, "音訊檔不可用，請先在播放中開啟", Toast.LENGTH_SHORT).show() }
+        return false
+    }
+    val ok = withContext(Dispatchers.IO) {
+        runCatching {
+            val meta = com.reater.app.domain.AudioMetaStore.decode(audioMetaJson)
+            val coverBitmap = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, posterUrl) }
+            val coverJpeg = coverBitmap?.let { bm ->
+                try {
+                    java.io.ByteArrayOutputStream(256 * 1024).use { bos ->
+                        bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, bos)
+                        bos.toByteArray()
+                    }
+                } finally {
+                    runCatching { bm.recycle() }
+                }
+            }
+            val tagged = File(context.cacheDir, "reater_tag_${System.currentTimeMillis()}.m4a")
+            val embedOk = Mp4TagWriter.embed(
+                audioFile, tagged,
+                Mp4TagWriter.Tags(
+                    title = meta?.title.orEmpty(),
+                    artist = meta?.artist.orEmpty(),
+                    lyrics = meta?.let { com.reater.app.domain.AudioMetaStore.lyricsText(it) }.orEmpty(),
+                    coverJpeg = coverJpeg
+                )
+            )
+            if (!embedOk) {
+                // 不支援的結構：回退乾淨 .m4a（無 metadata）
+                copyFileToGallery(context, audioFile, isVideo = false, isAudio = true)
+            } else {
+                try {
+                    copyFileToGallery(context, tagged, isVideo = false, isAudio = true)
+                } finally {
+                    runCatching { tagged.delete() }
+                }
+            }
+        }.getOrDefault(false)
+    }
+    withContext(Dispatchers.Main) {
+        Toast.makeText(
+            context,
+            if (ok) "已儲存到音樂（含曲名/封面/歌詞）" else "儲存失敗，請確認網路與音訊檔可用",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+    return ok
+}
+
+/**
+ * 將音訊貼文匯出成「影片版 .mp4」：封面圖合成為視訊軌（靜態畫面）+ 原音訊 passthrough，
+ * 進相簿可直接播放/分享。
+ */
+suspend fun exportAudioAsCoverVideoWithFeedback(
+    context: Context,
+    localPath: String,
+    remoteUrl: String,
+    posterUrl: String
+): Boolean {
+    val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
+    if (audioFile == null) {
+        withContext(Dispatchers.Main) { Toast.makeText(context, "音訊檔不可用，請先在播放中開啟", Toast.LENGTH_SHORT).show() }
+        return false
+    }
+    val ok = withContext(Dispatchers.IO) {
+        runCatching {
+            val cover = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, posterUrl) }
+                ?: throw IllegalStateException("no cover")
+            try {
+                val out = File(context.cacheDir, "reater_av_${System.currentTimeMillis()}.mp4")
+                val composed = AudioVideoComposer.compose(audioFile, cover, out)
+                if (!composed) false else {
+                    try {
+                        copyFileToGallery(context, out, isVideo = true)
+                    } finally {
+                        runCatching { out.delete() }
+                    }
+                }
+            } finally {
+                runCatching { cover.recycle() }
+            }
+        }.getOrDefault(false)
+    }
+    withContext(Dispatchers.Main) {
+        Toast.makeText(
+            context,
+            if (ok) "已儲存到相簿（影片含封面）" else "合成失敗（封面取得或編碼失敗）",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+    return ok
+}
+
+/** 音訊來源：本機檔優先；無本機檔時由遠端下載至暫存 */
+private suspend fun resolveAudioSourceFile(context: Context, localPath: String, remoteUrl: String): File? {
+    val local = localPath.takeIf { it.isNotBlank() }
+        ?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+    if (local != null) return local
+    if (remoteUrl.isBlank()) return null
+    return withContext(Dispatchers.IO) { downloadToTemp(context, remoteUrl, isVideo = false, isAudio = true) }
+}
+
+/**
+ * 載入封面位圖：http(s) 網址 → 下載至暫存再解碼；本機路徑直接解碼。
+ * 失敗（含無網路）回 null。
+ */
+private suspend fun loadCoverBitmap(context: Context, posterUrl: String): android.graphics.Bitmap? {
+    if (posterUrl.isBlank()) return null
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            if (posterUrl.startsWith("http")) {
+                val f = downloadToTemp(context, posterUrl, isVideo = false, isAudio = false)
+                    ?: return@runCatching null
+                try {
+                    android.graphics.BitmapFactory.decodeFile(f.absolutePath)
+                } finally {
+                    runCatching { f.delete() }
+                }
+            } else {
+                val f = File(posterUrl)
+                if (f.exists() && f.length() > 0) android.graphics.BitmapFactory.decodeFile(f.absolutePath) else null
+            }
+        }.getOrNull()
+    }
+}
+
+fun copyFileToGallery(context: Context, src: File, isVideo: Boolean, isAudio: Boolean = false): Boolean {
     return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val ext = src.extension.ifBlank { if (isVideo) "mp4" else "jpg" }
-            val mime = if (isVideo) {
+            val ext = when {
+                src.extension.isBlank() -> if (isAudio) "m4a" else if (isVideo) "mp4" else "jpg"
+                // 音訊來源實為 mp4 容器：以 .m4a 存放，音樂 App 才能正確辨識
+                isAudio && src.extension.equals("mp4", ignoreCase = true) -> "m4a"
+                else -> src.extension
+            }
+            val mime = if (isAudio) {
+                when (ext.lowercase()) {
+                    "mp3" -> "audio/mpeg"
+                    "aac" -> "audio/aac"
+                    "ogg" -> "audio/ogg"
+                    else -> "audio/mp4"
+                }
+            } else if (isVideo) {
                 when (ext.lowercase()) {
                     "webm" -> "video/webm"
                     "mkv" -> "video/x-matroska"
@@ -577,8 +735,16 @@ fun copyFileToGallery(context: Context, src: File, isVideo: Boolean): Boolean {
                     else -> "image/jpeg"
                 }
             }
-            val relativeDir = if (isVideo) "${Environment.DIRECTORY_MOVIES}/Reater" else "${Environment.DIRECTORY_PICTURES}/Reater"
-            val contentUri = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            val relativeDir = when {
+                isAudio -> "${Environment.DIRECTORY_MUSIC}/Reater"
+                isVideo -> "${Environment.DIRECTORY_MOVIES}/Reater"
+                else -> "${Environment.DIRECTORY_PICTURES}/Reater"
+            }
+            val contentUri = when {
+                isAudio -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                isVideo -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                else -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
 
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, "reater_${System.currentTimeMillis()}.$ext")
@@ -598,10 +764,18 @@ fun copyFileToGallery(context: Context, src: File, isVideo: Boolean): Boolean {
         } else {
             @Suppress("DEPRECATION")
             val pubDir = Environment.getExternalStoragePublicDirectory(
-                if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
+                when {
+                    isAudio -> Environment.DIRECTORY_MUSIC
+                    isVideo -> Environment.DIRECTORY_MOVIES
+                    else -> Environment.DIRECTORY_PICTURES
+                }
             )
             val dir = File(pubDir, "Reater").apply { if (!exists()) mkdirs() }
-            val ext = src.extension.ifBlank { if (isVideo) "mp4" else "jpg" }
+            val ext = when {
+                src.extension.isBlank() -> if (isAudio) "m4a" else if (isVideo) "mp4" else "jpg"
+                isAudio && src.extension.equals("mp4", ignoreCase = true) -> "m4a"
+                else -> src.extension
+            }
             val dst = File(dir, "reater_${System.currentTimeMillis()}.$ext")
             src.copyTo(dst, overwrite = true)
             MediaScannerConnection.scanFile(context, arrayOf(dst.absolutePath), null, null)
@@ -612,14 +786,14 @@ fun copyFileToGallery(context: Context, src: File, isVideo: Boolean): Boolean {
     }
 }
 
-private fun downloadToTemp(context: Context, url: String, isVideo: Boolean): File? {
-    return try {
+private fun downloadToTemp(context: Context, url: String, isVideo: Boolean, isAudio: Boolean = false): File? {    return try {
         val ext = when {
-            url.contains(".mp4", ignoreCase = true) -> "mp4"
+            url.contains(".mp4", ignoreCase = true) -> if (isAudio) "m4a" else "mp4"
             url.contains(".mov", ignoreCase = true) -> "mov"
             url.contains(".webp", ignoreCase = true) -> "webp"
             url.contains(".png", ignoreCase = true) -> "png"
             url.contains(".gif", ignoreCase = true) -> "gif"
+            isAudio -> "m4a"
             isVideo -> "mp4"
             else -> "jpg"
         }

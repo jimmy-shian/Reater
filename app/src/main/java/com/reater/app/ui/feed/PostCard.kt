@@ -384,6 +384,14 @@ fun PostCard(
                                     ?.let { if (it.localPath.isNotBlank() && File(it.localPath).exists()) it.localPath else it.remoteUrl }
                                     .orEmpty()
                             } else "",
+                            // 音訊 metadata（曲名/歌手/歌詞）：全螢幕匯出用
+                            audioMetaJson = remember(itemDetail.item.rawJsonMin) {
+                                com.reater.app.domain.AudioMetaStore.toJsonUrlMap(itemDetail.item.rawJsonMin)
+                            }.let { map ->
+                                if (firstMedia.kind.equals("AUDIO", ignoreCase = true)) {
+                                    com.reater.app.domain.AudioMetaStore.pickJson(map, firstMedia.remoteUrl)
+                                } else ""
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                         Box(

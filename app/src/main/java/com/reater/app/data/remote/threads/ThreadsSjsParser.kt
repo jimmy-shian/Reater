@@ -5,6 +5,7 @@ import com.reater.app.data.remote.FetchedMedia
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reater.app.domain.TextAttachmentStore
+import com.reater.app.domain.AudioMetaStore
 
 /**
  * Threads SJS 內嵌 JSON 解析器（主力解析器）。
@@ -822,8 +823,6 @@ object ThreadsSjsParser {
 
         val out = mutableListOf<FetchedMedia>()
         if (asset != null) {
-            val audioUrl = extractDashAudioBaseUrl(asset.optString("dash_manifest").orEmpty())
-            if (audioUrl.startsWith("http")) out.add(FetchedMedia(kind = "AUDIO", remoteUrl = audioUrl))
             // 封面：大圖優先，退回小圖（dl=1 參數保留，CDN 直連用）
             fun coverUri(obj: JSONObject?): String {
                 val uri = obj?.optString("downloadable_uri").orEmpty()
@@ -831,6 +830,12 @@ object ThreadsSjsParser {
             }
             val cover = coverUri(asset.optJSONObject("large_display_image"))
                 .ifBlank { coverUri(asset.optJSONObject("display_image")) }
+            val audioUrl = extractDashAudioBaseUrl(asset.optString("dash_manifest").orEmpty())
+            // 曲名/歌手/封面/跑動歌詞：編成 meta 附在 AUDIO 媒體上，
+            // 存檔時注入 rawJsonMin（詳情頁歌詞卡 + 匯出檔案的 metadata 用）
+            val meta = buildAudioMeta(asset, cover)
+            val metaJson = if (meta != null) AudioMetaStore.encode(meta) else ""
+            if (audioUrl.startsWith("http")) out.add(FetchedMedia(kind = "AUDIO", remoteUrl = audioUrl, audioMetaJson = metaJson))
             if (cover.isNotBlank()) {
                 out.add(FetchedMedia(kind = "IMAGE", remoteUrl = cover))
             }
@@ -848,6 +853,37 @@ object ThreadsSjsParser {
             }
         }
         return null
+    }
+
+    /**
+     * 音訊 asset → metadata（2026-11 實測 DfTrNv0D9nw shape）：
+     *   display_title.text（曲名）/ display_artist.text（歌手）
+     *   lyrics{available, lines[{line{text}, start_time_in_ms, end_time_in_ms}]}（跑動歌詞逐行時間軸）
+     */
+    private fun buildAudioMeta(asset: JSONObject, cover: String): AudioMetaStore.AudioMeta? {
+        val title = asset.optJSONObject("display_title")?.optString("text").orEmpty()
+        val artist = asset.optJSONObject("display_artist")?.optString("text").orEmpty()
+        val lines = mutableListOf<AudioMetaStore.LyricLine>()
+        val lyrics = asset.optJSONObject("lyrics")
+        // available=false 時不該有 lines；鍵缺失則照常解析
+        if (lyrics != null && lyrics.optBoolean("available", true)) {
+            val linesArr = lyrics.optJSONArray("lines")
+            for (i in 0 until (linesArr?.length() ?: 0)) {
+                val entry = linesArr?.optJSONObject(i) ?: continue
+                val line = entry.optJSONObject("line") ?: continue
+                val text = line.optString("text")
+                if (text.isBlank()) continue
+                lines.add(
+                    AudioMetaStore.LyricLine(
+                        text = text,
+                        startMs = entry.optLong("start_time_in_ms", 0L),
+                        endMs = entry.optLong("end_time_in_ms", 0L)
+                    )
+                )
+            }
+        }
+        if (title.isBlank() && artist.isBlank() && cover.isBlank() && lines.isEmpty()) return null
+        return AudioMetaStore.AudioMeta(title = title, artist = artist, coverUrl = cover, lyrics = lines)
     }
 
     /**

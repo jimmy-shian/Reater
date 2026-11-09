@@ -120,6 +120,7 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
     implementation("io.coil-kt:coil-gif:2.7.0")
+    implementation("io.coil-kt:coil-video:2.7.0")
 
     // Glance Widget
     implementation(libs.androidx.glance.appwidget)
