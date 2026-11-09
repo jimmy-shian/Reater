@@ -7,8 +7,9 @@ import androidx.compose.ui.platform.LocalContext
 import coil.ImageLoader
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
+import coil.decode.VideoFrameDecoder
 
-/** 共用 Coil 圖片解碼；GIF 使用平台動態 decoder，舊版 Android 使用 GifDecoder。 */
+/** 共用 Coil 圖片解碼：GIF 使用平台特定 decoder，影片使用 VideoFrameDecoder */
 @Composable
 fun rememberMediaImageLoader(): ImageLoader {
     val context = LocalContext.current.applicationContext
@@ -16,6 +17,7 @@ fun rememberMediaImageLoader(): ImageLoader {
         ImageLoader.Builder(context).components {
             if (Build.VERSION.SDK_INT >= 28) add(ImageDecoderDecoder.Factory())
             else add(GifDecoder.Factory())
+            add(VideoFrameDecoder.Factory())
         }.build()
     }
 }

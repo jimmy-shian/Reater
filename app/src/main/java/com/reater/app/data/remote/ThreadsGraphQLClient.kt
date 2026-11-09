@@ -35,7 +35,9 @@ data class FetchedMedia(
     val remoteUrl: String,
     val localPath: String = "",
     val width: Int = 0,
-    val height: Int = 0
+    val height: Int = 0,
+    /** AUDIO 媒體附帶的 metadata JSON（曲名/歌手/封面/歌詞；AudioMetaStore.encode 格式，空字串=無） */
+    val audioMetaJson: String = ""
 )
 
 /** FetchedMedia 列表的 JSON 編解碼（留言 mediaJson 欄位用） */
@@ -116,7 +118,7 @@ class ThreadsGraphQLClient @Inject constructor(
         isLenient = true
     }
 
-    suspend fun fetchPostByPostIdOrShortcode(urlOrPostID: String, fallbackShortcode: String): Result<FetchedPostResult> {        return withContext(Dispatchers.IO) {
+    suspend fun fetchPostByPostIdOrShortcode(urlOrPostID: String, fallbackShortcode: String, onProgress: ((FetchProgressInfo, FetchedPostResult) -> Unit)? = null): Result<FetchedPostResult> {        return withContext(Dispatchers.IO) {
             val targetUrl = if (urlOrPostID.startsWith("http://") || urlOrPostID.startsWith("https://")) {
                 urlOrPostID
             } else {
@@ -160,15 +162,104 @@ class ThreadsGraphQLClient @Inject constructor(
                 }
             }
 
-            // 5. 離線媒體下載（主貼 + 母文鏈 + 留言媒體，留言檔名用 500+ 偏移避開主貼索引，母文鏈用 900+）
-            // 下載前先正規化去重，避免同內容多變體下載多份造成雙份顯示
-            val dedupedMediaList = MediaDedup.distinctFetched(mediaList)
-            val downloadedMediaList = dedupedMediaList.mapIndexed { index, m ->
-                val localFilePath = mediaDownloader.downloadMedia(m.remoteUrl, extractedShortcode, index)
-                m.copy(localPath = localFilePath)
-            }
+            val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
+            val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
             val parent = parsed.parent
-            // 祖先鏈媒體：root 在前依序下載（900 + 層*8 + 序），合併時保持鏈序
+
+            var currentResult = FetchedPostResult(
+                shortcode = extractedShortcode,
+                authorHandle = finalAuthorHandle,
+                authorDisplayName = finalDisplayName,
+                authorProfileUrl = authorProfileUrl,
+                authorVerified = authorVerified,
+                postedAt = if (postedAtMs > 0) postedAtMs else System.currentTimeMillis(),
+                bodyText = bodyText,
+                likeCount = likeCount,
+                replyCount = commentsList.size,
+                repostCount = 0,
+                comments = commentsList,
+                media = emptyList(),
+                rawJsonMin = """{"code":"$extractedShortcode"}""",
+                resolvedUrl = resolvedUrl,
+                status = "PARTIAL",
+                parentShortcode = parent?.shortcode.orEmpty(),
+                parentAuthorHandle = parent?.authorHandle.orEmpty(),
+                parentBodyText = parent?.bodyText.orEmpty(),
+                parentLikeCount = parent?.likeCount ?: 0,
+                parentPostedAt = parent?.postedAtMs ?: 0L,
+                parentMedia = emptyList(),
+                parentChain = emptyList(),
+                topicTag = parsed.topicTag,
+                textAttachment = parsed.textAttachment,
+                hasStructuredPost = parsed.fromSjs
+            )
+
+            // 階段 2：已取得貼文內文
+            onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+
+            // 階段 3：若有留言則通知已取得精華留言
+            if (commentsList.isNotEmpty()) {
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = "已擷取精華留言 (${commentsList.size} 則)"), currentResult)
+            }
+
+            // 5. 離線媒體下載（主貼 + 母文鏈 + 留言媒體）
+            val dedupedMediaList = MediaDedup.distinctFetched(mediaList)
+            val totalMedia = dedupedMediaList.size
+            var failedMediaCount = 0
+            var downloadedMediaCount = 0
+
+            if (totalMedia > 0) {
+                // 先把完整媒體清單（localPath 尚空）放進結果：UI 預覽可先用遠端圖顯示，
+                // 使用者中途按「背景下載」或抓取被取消時，還沒下載的媒體也不會從結果中消失，
+                // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
+                currentResult = currentResult.copy(media = dedupedMediaList)
+                onProgress?.invoke(
+                    FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                    currentResult
+                )
+                dedupedMediaList.forEachIndexed { index, m ->
+                    var lastReported = 0L
+                    val localFilePath = mediaDownloader.downloadMedia(m.remoteUrl, extractedShortcode, index) { p ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastReported >= 250) {
+                            lastReported = now
+                            onProgress?.invoke(
+                                FetchProgressInfo(
+                                    stage = FetchStage.DOWNLOADING_MEDIA,
+                                    message = "正在下載媒體 (${downloadedMediaCount + 1}/$totalMedia)",
+                                    mediaIndex = downloadedMediaCount + 1,
+                                    mediaTotal = totalMedia,
+                                    bytesRead = p.bytesRead,
+                                    totalBytes = p.totalBytes,
+                                    speedBps = p.speedBytesPerSec,
+                                    etaSeconds = p.etaSeconds
+                                ),
+                                currentResult
+                            )
+                        }
+                    }
+                    // 下載失敗／尚未下載也保留同一筆（localPath 為空），
+                    // 由背景 Worker 續傳；順序不變，存檔 position 才不會錯位。
+                    currentResult = currentResult.copy(
+                        media = currentResult.media.mapIndexed { i, existing ->
+                            if (i == index) existing.copy(localPath = localFilePath) else existing
+                        }
+                    )
+                    if (localFilePath.isNotBlank()) downloadedMediaCount++ else failedMediaCount++
+                    // 每下載完成一個媒體，即時更新並通知 UI
+                    onProgress?.invoke(
+                        FetchProgressInfo(
+                            stage = FetchStage.DOWNLOADING_MEDIA,
+                            message = "正在下載媒體 ($downloadedMediaCount/$totalMedia)",
+                            mediaIndex = downloadedMediaCount,
+                            mediaTotal = totalMedia
+                        ),
+                        currentResult
+                    )
+                }
+            }
+
+            // 祖先鏈媒體
             val downloadedChain = downloadParentChainMedia(
                 parsed.parentChain.ifEmpty { listOfNotNull(parent) },
                 extractedShortcode
@@ -176,60 +267,28 @@ class ThreadsGraphQLClient @Inject constructor(
             val downloadedParentMedia = MediaDedup.distinctFetched(downloadedChain.flatMap { it.media })
             val commentsWithMedia = downloadCommentMedia(commentsList, extractedShortcode)
 
-            val finalAuthorHandle = extractedHandle.ifBlank { "threads_user" }
-            val finalDisplayName = authorDisplayName.ifBlank { finalAuthorHandle }
-
-            if (bodyText.isNotBlank() || downloadedMediaList.isNotEmpty() || commentsWithMedia.isNotEmpty() || parsed.textAttachment.isNotBlank()) {
-                Result.success(
-                    FetchedPostResult(
-                        shortcode = extractedShortcode,
-                        authorHandle = finalAuthorHandle,
-                        authorDisplayName = finalDisplayName,
-                        authorProfileUrl = authorProfileUrl,
-                        authorVerified = authorVerified,
-                        postedAt = if (postedAtMs > 0) postedAtMs else System.currentTimeMillis(),
-                        bodyText = bodyText,
-                        likeCount = likeCount,
-                        replyCount = commentsWithMedia.size,
-                        repostCount = 0,
-                        comments = commentsWithMedia,
-                        media = downloadedMediaList,
-                        rawJsonMin = """{"code":"$extractedShortcode"}""",
-                        resolvedUrl = resolvedUrl,
-                        status = "COMPLETE",
-                        parentShortcode = parent?.shortcode.orEmpty(),
-                        parentAuthorHandle = parent?.authorHandle.orEmpty(),
-                        parentBodyText = parent?.bodyText.orEmpty(),
-                        parentLikeCount = parent?.likeCount ?: 0,
-                        parentPostedAt = parent?.postedAtMs ?: 0L,
-                        parentMedia = downloadedParentMedia,
-                        parentChain = downloadedChain,
-                        topicTag = parsed.topicTag,
-                        textAttachment = parsed.textAttachment,
-                        hasStructuredPost = parsed.fromSjs
-                    )
-                )
+            val finalStatus = if (bodyText.isNotBlank() || currentResult.media.isNotEmpty() || commentsWithMedia.isNotEmpty() || parsed.textAttachment.isNotBlank()) {
+                if (failedMediaCount == 0) "COMPLETE" else "PARTIAL"
             } else {
-                Result.success(
-                    FetchedPostResult(
-                        shortcode = extractedShortcode,
-                        authorHandle = finalAuthorHandle,
-                        authorDisplayName = finalDisplayName,
-                        authorProfileUrl = "",
-                        authorVerified = false,
-                        postedAt = System.currentTimeMillis(),
-                        bodyText = "",
-                        likeCount = 0,
-                        replyCount = 0,
-                        repostCount = 0,
-                        comments = emptyList(),
-                        media = downloadedMediaList,
-                        rawJsonMin = "",
-                        resolvedUrl = resolvedUrl,
-                        status = "PARTIAL"
-                    )
-                )
+                "FAILED"
             }
+
+            val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
+            val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedMediaCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+
+            currentResult = currentResult.copy(
+                status = finalStatus,
+                comments = commentsWithMedia,
+                parentMedia = downloadedParentMedia,
+                parentChain = downloadedChain
+            )
+
+            onProgress?.invoke(
+                FetchProgressInfo(stage = finalStage, message = finalMsg, mediaIndex = downloadedMediaCount, mediaTotal = totalMedia),
+                currentResult
+            )
+
+            Result.success(currentResult)
         }
     }
 
@@ -291,21 +350,28 @@ class ThreadsGraphQLClient @Inject constructor(
      * 留言媒體離線下載（留言中的圖片/影片）。
      * 檔名索引用 500+ 偏移，避免與主貼 media 的 0..N 索引衝突；
      * 整篇上限 budget 檔，防止大量留言拖垮抓取。
+     * 頭像下載上限 avatarBudget 則，防止高回應數貼文（百則以上）發出過量 HTTP 請求
+     * 而導致連線池耗盡、抓取超時、存檔靜默失敗。
      */
     private suspend fun downloadCommentMedia(
         comments: List<FetchedComment>,
         shortcode: String,
         startIndex: Int = 500,
-        budget: Int = 12
+        budget: Int = 12,
+        avatarBudget: Int = 30
     ): List<FetchedComment> {
         var remaining = budget
+        var avatarRemaining = avatarBudget
         var ci = 0
         return comments.mapIndexed { index, original ->
-            val c = if (original.authorProfileUrl.startsWith("http")) original.copy(
-                authorProfileLocalPath = mediaDownloader.downloadMedia(
-                    original.authorProfileUrl, shortcode, 8000 + index
+            val c = if (original.authorProfileUrl.startsWith("http") && avatarRemaining > 0) {
+                avatarRemaining--
+                original.copy(
+                    authorProfileLocalPath = mediaDownloader.downloadMedia(
+                        original.authorProfileUrl, shortcode, 8000 + index
+                    )
                 )
-            ) else original
+            } else original
             if (c.media.isEmpty() || remaining <= 0) return@mapIndexed c
             val take = c.media.take(remaining)
             val updated = take.mapIndexed { j, m ->

@@ -7,6 +7,8 @@ import com.reater.app.data.remote.MediaDedup
 import com.reater.app.data.remote.MediaDownloader
 import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.UrlParser
+import com.reater.app.data.remote.FetchProgressInfo
+import com.reater.app.data.remote.FetchStage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -57,7 +59,7 @@ class InstagramClient @Inject constructor(
         return UrlParser.parseInstagramUrl(url)?.shortcode?.takeIf { !it.startsWith("igshare_") }
     }
 
-    suspend fun fetchPost(url: String, fallbackShortcode: String): Result<FetchedPostResult> {
+    suspend fun fetchPost(url: String, fallbackShortcode: String, onProgress: ((FetchProgressInfo, FetchedPostResult) -> Unit)? = null): Result<FetchedPostResult> {
         return withContext(Dispatchers.IO) {
             try {
                 val parse = UrlParser.parseInstagramUrl(url)
@@ -90,36 +92,108 @@ class InstagramClient @Inject constructor(
                     if (agg.body.isBlank()) agg.applyEmbed(pass3.html)
                 }
 
-                // 媒體離線下載（本體 + og 兜底去重後）
-                val media = MediaDedup.distinctFetched(agg.mediaList).mapIndexed { index, m ->
-                    m.copy(localPath = mediaDownloader.downloadMedia(m.remoteUrl, agg.shortcode, index))
-                }
                 val comments = agg.comments.take(50)
+                val finalHandle = agg.authorHandle.ifBlank { "instagram_user" }
+                val finalShortcode = agg.shortcode.ifBlank { fallbackShortcode }
+
+                var currentResult = FetchedPostResult(
+                    shortcode = finalShortcode,
+                    authorHandle = finalHandle,
+                    authorDisplayName = agg.authorDisplayName.ifBlank { agg.authorHandle },
+                    authorProfileUrl = agg.mainAuthorProfile,
+                    authorVerified = false,
+                    postedAt = agg.postedAt,
+                    bodyText = agg.body,
+                    likeCount = agg.likeCount,
+                    replyCount = agg.commentCount,
+                    repostCount = 0,
+                    comments = comments,
+                    media = emptyList(),
+                    rawJsonMin = """{"code":"$finalShortcode"}""",
+                    resolvedUrl = pass1.finalUrl.ifBlank { "https://www.instagram.com/p/$finalShortcode/" },
+                    status = "PARTIAL",
+                    topicTag = TopicTags.firstHashtag(agg.body)
+                )
+
+                // 階段 2：已取得貼文內文
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+
+                // 階段 3：若有留言則通知已取得精華留言
+                if (comments.isNotEmpty()) {
+                    onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = "已擷取精華留言 (${comments.size} 則)"), currentResult)
+                }
+
+                // 階段 4：分批非同步下載媒體
+                val distinctMedia = MediaDedup.distinctFetched(agg.mediaList)
+                val totalMedia = distinctMedia.size
+                var failedMediaCount = 0
+                var succeededMediaCount = 0
+
+                if (totalMedia > 0) {
+                    // 先把完整媒體清單（localPath 尚空）放進結果：預覽可先用遠端圖顯示，
+                    // 中途按「背景下載」或抓取被取消時，未下載的媒體不會消失，
+                    // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
+                    currentResult = currentResult.copy(media = distinctMedia)
+                    onProgress?.invoke(
+                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                        currentResult
+                    )
+                    distinctMedia.forEachIndexed { index, m ->
+                        var lastReported = 0L
+                        val localPath = mediaDownloader.downloadMedia(m.remoteUrl, finalShortcode, index) { p ->
+                            val now = System.currentTimeMillis()
+                            if (now - lastReported >= 250) {
+                                lastReported = now
+                                onProgress?.invoke(
+                                    FetchProgressInfo(
+                                        stage = FetchStage.DOWNLOADING_MEDIA,
+                                        message = "正在下載媒體 (${succeededMediaCount + 1}/$totalMedia)",
+                                        mediaIndex = succeededMediaCount + 1,
+                                        mediaTotal = totalMedia,
+                                        bytesRead = p.bytesRead,
+                                        totalBytes = p.totalBytes,
+                                        speedBps = p.speedBytesPerSec,
+                                        etaSeconds = p.etaSeconds
+                                    ),
+                                    currentResult
+                                )
+                            }
+                        }
+                        // 下載失敗／尚未下載也保留同一筆（localPath 為空），交由背景 Worker 續傳
+                        currentResult = currentResult.copy(
+                            media = currentResult.media.mapIndexed { i, existing ->
+                                if (i == index) existing.copy(localPath = localPath) else existing
+                            }
+                        )
+                        if (localPath.isNotBlank()) succeededMediaCount++ else failedMediaCount++
+                        // 每完成一個媒體，即時更新 UI
+                        onProgress?.invoke(
+                            FetchProgressInfo(
+                                stage = FetchStage.DOWNLOADING_MEDIA,
+                                message = "正在下載媒體 ($succeededMediaCount/$totalMedia)",
+                                mediaIndex = succeededMediaCount,
+                                mediaTotal = totalMedia
+                            ),
+                            currentResult
+                        )
+                    }
+                }
+
+                // 階段 5：完成或部分成功
+                val downloadedCount = currentResult.media.count { it.localPath.isNotBlank() }
                 val status = when {
-                    agg.body.isNotBlank() && (comments.isNotEmpty() || media.isNotEmpty()) -> "COMPLETE"
-                    agg.body.isNotBlank() || media.isNotEmpty() || comments.isNotEmpty() -> "PARTIAL"
+                    agg.body.isNotBlank() && failedMediaCount == 0 && (comments.isNotEmpty() || currentResult.media.isNotEmpty()) -> "COMPLETE"
+                    agg.body.isNotBlank() || currentResult.media.isNotEmpty() || comments.isNotEmpty() -> "PARTIAL"
                     else -> "FAILED"
                 }
-                Result.success(
-                    FetchedPostResult(
-                        shortcode = agg.shortcode.ifBlank { fallbackShortcode },
-                        authorHandle = agg.authorHandle.ifBlank { "instagram_user" },
-                        authorDisplayName = agg.authorDisplayName.ifBlank { agg.authorHandle },
-                        authorProfileUrl = agg.mainAuthorProfile,
-                        authorVerified = false,
-                        postedAt = agg.postedAt,
-                        bodyText = agg.body,
-                        likeCount = agg.likeCount,
-                        replyCount = if (agg.commentCount > 0) agg.commentCount else comments.size,
-                        repostCount = 0,
-                        comments = comments,
-                        media = media,
-                        rawJsonMin = "",
-                        resolvedUrl = pass1.finalUrl.ifBlank { initialUrl },
-                        status = status,
-                        topicTag = TopicTags.firstHashtag(agg.body)
-                    )
+                val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
+                val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+                currentResult = currentResult.copy(status = status)
+                onProgress?.invoke(
+                    FetchProgressInfo(stage = finalStage, message = finalMsg, mediaIndex = downloadedCount, mediaTotal = totalMedia),
+                    currentResult
                 )
+                Result.success(currentResult)
             } catch (e: Exception) {
                 Result.failure(e)
             }

@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -55,6 +56,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.foundation.shape.CircleShape
+import com.reater.app.data.remote.FetchStage
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Button
@@ -98,6 +104,29 @@ import com.reater.app.ui.components.DismissFocusOnScroll
 import com.reater.app.ui.components.dismissFocusOnTap
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
+
+private fun formatMediaBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 MB"
+    val mb = bytes / (1024f * 1024f)
+    return String.format(java.util.Locale.US, "%.1f MB", mb)
+}
+
+private fun formatMediaEta(seconds: Long): String {
+    if (seconds <= 0) return "0:00"
+    val m = seconds / 60
+    val s = seconds % 60
+    return String.format(java.util.Locale.US, "%d:%02d", m, s)
+}
+
+private fun formatMediaSpeed(speedBps: Long): String {
+    if (speedBps <= 0) return ""
+    val kb = speedBps / 1024f
+    return if (kb >= 1024f) {
+        String.format(java.util.Locale.US, "%.1f MB/s", kb / 1024f)
+    } else {
+        String.format(java.util.Locale.US, "%.0f KB/s", kb)
+    }
+}
 
 @AndroidEntryPoint
 class ShareSaveActivity : ComponentActivity() {
@@ -148,11 +177,38 @@ class ShareSaveActivity : ComponentActivity() {
                         }
                     }
                 }
+                val requestPermissionLauncher = rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    // 沒拿到通知權限時，背景下載仍會繼續，只是通知欄看不到進度：
+                    // 明確告知使用者，避免誤以為「沒有在下載」。
+                    if (!granted && !com.reater.app.notify.NotifyCenter.canNotify(this@ShareSaveActivity)) {
+                        Toast.makeText(
+                            this,
+                            "未開啟通知權限，背景下載仍會繼續，但通知欄不會顯示下載進度",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        if (!com.reater.app.notify.NotifyCenter.canNotify(this@ShareSaveActivity)) {
+                            requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                }
+
                 ShareSaveScreen(
                     viewModel = viewModel,
                     onDismiss = { finish() },
-                    onSaved = {
-                        Toast.makeText(this, "已儲存至 Reater！", Toast.LENGTH_SHORT).show()
+                    onSaved = { hasPending ->
+                        val msg = if (hasPending) {
+                            "已儲存貼文，正在背景下載媒體（可於通知欄查看進度）"
+                        } else {
+                            "已儲存至 Reater！"
+                        }
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                         finish()
                     }
                 )
@@ -197,7 +253,7 @@ class ShareSaveActivity : ComponentActivity() {
 fun ShareSaveScreen(
     viewModel: ShareSaveViewModel,
     onDismiss: () -> Unit,
-    onSaved: () -> Unit
+    onSaved: (hasPendingBackgroundDownload: Boolean) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -249,7 +305,7 @@ fun ShareSaveScreen(
 
     LaunchedEffect(state.isSaved) {
         if (state.isSaved) {
-            onSaved()
+            onSaved(state.hasPendingMediaBackgroundDownload)
         }
     }
 
@@ -480,21 +536,55 @@ fun ShareSaveScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Status info banner
-                if (state.isFetching || state.webResolving) {
-                    val progress = state.downloadProgress
+                val showProgressBanner = state.isFetching || state.webResolving || state.fetchStage != FetchStage.IDLE
+                if (showProgressBanner && !state.isFetchFailed) {
+                    val stage = state.fetchStage
+                    val isDownloading = stage == FetchStage.DOWNLOADING_MEDIA
+                    val isComplete = stage == FetchStage.COMPLETED || stage == FetchStage.PARTIAL_SUCCESS
+
+                    val bannerText = when {
+                        state.webResolving -> "正在以內建瀏覽器解析分享連結（含留言與媒體）..."
+                        state.fetchStatusMessage.isNotBlank() -> {
+                            if (isDownloading && state.mediaBytesTotal > 0) {
+                                val etaText = if (state.mediaEtaSeconds > 0) " · 預估剩餘 ${formatMediaEta(state.mediaEtaSeconds)}" else ""
+                                val speedText = if (state.mediaSpeedBps > 0) " (${formatMediaSpeed(state.mediaSpeedBps)})" else ""
+                                "正在下載媒體 (${state.mediaDownloadedCount}/${state.mediaTotalCount} 個檔案，${formatMediaBytes(state.mediaBytesDownloaded)} / ${formatMediaBytes(state.mediaBytesTotal)})$etaText$speedText"
+                            } else {
+                                state.fetchStatusMessage
+                            }
+                        }
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM -> "正在自動分析 Instagram 內容與下載離線媒體..."
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_X -> "正在自動分析 X 貼文內容與下載離線媒體..."
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK -> "正在自動分析 Facebook 內容與下載離線媒體..."
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE -> "正在自動分析 YouTube 內容與下載離線媒體..."
+                        else -> "正在自動分析 Threads 內容與下載離線媒體..."
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            .background(
+                                if (isComplete) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                RoundedCornerShape(8.dp)
+                            )
                             .padding(10.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            if (progress != null && progress.totalBytes > 0) {
+                            if (isComplete) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            } else if (isDownloading && state.mediaBytesTotal > 0) {
+                                val percent = ((state.mediaBytesDownloaded.toFloat() / state.mediaBytesTotal) * 100).toInt().coerceIn(0, 100)
                                 Text(
-                                    text = "${progress.percentage}%",
+                                    text = "$percent%",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -507,40 +597,57 @@ fun ShareSaveScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(8.dp))
-                            val bannerText = if (state.webResolving) "正在以內建瀏覽器解析分享連結（含留言與媒體）..."
-                            else if (progress != null && progress.totalBytes > 0) {
-                                val etaText = if (progress.etaSeconds > 0) " · 剩餘約 ${progress.etaSeconds} 秒" else ""
-                                val mbRead = "%.1f".format(progress.bytesRead / (1024f * 1024f))
-                                val mbTotal = "%.1f".format(progress.totalBytes / (1024f * 1024f))
-                                "正在下載媒體 ($mbRead MB / $mbTotal MB)$etaText"
-                            }
-                            else if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM)
-                                "正在自動分析 Instagram 內容與下載離線媒體..."
-                            else if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_X)
-                                "正在自動分析 X 貼文內容與下載離線媒體..."
-                            else if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK)
-                                "正在自動分析 Facebook 內容與下載離線媒體..."
-                            else if (state.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE)
-                                "正在自動分析 YouTube 內容與下載離線媒體..."
-                            else "正在自動分析 Threads 內容與下載離線媒體..."
-
                             Text(
                                 text = bannerText,
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.weight(1f)
                             )
+                            if (isDownloading) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                TextButton(
+                                    onClick = { viewModel.savePost() },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(
+                                        text = "背景下載",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
-                        if (progress != null && progress.totalBytes > 0) {
+
+                        if (isDownloading) {
                             Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { progress.percentage / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            val progressFrac = if (state.mediaBytesTotal > 0) {
+                                (state.mediaBytesDownloaded.toFloat() / state.mediaBytesTotal).coerceIn(0f, 1f)
+                            } else if (state.mediaTotalCount > 0) {
+                                (state.mediaDownloadedCount.toFloat() / state.mediaTotalCount).coerceIn(0f, 1f)
+                            } else null
+
+                            if (progressFrac != null) {
+                                LinearProgressIndicator(
+                                    progress = { progressFrac },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            } else {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -715,6 +822,10 @@ fun ShareSaveScreen(
                         (fr.parentChain.flatMap { it.media } + fr.parentMedia) + fr.media
                     )
                 }
+                // 尚未落到本機的媒體：這些會在儲存後由背景下載 Worker 接續（通知欄看得到進度）
+                val pendingPreviewCount = remember(previewMedia) {
+                    previewMedia.count { it.localPath.isBlank() }
+                }
                 // 存到留言鏈（母文存在）時明確提示，避免誤以為存的是主串
                 val isReplyChain = (state.fetchedResult?.parentChain?.isNotEmpty() == true) ||
                     state.fetchedResult?.parentShortcode?.isNotBlank() == true
@@ -746,18 +857,28 @@ fun ShareSaveScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
                 var viewerIndex by remember { mutableStateOf<Int?>(null) }
+                // AUDIO 媒體 metadata（解析時附在 FetchedMedia 上）→ normalizeKey 映射，交給全螢幕匯出
+                val audioMetaJsonByUrl = remember(previewMedia) {
+                    previewMedia.filter { it.audioMetaJson.isNotBlank() }
+                        .associate { com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) to it.audioMetaJson }
+                }
                 if (viewerIndex != null) {
                     com.reater.app.ui.MediaViewerDialog(
                         media = previewMedia.map {
                             com.reater.app.ui.ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath)
                         },
                         startIndex = viewerIndex ?: 0,
+                        audioMetaJsonByUrl = audioMetaJsonByUrl,
                         onDismiss = { viewerIndex = null }
                     )
                 }
                 if (previewMedia.isNotEmpty()) {
                     Text(
-                        text = "已下載媒體 (${previewMedia.size})",
+                        text = if (pendingPreviewCount > 0) {
+                            "媒體 ${previewMedia.size - pendingPreviewCount}/${previewMedia.size} · 未下載的將於背景續傳"
+                        } else {
+                            "已下載媒體 (${previewMedia.size})"
+                        },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -769,72 +890,18 @@ fun ShareSaveScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         previewMedia.take(6).forEachIndexed { index, m ->
-                            val isAudio = m.kind.equals("AUDIO", ignoreCase = true)
-                            val imageSource = if (m.localPath.isNotBlank()) {
-                                File(m.localPath)
-                            } else {
-                                m.remoteUrl
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 140.dp, height = 100.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { viewerIndex = index }
-                            ) {
-                                if (isAudio) {
-                                    // 音訊（mp4 無畫面）：以同篇封面圖當預覽，無封面則顯示音符佔位
-                                    val coverSource = previewMedia.firstOrNull {
-                                        it.kind.equals("IMAGE", ignoreCase = true)
-                                    }?.let { if (it.localPath.isNotBlank()) File(it.localPath) else it.remoteUrl }
-                                    if (coverSource != null) {
-                                        AsyncImage(
-                                            model = coverSource,
-                                            contentDescription = "Audio ${index + 1}",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            Text("♪", fontSize = 32.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                } else {
-                                    AsyncImage(
-                                        model = imageSource,
-                                        contentDescription = "Post Media ${index + 1}",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
-                                if (m.kind.equals("VIDEO", ignoreCase = true)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(6.dp)
-                                            .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("▶ 影片", fontSize = 10.sp, color = Color.White, maxLines = 1)
-                                    }
-                                } else if (isAudio) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(6.dp)
-                                            .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("♪ 音訊", fontSize = 10.sp, color = Color.White, maxLines = 1)
-                                    }
-                                }
-                            }
+                            MediaThumbnailItem(
+                                media = m,
+                                previewMedia = previewMedia,
+                                index = index,
+                                onClick = { viewerIndex = index }
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // 媒體提示：原連結是 /media（確定有圖/影）但自動下載掛零時提示
+                // 媒體提示：原連結是 /media（確定有圖/影）但一個 media 都沒解析到時提示
                 if (previewMedia.isEmpty() && !state.isFetching &&
                     (state.hadMediaSuffix || state.fetchUrl.contains("/media"))
                 ) {
@@ -856,7 +923,7 @@ fun ShareSaveScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "此貼文含圖片/影片，自動下載失敗，請點右上開啟 Threads 查看。",
+                            text = "此貼文含圖片/影片，但這邊解析不到媒體網址（自動下載失敗），請點右上開啟 Threads 查看。",
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -936,6 +1003,123 @@ fun ShareSaveScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaThumbnailItem(
+    media: com.reater.app.data.remote.FetchedMedia,
+    previewMedia: List<com.reater.app.data.remote.FetchedMedia>,
+    index: Int,
+    onClick: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isVideo = media.kind.equals("VIDEO", ignoreCase = true)
+    val isAudio = media.kind.equals("AUDIO", ignoreCase = true)
+
+    // 影片縮圖：非同步從影片檔案擷取影格並快取至 cache/video_thumbs
+    val videoThumbFile by androidx.compose.runtime.produceState<File?>(initialValue = null, media.localPath) {
+        if (isVideo && media.localPath.isNotBlank()) {
+            value = com.reater.app.ui.player.VideoThumbnailHelper.getThumbnail(context, media.localPath)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(width = 140.dp, height = 100.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+    ) {
+        when {
+            isAudio -> {
+                val coverSource = previewMedia.firstOrNull {
+                    it.kind.equals("IMAGE", ignoreCase = true)
+                }?.let { if (it.localPath.isNotBlank()) File(it.localPath) else it.remoteUrl }
+                if (coverSource != null) {
+                    AsyncImage(
+                        model = coverSource,
+                        contentDescription = "Audio ${index + 1}",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("♪", fontSize = 32.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            isVideo -> {
+                if (videoThumbFile != null) {
+                    AsyncImage(
+                        model = videoThumbFile,
+                        contentDescription = "Video ${index + 1}",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    // 縮圖產生中或備用畫面：顯示統一的影片圖示，絕不留空白
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+                // 縮圖中央播放按鈕（明確區分圖片與影片）
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(34.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            else -> {
+                val imageSource = if (media.localPath.isNotBlank()) File(media.localPath) else media.remoteUrl
+                AsyncImage(
+                    model = imageSource,
+                    contentDescription = "Post Media ${index + 1}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        // 左下角標籤
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text("▶ 影片", fontSize = 10.sp, color = Color.White, maxLines = 1)
+            }
+        } else if (isAudio) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text("♪ 音訊", fontSize = 10.sp, color = Color.White, maxLines = 1)
             }
         }
     }

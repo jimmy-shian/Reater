@@ -5,8 +5,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.reater.app.data.local.dao.CategoryDao
+import com.reater.app.data.local.dao.MediaDao
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.remote.FetchedPostResult
+import com.reater.app.data.remote.FetchStage
+import com.reater.app.data.remote.FetchProgressInfo
 import com.reater.app.data.remote.ThreadsGraphQLClient
 import com.reater.app.data.remote.instagram.InstagramClient
 import com.reater.app.data.remote.x.XClient
@@ -68,7 +71,17 @@ data class ShareSaveUiState(
     val fetchedResult: FetchedPostResult? = null,
     val hasApiKey: Boolean = false,
     val aiAnalyzeOnSave: Boolean = false,
-    val downloadProgress: com.reater.app.data.remote.DownloadProgress? = null
+    val downloadProgress: com.reater.app.data.remote.DownloadProgress? = null,
+    val fetchStage: FetchStage = FetchStage.IDLE,
+    val fetchStatusMessage: String = "",
+    val mediaTotalCount: Int = 0,
+    val mediaDownloadedCount: Int = 0,
+    val mediaFailedCount: Int = 0,
+    val mediaBytesDownloaded: Long = 0L,
+    val mediaBytesTotal: Long = 0L,
+    val mediaEtaSeconds: Long = -1L,
+    val mediaSpeedBps: Long = 0L,
+    val hasPendingMediaBackgroundDownload: Boolean = false
 )
 
 @HiltViewModel
@@ -81,6 +94,7 @@ class ShareSaveViewModel @Inject constructor(
     private val facebookClient: com.reater.app.data.remote.facebook.FacebookClient,
     private val youtubeClient: com.reater.app.data.remote.youtube.YouTubeClient,
     private val categoryDao: CategoryDao,
+    private val mediaDao: MediaDao,
     private val settingsRepository: SettingsRepository,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
@@ -101,6 +115,7 @@ class ShareSaveViewModel @Inject constructor(
     /** 使用者是否已手動選過分類（手動選擇後，歷史預選不再覆蓋） */
     private var userPickedCategory: Boolean = savedStateHandle["userPickedCategory"] ?: false
     private var suggestionJob: Job? = null
+    private var fetchJob: Job? = null
 
     val categories: StateFlow<List<CategoryEntity>> = categoryDao.observeAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -160,6 +175,8 @@ class ShareSaveViewModel @Inject constructor(
                     platform = UrlParser.PLATFORM_INSTAGRAM,
                     isFetching = true,
                     isFetchFailed = false,
+                    fetchStage = FetchStage.READING_POST,
+                    fetchStatusMessage = "正在讀取貼文資料...",
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null
@@ -192,6 +209,8 @@ class ShareSaveViewModel @Inject constructor(
                     platform = UrlParser.PLATFORM_X,
                     isFetching = true,
                     isFetchFailed = false,
+                    fetchStage = FetchStage.READING_POST,
+                    fetchStatusMessage = "正在讀取貼文資料...",
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null
@@ -224,6 +243,8 @@ class ShareSaveViewModel @Inject constructor(
                     platform = UrlParser.PLATFORM_YOUTUBE,
                     isFetching = true,
                     isFetchFailed = false,
+                    fetchStage = FetchStage.READING_POST,
+                    fetchStatusMessage = "正在讀取貼文資料...",
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null,
@@ -257,6 +278,8 @@ class ShareSaveViewModel @Inject constructor(
                     platform = UrlParser.PLATFORM_FACEBOOK,
                     isFetching = true,
                     isFetchFailed = false,
+                    fetchStage = FetchStage.READING_POST,
+                    fetchStatusMessage = "正在讀取貼文資料...",
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null,
@@ -312,6 +335,8 @@ class ShareSaveViewModel @Inject constructor(
                 platform = UrlParser.PLATFORM_THREADS,
                 isFetching = true,
                 isFetchFailed = false,
+                fetchStage = FetchStage.READING_POST,
+                fetchStatusMessage = "正在讀取貼文資料...",
                 webResolving = false,
                 webResolveAttempted = false,
                 fetchedResult = null
@@ -360,9 +385,59 @@ class ShareSaveViewModel @Inject constructor(
         }
     }
 
+    private fun handleFetchProgress(info: FetchProgressInfo, partial: FetchedPostResult) {
+        httpResult = partial
+        val isBodyEdited = savedStateHandle.get<Boolean>("bodyTextEdited") == true
+        val isCommentsEdited = savedStateHandle.get<Boolean>("commentsTextEdited") == true
+
+        _uiState.update { current ->
+            val useHandsOffBody = current.bodyText.isBlank() || current.bodyText == current.bodyDraft
+            val newBody = if (isBodyEdited) current.bodyText else {
+                if (partial.parentChain.isNotEmpty() && partial.parentChain.first().shortcode.isNotBlank() && partial.parentChain.first().bodyText.isNotBlank()) {
+                    buildThreadDisplayBody(partial.parentChain, partial.authorHandle, partial.bodyText)
+                } else if (partial.parentShortcode.isNotBlank() && partial.parentBodyText.isNotBlank()) {
+                    "【母文 @${partial.parentAuthorHandle}】${partial.parentBodyText}\n\n--- 分享 @${partial.authorHandle} ---\n${partial.bodyText}"
+                } else if (useHandsOffBody && partial.bodyText.isNotBlank()) {
+                    partial.bodyText
+                } else {
+                    current.bodyText.ifBlank { partial.bodyText }
+                }
+            }
+            val commentsJoined = partial.comments.joinToString("\n---\n") { "${it.author}: ${it.text}" }
+            val newComments = if (isCommentsEdited) current.commentsText else {
+                if (commentsJoined.isNotBlank()) {
+                    lastAppliedComments = commentsJoined
+                    commentsJoined
+                } else current.commentsText
+            }
+
+            current.copy(
+                fetchStage = info.stage,
+                fetchStatusMessage = info.message,
+                mediaTotalCount = info.mediaTotal,
+                mediaDownloadedCount = info.mediaIndex,
+                mediaBytesDownloaded = info.bytesRead,
+                mediaBytesTotal = info.totalBytes,
+                mediaEtaSeconds = info.etaSeconds,
+                mediaSpeedBps = info.speedBps,
+                bodyText = newBody,
+                commentsText = newComments,
+                authorHandle = if (current.authorHandle.isBlank()) partial.authorHandle else current.authorHandle,
+                shortcode = pickShortcode(current.shortcode, partial.shortcode),
+                fetchedResult = partial,
+                isFetching = info.stage != FetchStage.COMPLETED && info.stage != FetchStage.PARTIAL_SUCCESS && info.stage != FetchStage.FAILED,
+                isFetchFailed = info.stage == FetchStage.FAILED
+            )
+        }
+        refreshCategorySuggestion()
+    }
+
     private fun fetchRemoteData(urlOrTarget: String, shortcode: String) {
-        viewModelScope.launch {
-            val result = graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode)
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
+            val result = graphQLClient.fetchPostByPostIdOrShortcode(urlOrTarget, shortcode) { info, partial ->
+                handleFetchProgress(info, partial)
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -373,8 +448,11 @@ class ShareSaveViewModel @Inject constructor(
 
     /** IG 抓取路徑：單路即可（WebView 路徑僅 Threads /share/ 需要） */
     private fun fetchInstagramData(url: String, shortcode: String) {
-        viewModelScope.launch {
-            val result = instagramClient.fetchPost(url, shortcode)
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
+            val result = instagramClient.fetchPost(url, shortcode) { info, partial ->
+                handleFetchProgress(info, partial)
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -385,8 +463,11 @@ class ShareSaveViewModel @Inject constructor(
 
     /** X 抓取路徑：fxtwitter 主文＋媒體，單路即可 */
     private fun fetchXData(url: String, statusId: String) {
-        viewModelScope.launch {
-            val result = xClient.fetchPost(url, statusId)
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
+            val result = xClient.fetchPost(url, statusId) { info, partial ->
+                handleFetchProgress(info, partial)
+            }
             result.onSuccess { fetched ->
                 httpResult = fetched
             }
@@ -396,7 +477,8 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     private fun fetchYouTubeData(url: String, videoId: String) {
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             val result = youtubeClient.fetchPost(url, videoId) { p ->
                 _uiState.update { it.copy(downloadProgress = p) }
             }
@@ -409,7 +491,8 @@ class ShareSaveViewModel @Inject constructor(
     }
 
     private fun fetchFacebookData(url: String, postId: String) {
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             val result = facebookClient.fetchPost(url, postId) { p ->
                 _uiState.update { it.copy(downloadProgress = p) }
             }
@@ -656,6 +739,7 @@ class ShareSaveViewModel @Inject constructor(
         _uiState.update { it.copy(bodyText = text) }
     }
     fun onCommentsTextChanged(text: String) {
+        savedStateHandle["commentsTextEdited"] = true
         _uiState.update { it.copy(commentsText = text) }
     }
 
@@ -736,16 +820,19 @@ class ShareSaveViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // 優先使用當前快照；若仍在抓取，最多等候 1.5 秒讓接近完成的請求收尾，避免長時間卡頓
+                // 優先使用當前快照；若仍在抓取且尚未解析出任何內文與結果，短暫等候 800ms；
+                // 若已有內文，則直接存檔並交由背景下載 Worker 接續下載媒體，不再阻塞使用者。
                 var state = _uiState.value
-                if (state.isFetching || state.webResolving) {
-                    val completedState = kotlinx.coroutines.withTimeoutOrNull(1500) {
+                if ((state.isFetching || state.webResolving) && state.bodyText.isBlank() && state.fetchedResult == null) {
+                    val completedState = kotlinx.coroutines.withTimeoutOrNull(800) {
                         uiState.first { !it.isFetching && !it.webResolving }
                     }
                     if (completedState != null) {
                         state = completedState
                     }
                 }
+                fetchJob?.cancel()
+                fetchJob = null
                 if (saveAsNew == false) {
                     val existingFetched = state.fetchedResult
                     val hasExistingContent = existingFetched != null && (
@@ -816,6 +903,27 @@ class ShareSaveViewModel @Inject constructor(
                         manualNote = state.manualNote
                     )
                 }
+                // 若有尚未完成離線下載的媒體，交由 MediaDownloadWorker 在背景繼續下載並於通知欄顯示即時進度。
+                // 以資料庫為準（localPath 空白或檔案已不存在），因為前景抓取可能在使用者按「背景下載」時
+                // 被取消，存檔後還沒下載的媒體一樣要能接續，不能只看記憶體裡的抓取結果。
+                val pendingMediaAfterSave = runCatching {
+                    mediaDao.getMediaByItemId(itemId)
+                }.getOrNull().orEmpty()
+                val pendingMediaCount = pendingMediaAfterSave.count { m ->
+                    m.remoteUrl.isNotBlank() &&
+                        (m.localPath.isBlank() || !java.io.File(m.localPath).exists() || java.io.File(m.localPath).length() <= 0L)
+                }
+
+                val hasPending = pendingMediaCount > 0
+                if (hasPending) {
+                    com.reater.app.notify.MediaDownloadWorker.schedule(
+                        context = appContext,
+                        itemId = itemId,
+                        postTitle = state.bodyText.take(40),
+                        shortcode = state.shortcode
+                    )
+                }
+
                 // 儲存後未讀提醒（設定可調分鐘數 / 開關）
                 runCatching {
                     if (settingsRepository.unreadNudgeEnabled.first()) {
@@ -827,7 +935,7 @@ class ShareSaveViewModel @Inject constructor(
                         )
                     }
                 }
-                _uiState.update { it.copy(isSaving = false, isSaved = true) }
+                _uiState.update { it.copy(isSaving = false, isSaved = true, hasPendingMediaBackgroundDownload = hasPending) }
             } catch (e: ThreadPostRepository.SaveConflictException) {
                 _uiState.update { it.copy(isSaving = false, showSaveConflict = true,
                     conflictIsInTrash = e.isInTrash) }

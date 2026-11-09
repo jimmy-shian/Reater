@@ -28,8 +28,14 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE itemId = :itemId ORDER BY position ASC")
     suspend fun getMediaByItemId(itemId: Long): List<MediaEntity>
 
+    @Query("SELECT * FROM media WHERE itemId = :itemId AND (localPath = '' OR localPath IS NULL) ORDER BY position ASC")
+    suspend fun getPendingMediaByItemId(itemId: Long): List<MediaEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMediaList(mediaList: List<MediaEntity>)
+
+    @Query("UPDATE media SET localPath = :localPath WHERE id = :id")
+    suspend fun updateLocalPath(id: Long, localPath: String)
 
     @Query("DELETE FROM media WHERE itemId = :itemId")
     suspend fun deleteMediaByItemId(itemId: Long)

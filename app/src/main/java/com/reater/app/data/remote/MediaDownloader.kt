@@ -2,6 +2,7 @@ package com.reater.app.data.remote
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -53,6 +54,8 @@ class MediaDownloader @Inject constructor(
         // HLS 串流清單：OkHttp 直接存只會存到文字檔，跳過
         if (remoteUrl.contains(".m3u8", ignoreCase = true)) return ""
         return withContext(Dispatchers.IO) {
+            // 用來在例外路徑清掉半套檔案（targetFile 本身宣告在 try 內，catch 看不到）
+            var partialFile: File? = null
             try {
                 // Determine file extension from path (ignore query string)
                 val pathOnly = remoteUrl.substringBefore("?").lowercase()
@@ -67,6 +70,7 @@ class MediaDownloader @Inject constructor(
                 val safeCode = shortcode.replace(Regex("[^A-Za-z0-9_-]"), "_")
                     .ifBlank { "media" }.take(32)
                 val targetFile = File(mediaDir, "${safeCode}_${index}_${System.currentTimeMillis() % 10000}.$ext")
+                partialFile = targetFile
 
                 val reqBuilder = Request.Builder()
                     .url(remoteUrl)
@@ -122,8 +126,15 @@ class MediaDownloader @Inject constructor(
                     }
                     targetFile.absolutePath
                 }
+            } catch (ce: CancellationException) {
+                // 取消（換背景/重新儲存導致工作被 REPLACE 取消）不是下載失敗：
+                // 丟掉半套檔案並讓取消繼續往上傳，千萬不能用 catch (Exception) 吞掉，
+                // 否則 Worker 會以為是下載失敗而走錯分支，也留下無法使用的殘檔。
+                runCatching { partialFile?.delete() }
+                throw ce
             } catch (e: Exception) {
-                // Fallback to empty or remoteUrl on failure
+                // Fallback to empty or remoteUrl on failure（清掉半套檔案避免殘檔被誤用）
+                runCatching { partialFile?.delete() }
                 ""
             }
         }

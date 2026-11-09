@@ -6,6 +6,8 @@ import com.reater.app.data.remote.MediaDedup
 import com.reater.app.data.remote.MediaDownloader
 import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.UrlParser
+import com.reater.app.data.remote.FetchProgressInfo
+import com.reater.app.data.remote.FetchStage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -48,7 +50,7 @@ class XClient @Inject constructor(
     private val desktopUa =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-    suspend fun fetchPost(url: String, fallbackStatusId: String): Result<FetchedPostResult> {
+    suspend fun fetchPost(url: String, fallbackStatusId: String, onProgress: ((FetchProgressInfo, FetchedPostResult) -> Unit)? = null): Result<FetchedPostResult> {
         return withContext(Dispatchers.IO) {
             try {
                 val parse = UrlParser.parseXUrl(url)
@@ -69,37 +71,100 @@ class XClient @Inject constructor(
                     return@withContext Result.failure(IllegalStateException("X 貼文抓取失敗（兩個來源皆無資料）"))
                 }
 
-                // 媒體離線下載（X CDN 直連，無需特殊 headers）
-                val media = MediaDedup.distinctFetched(parsed.media).mapIndexed { index, m ->
-                    m.copy(localPath = mediaDownloader.downloadMedia(m.remoteUrl, statusId, index))
-                }
                 val body = parsed.bodyText
+                val finalHandle = parsed.handle.ifBlank { handleHint.ifBlank { "x_user" } }
+                var currentResult = FetchedPostResult(
+                    shortcode = statusId,
+                    authorHandle = finalHandle,
+                    authorDisplayName = parsed.displayName.ifBlank { finalHandle },
+                    authorProfileUrl = parsed.avatarUrl,
+                    authorVerified = parsed.verified,
+                    postedAt = if (parsed.postedAtMs > 0) parsed.postedAtMs else System.currentTimeMillis(),
+                    bodyText = body,
+                    likeCount = parsed.likeCount,
+                    replyCount = parsed.replyCount,
+                    repostCount = parsed.repostCount,
+                    comments = emptyList(),
+                    media = emptyList(),
+                    rawJsonMin = """{"code":"$statusId"}""",
+                    resolvedUrl = parsed.url.ifBlank { "https://x.com/$finalHandle/status/$statusId" },
+                    status = "PARTIAL",
+                    topicTag = TopicTags.firstHashtag(body)
+                )
+                // 階段 2：已取得貼文內文
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+
+                // 階段 4：分批非同步下載媒體
+                val distinctMedia = MediaDedup.distinctFetched(parsed.media)
+                val totalMedia = distinctMedia.size
+                var failedMediaCount = 0
+                var succeededMediaCount = 0
+
+                if (totalMedia > 0) {
+                    // 先把完整媒體清單（localPath 尚空）放進結果：預覽可先用遠端圖顯示，
+                    // 中途按「背景下載」或抓取被取消時，未下載的媒體不會消失，
+                    // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
+                    currentResult = currentResult.copy(media = distinctMedia)
+                    onProgress?.invoke(
+                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                        currentResult
+                    )
+                    distinctMedia.forEachIndexed { index, m ->
+                        var lastReported = 0L
+                        val localPath = mediaDownloader.downloadMedia(m.remoteUrl, statusId, index) { p ->
+                            val now = System.currentTimeMillis()
+                            if (now - lastReported >= 250) {
+                                lastReported = now
+                                onProgress?.invoke(
+                                    FetchProgressInfo(
+                                        stage = FetchStage.DOWNLOADING_MEDIA,
+                                        message = "正在下載媒體 (${succeededMediaCount + 1}/$totalMedia)",
+                                        mediaIndex = succeededMediaCount + 1,
+                                        mediaTotal = totalMedia,
+                                        bytesRead = p.bytesRead,
+                                        totalBytes = p.totalBytes,
+                                        speedBps = p.speedBytesPerSec,
+                                        etaSeconds = p.etaSeconds
+                                    ),
+                                    currentResult
+                                )
+                            }
+                        }
+                        // 下載失敗／尚未下載也保留同一筆（localPath 為空），交由背景 Worker 續傳
+                        currentResult = currentResult.copy(
+                            media = currentResult.media.mapIndexed { i, existing ->
+                                if (i == index) existing.copy(localPath = localPath) else existing
+                            }
+                        )
+                        if (localPath.isNotBlank()) succeededMediaCount++ else failedMediaCount++
+                        // 每下載好一個媒體，立即更新並通知 UI 讓縮圖即時顯示！
+                        onProgress?.invoke(
+                            FetchProgressInfo(
+                                stage = FetchStage.DOWNLOADING_MEDIA,
+                                message = "正在下載媒體 ($succeededMediaCount/$totalMedia)",
+                                mediaIndex = succeededMediaCount,
+                                mediaTotal = totalMedia
+                            ),
+                            currentResult
+                        )
+                    }
+                }
+
+                // 階段 5：完成或部分成功
+                val downloadedCount = succeededMediaCount
                 val status = when {
-                    body.isNotBlank() && media.isNotEmpty() -> "COMPLETE"
-                    body.isNotBlank() || media.isNotEmpty() -> "PARTIAL"
+                    body.isNotBlank() && failedMediaCount == 0 && currentResult.media.isNotEmpty() -> "COMPLETE"
+                    body.isNotBlank() || currentResult.media.isNotEmpty() -> "PARTIAL"
                     else -> "FAILED"
                 }
-                val finalHandle = parsed.handle.ifBlank { handleHint.ifBlank { "x_user" } }
-                Result.success(
-                    FetchedPostResult(
-                        shortcode = statusId,
-                        authorHandle = finalHandle,
-                        authorDisplayName = parsed.displayName.ifBlank { finalHandle },
-                        authorProfileUrl = parsed.avatarUrl,
-                        authorVerified = parsed.verified,
-                        postedAt = if (parsed.postedAtMs > 0) parsed.postedAtMs else System.currentTimeMillis(),
-                        bodyText = body,
-                        likeCount = parsed.likeCount,
-                        replyCount = parsed.replyCount,
-                        repostCount = parsed.repostCount,
-                        comments = emptyList(),
-                        media = media,
-                        rawJsonMin = """{"code":"$statusId"}""",
-                        resolvedUrl = parsed.url.ifBlank { "https://x.com/$finalHandle/status/$statusId" },
-                        status = status,
-                        topicTag = TopicTags.firstHashtag(body)
-                    )
+                val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
+                val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+                currentResult = currentResult.copy(status = status)
+                onProgress?.invoke(
+                    FetchProgressInfo(stage = finalStage, message = finalMsg, mediaIndex = downloadedCount, mediaTotal = totalMedia),
+                    currentResult
                 )
+                Result.success(currentResult)
             } catch (e: Exception) {
                 Result.failure(e)
             }
