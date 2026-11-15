@@ -84,11 +84,16 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.reater.app.R
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -173,6 +178,9 @@ fun InlineVideoPlayer(
     val showPoster = posterUrl.isNotBlank() && (isAudioOnly || !isPrepared)
     var position by rememberSaveable(remoteUrl, localPath) { mutableIntStateOf(0) }
     var duration by remember { mutableIntStateOf(0) }
+    // 是否實際播放過：未播放過的播放器不回報暫停狀態，
+    // 避免同 URL 的另一個播放中實例（清單卡↔詳情頁）被快照互相覆蓋造成歌詞卡閃爍
+    var hasPlayed by remember { mutableStateOf(false) }
 
     // 預先取得本機影片真實尺寸（含旋轉校正）
     val fileDims = remember(localPath) { getVideoDimensions(localPath) }
@@ -200,6 +208,7 @@ fun InlineVideoPlayer(
                 isPlaying = false
             }
             vv.start()
+            hasPlayed = true
             isPlaying = true
         }
     }
@@ -209,7 +218,7 @@ fun InlineVideoPlayer(
         applyInlineMute(mediaPlayerRef, isMuted)
     }
 
-    // 播放中定時更新位置
+    // 播放中定時更新位置（同時回報 PlaybackStateBus：詳情頁動態歌詞卡同步用）
     LaunchedEffect(isPlaying, isPrepared) {
         while (isPlaying && isPrepared) {
             val vv = videoView
@@ -220,8 +229,23 @@ fun InlineVideoPlayer(
                     duration = d
                     position = p
                 }
+                PlaybackStateBus.update(remoteUrl, p.toLong(), d.toLong(), true)
             }
             delay(400)
+        }
+    }
+
+    // 暫停／停止時回報一次最後進度（歌詞卡凍結在當前行；從未播放過的實例不回報，
+    // 以免蓋掉同一媒體正在播放中實例的快照）
+    LaunchedEffect(isPlaying, isPrepared, hasPlayed) {
+        if (isPrepared && !isPlaying && hasPlayed) {
+            val vv = videoView
+            PlaybackStateBus.update(
+                remoteUrl,
+                (vv?.currentPosition ?: position).toLong(),
+                (vv?.duration ?: duration).toLong(),
+                false
+            )
         }
     }
 
@@ -231,6 +255,7 @@ fun InlineVideoPlayer(
             videoView?.stopPlayback()
             videoView = null
             mediaPlayerRef = null
+            PlaybackStateBus.clear(remoteUrl)
         }
     }
 
@@ -261,6 +286,7 @@ fun InlineVideoPlayer(
                             isPlaying = false
                         }
                         vv.start()
+                        hasPlayed = true
                         isPlaying = true
                     } else {
                         if (vv.isPlaying) vv.pause()
@@ -390,6 +416,7 @@ fun InlineVideoPlayer(
                                 isPlaying = false
                             }
                             mp.start()
+                            hasPlayed = true
                             isPlaying = true
                         } else {
                             runCatching { seekTo(position.coerceAtLeast(1)) }
@@ -408,6 +435,8 @@ fun InlineVideoPlayer(
                         isPlaying = false
                         position = 0
                         seekTo(0)
+                        // 播完：回報歸零暫停態，歌詞卡回到靜態顯示
+                        PlaybackStateBus.update(remoteUrl, 0L, duration.toLong(), false)
                     }
                     setOnErrorListener { _, _, _ ->
                         playbackError = true
@@ -456,21 +485,9 @@ fun InlineVideoPlayer(
                 color = Color.White,
                 modifier = Modifier.size(48.dp)
             )
-        } else if (!isPlaying) {
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
         }
+        // 中央大播放鍵已移除：底部控制列左下已有播放／暫停鍵，
+        // 同時顯示兩顆播放鍵屬重複（點擊畫面本身也可切換播放）。
 
         // 小圖底部控制列：左下播放/暫停、右下靜音
         Row(
@@ -587,6 +604,8 @@ fun FullscreenVideoViewer(
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var lastTapPosition by remember { mutableStateOf(Offset.Zero) }
     var pendingSingleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // 是否實際播放過：從未播放過的實例不回報暫停狀態，避免蓋掉播放中實例的快照
+    var hasPlayed by remember { mutableStateOf(startPlaying) }
 
     // 預設方向：依影片實際寬高比自動判斷（寬 >= 高 → 橫向，寬 < 高 → 直向）。
     // 若初進入時尺寸未知，預設為 false (直向全螢幕)，避免手機縱向瀏覽時突然強行橫置。
@@ -652,6 +671,12 @@ fun FullscreenVideoViewer(
         onDispose {
             setFullscreenSystemBarsVisible(dialogWindow, true, activity)
             VideoPlaybackManager.unregister(fullscreenPlayerId)
+            // 回報最後進度（暫停態），讓詳情頁歌詞卡與內嵌播放器位置一致
+            vvRef?.let { last ->
+                runCatching {
+                    PlaybackStateBus.update(remoteUrl, last.currentPosition.toLong(), last.duration.toLong(), false)
+                }
+            }
             vvRef?.stopPlayback()
             vvRef = null
             mediaPlayerRef = null
@@ -669,7 +694,7 @@ fun FullscreenVideoViewer(
         }
     }
 
-    // 播放計時器更新
+    // 播放計時器更新（同時回報 PlaybackStateBus：詳情頁動態歌詞卡同步用）
     LaunchedEffect(isPlaying, isPrepared) {
         while (isPlaying && isPrepared) {
             val vv = vvRef
@@ -681,8 +706,22 @@ fun FullscreenVideoViewer(
                     position = p
                     progress = p.toFloat() / d
                 }
+                PlaybackStateBus.update(remoteUrl, p.toLong(), d.toLong(), true)
             }
             delay(300)
+        }
+    }
+
+    // 暫停／停止時回報一次最後進度（歌詞卡凍結在當前行；從未播放過的實例不回報）
+    LaunchedEffect(isPlaying, isPrepared, hasPlayed) {
+        if (isPrepared && !isPlaying && hasPlayed) {
+            val vv = vvRef
+            PlaybackStateBus.update(
+                remoteUrl,
+                (vv?.currentPosition ?: position).toLong(),
+                (vv?.duration ?: duration).toLong(),
+                false
+            )
         }
     }
 
@@ -694,6 +733,10 @@ fun FullscreenVideoViewer(
         progress = newPos.toFloat() / currentD
         controlsVisible = true
         lastInteractionTime = System.currentTimeMillis()
+        // 暫停中快轉／倒轉：回報新位置讓動態歌詞卡跟著跳行
+        if (!isPlaying && hasPlayed) {
+            PlaybackStateBus.update(remoteUrl, newPos.toLong(), currentD.toLong(), false)
+        }
     }
 
     fun toggleFullscreenMute() {
@@ -720,14 +763,50 @@ fun FullscreenVideoViewer(
             onDismissRequest = { showAudioExportChooser = false },
             title = { Text("選擇下載格式") },
             text = {
-                Text(
-                    "這是一則音訊（音樂）貼文，可選擇要儲存的版本：\n\n" +
-                        "🎵 音樂版（.m4a）\n純音訊檔，內嵌曲名／歌手／封面圖／歌詞 metadata，" +
-                        "存到手機「音樂/Reater」；音樂 App 會自動顯示專輯封面與歌詞。\n\n" +
-                        "🎬 影片版（.mp4）\n把封面做成畫面的影片，存到相簿「Movies/Reater」，" +
-                        "可直接播放或分享到其他 App（畫面為靜態封面）。",
-                    fontSize = 14.sp
-                )
+                // 可捲動：橫向螢幕內容超過對話框高度時不被截斷
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("這是一則音訊（音樂）貼文，可選擇要儲存的版本：", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_music_note),
+                            contentDescription = "音樂版",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("音樂版（.m4a）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "純音訊檔，內嵌曲名／歌手／封面圖／歌詞 metadata，" +
+                                    "存到手機「音樂/Reater」；音樂 App 會自動顯示專輯封面與歌詞。",
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_movie),
+                            contentDescription = "影片版",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("影片版（.mp4）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "把封面做成畫面的影片，存到相簿「Movies/Reater」，" +
+                                    "可直接播放或分享到其他 App（畫面為靜態封面）。",
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -846,6 +925,7 @@ fun FullscreenVideoViewer(
                                 isPlaying = false
                             }
                             mp.start()
+                            hasPlayed = true
                             isPlaying = true
                         } else {
                             runCatching { mp.pause() }
@@ -1080,6 +1160,7 @@ fun FullscreenVideoViewer(
                                         isPlaying = false
                                     }
                                     vv.start()
+                                    hasPlayed = true
                                     isPlaying = true
                                 }
                                 controlsVisible = true
@@ -1158,6 +1239,10 @@ fun FullscreenVideoViewer(
                             progress = scrubValue
                             scrubbing = false
                             lastInteractionTime = System.currentTimeMillis()
+                            // 暫停中拖曳進度：回報新位置讓動態歌詞卡跟著跳行
+                            if (!isPlaying && hasPlayed) {
+                                PlaybackStateBus.update(remoteUrl, position.toLong(), duration.toLong(), false)
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()

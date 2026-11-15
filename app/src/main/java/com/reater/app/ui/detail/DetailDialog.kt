@@ -40,6 +40,13 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -97,6 +104,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +114,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.heightIn
+import com.reater.app.R
 import com.reater.app.ui.player.applyDialogWindowImmersive
 import com.reater.app.ui.player.findDialogWindow
 import com.reater.app.ui.player.rememberMediaViewerSafeInsets
@@ -1315,8 +1324,11 @@ fun DetailDialog(
 }
 
 /**
- * 音訊（音樂貼文）歌詞卡：Threads 跑動歌詞的文字版（[mm:ss] 逐行時間軸）。
- * 超過 8 行預設收合，可點擊展開捲動；媒體內無 AUDIO 或無歌詞時不顯示。
+ * 音訊（音樂貼文）動態歌詞卡：
+ * - 播放中（卡拉OK 模式）：依 PlaybackStateBus 的播放進度，當前行淡入高亮、
+ *   離開淡出，並自動捲動置中；播放時自動展開，隱藏展開／收合鈕。
+ * - 未播放（靜態模式）：[mm:ss] 逐行時間軸文字，超過 8 行預設收合可展開捲動。
+ * 媒體內無 AUDIO 或無歌詞時不顯示。
  */
 @Composable
 private fun BlockAudioLyricsCard(
@@ -1328,21 +1340,48 @@ private fun BlockAudioLyricsCard(
     val meta = remember(metaJson) { com.reater.app.domain.AudioMetaStore.decode(metaJson) }
     if (meta == null || meta.lyrics.isEmpty()) return
 
+    // 播放進度同步：PlaybackStateBus（InlineVideoPlayer／FullscreenVideoViewer 每 300~400ms 回報）
+    val playbackStates by com.reater.app.ui.player.PlaybackStateBus.states.collectAsState()
+    val playbackKey = remember(audio) {
+        com.reater.app.data.remote.MediaDedup.normalizeKey(audio?.remoteUrl.orEmpty())
+    }
+    val snapshot = playbackStates[playbackKey]
+    // 歌詞帶逐行時間軸才啟用卡拉OK（無時間資訊只能靜態顯示）
+    val hasTimeline = remember(meta) { meta.lyrics.any { it.endMs > it.startMs || it.startMs > 0L } }
+    val karaoke = snapshot != null && snapshot.positionMs > 0L && hasTimeline
+    val positionMs = snapshot?.positionMs ?: 0L
+    // 當前行：最後一個 startMs <= 播放位置的行（歌詞依時間排序；第一行開始前高亮第 0 行）
+    val activeIndex = if (karaoke) {
+        meta.lyrics.indexOfLast { it.startMs <= positionMs }.takeIf { it >= 0 } ?: 0
+    } else {
+        -1
+    }
+
     var expanded by remember(metaJson) { mutableStateOf(meta.lyrics.size <= 8) }
+    // 播放時自動展開成卡拉OK 模式，結束後維持展開由使用者自行收合
+    LaunchedEffect(karaoke) { if (karaoke) expanded = true }
+
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { if (meta.lyrics.size > 8) expanded = !expanded }
+            .clickable(enabled = !karaoke && meta.lyrics.size > 8) { expanded = !expanded }
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_music_note),
+                    contentDescription = "歌詞",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
                 Text(
-                    text = "🎵 " + meta.title.ifBlank { "歌詞" } +
+                    text = meta.title.ifBlank { "歌詞" } +
                         meta.artist.takeIf { it.isNotBlank() }?.let { " — $it" }.orEmpty(),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -1352,7 +1391,7 @@ private fun BlockAudioLyricsCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (meta.lyrics.size > 8) {
+                if (!karaoke && meta.lyrics.size > 8) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (expanded) "收合" else "展開",
@@ -1362,7 +1401,9 @@ private fun BlockAudioLyricsCard(
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
-            if (expanded) {
+            if (karaoke) {
+                KaraokeLyricsList(meta, activeIndex)
+            } else if (expanded) {
                 Column(
                     modifier = Modifier
                         .heightIn(max = 240.dp)
@@ -1390,6 +1431,72 @@ private fun BlockAudioLyricsCard(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+        }
+    }
+}
+
+/**
+ * 卡拉OK 歌詞列表：當前行淡入高亮、離開淡出（已過行最暗、未來行半透明），
+ * 行變化時自動捲動讓當前行置中（貼近中央則不打擾，避免抖動）。
+ */
+@Composable
+private fun KaraokeLyricsList(
+    meta: com.reater.app.domain.AudioMetaStore.AudioMeta,
+    activeIndex: Int
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(activeIndex) {
+        if (activeIndex < 0) return@LaunchedEffect
+        runCatching {
+            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
+            if (info == null) {
+                // 畫面外：先捲到該行（下一輪行變化再置中）
+                listState.animateScrollToItem(activeIndex)
+            } else {
+                val viewport = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+                if (viewport <= 0) return@runCatching
+                val distance = (info.offset + info.size / 2) - viewport / 2
+                if (abs(distance) <= viewport / 5) return@runCatching
+                listState.animateScrollBy(distance.toFloat(), tween(360))
+            }
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        itemsIndexed(meta.lyrics) { index, line ->
+            val targetAlpha = when {
+                index == activeIndex -> 1f
+                index < activeIndex -> 0.32f
+                else -> 0.55f
+            }
+            // 淡入淡出：進入當前行快速亮起（260ms）、離開慢慢退暗（520ms）
+            val alpha by animateFloatAsState(
+                targetValue = targetAlpha,
+                animationSpec = tween(durationMillis = if (index == activeIndex) 260 else 520),
+                label = "lyricsAlpha$index"
+            )
+            val targetColor = if (index == activeIndex) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant
+            val color by animateColorAsState(
+                targetValue = targetColor,
+                animationSpec = tween(durationMillis = 400),
+                label = "lyricsColor$index"
+            )
+            Text(
+                text = line.text,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = if (index == activeIndex) FontWeight.SemiBold else FontWeight.Normal,
+                color = color,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { this.alpha = alpha }
+            )
         }
     }
 }

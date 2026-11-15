@@ -146,7 +146,7 @@ object AudioVideoComposer {
                     val inIdx = encoder.dequeueInputBuffer(5_000L)
                     if (inIdx >= 0) {
                         var flags = 0
-                        if (nextFrame == 0) flags = flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+                        // 首影格編碼器必然輸出關鍵影格，無需再帶 SYNC_FRAME／KEY_FRAME 旗標
                         if (nextFrame >= frameCount - 1) {
                             flags = flags or MediaCodec.BUFFER_FLAG_END_OF_STREAM
                             inputEosSent = true
@@ -166,7 +166,10 @@ object AudioVideoComposer {
                 val outIdx = encoder.dequeueOutputBuffer(bufferInfo, 5_000L)
                 when {
                     outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        // 兩軌都 addTrack 完才能 start()：視訊輸出格式在此時才確定。
+                        // 缺了 start() 會讓 writeSampleData 全數拋出 IllegalStateException → 合成失敗。
                         videoTrack = muxer.addTrack(encoder.outputFormat)
+                        muxer.start()
                     }
                     outIdx >= 0 -> {
                         val isConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
