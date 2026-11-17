@@ -14,6 +14,7 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.reater.app.BuildConfig
+import com.reater.app.R
 import com.reater.app.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +35,7 @@ data class BillingUiState(
 
 @Singleton
 class PlayBillingManager @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val appContext: Context,
     private val settingsRepository: SettingsRepository
 ) : PurchasesUpdatedListener {
 
@@ -43,7 +44,7 @@ class PlayBillingManager @Inject constructor(
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var connectionPending = false
 
-    private val billingClient = BillingClient.newBuilder(context.applicationContext)
+    private val billingClient = BillingClient.newBuilder(appContext.applicationContext)
         .setListener(this)
         .enablePendingPurchases(
             PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
@@ -105,7 +106,7 @@ class PlayBillingManager @Inject constructor(
     fun launchPurchase(activity: Activity) {
         if (!billingClient.isReady) {
             connectAndRefresh()
-            _uiState.value = _uiState.value.copy(message = "正在連線至 Google Play，請稍後再試。")
+            _uiState.value = _uiState.value.copy(message = appContext.getString(R.string.billing_connecting))
             return
         }
         val product = QueryProductDetailsParams.Product.newBuilder()
@@ -120,7 +121,7 @@ class PlayBillingManager @Inject constructor(
             }
             val details = response.productDetailsList.firstOrNull()
             if (details == null) {
-                _uiState.value = _uiState.value.copy(message = "Google Play 目前無法提供 Pro 商品。")
+                _uiState.value = _uiState.value.copy(message = appContext.getString(R.string.billing_unavailable))
                 return@queryProductDetailsAsync
             }
             launchProductFlow(activity, details)
@@ -166,7 +167,7 @@ class PlayBillingManager @Inject constructor(
                     when (purchase.purchaseState) {
                         Purchase.PurchaseState.PURCHASED -> processPurchased(purchase)
                         Purchase.PurchaseState.PENDING -> _uiState.value =
-                            _uiState.value.copy(isPending = true, message = "付款處理中，完成後 Pro 會自動開通。")
+                            _uiState.value.copy(isPending = true, message = appContext.getString(R.string.billing_processing))
                     }
                 }
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
@@ -178,7 +179,7 @@ class PlayBillingManager @Inject constructor(
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED || PRODUCT_ID !in purchase.products) return
         if (purchase.isAcknowledged) {
             persistEntitlement(true)
-            _uiState.value = _uiState.value.copy(isPending = false, message = "Reater Pro 已開通。")
+            _uiState.value = _uiState.value.copy(isPending = false, message = appContext.getString(R.string.billing_pro_activated))
             return
         }
         val params = AcknowledgePurchaseParams.newBuilder()
@@ -187,9 +188,9 @@ class PlayBillingManager @Inject constructor(
         billingClient.acknowledgePurchase(params) { result ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 persistEntitlement(true)
-                _uiState.value = _uiState.value.copy(isPending = false, message = "Reater Pro 已開通。")
+                _uiState.value = _uiState.value.copy(isPending = false, message = appContext.getString(R.string.billing_pro_activated))
             } else {
-                _uiState.value = _uiState.value.copy(message = "購買已完成，確認授權時發生問題；下次開啟會重試。")
+                _uiState.value = _uiState.value.copy(message = appContext.getString(R.string.billing_purchase_done_verify_fail))
             }
         }
     }

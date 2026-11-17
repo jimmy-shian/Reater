@@ -1,5 +1,7 @@
 package com.reater.app.data.remote.instagram
 
+import android.content.Context
+import com.reater.app.R
 import com.reater.app.data.remote.FetchedComment
 import com.reater.app.data.remote.FetchedMedia
 import com.reater.app.data.remote.FetchedPostResult
@@ -9,6 +11,7 @@ import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.UrlParser
 import com.reater.app.data.remote.FetchProgressInfo
 import com.reater.app.data.remote.FetchStage
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -40,7 +43,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class InstagramClient @Inject constructor(
-    private val mediaDownloader: MediaDownloader
+    private val mediaDownloader: MediaDownloader,
+    @ApplicationContext private val context: Context
 ) {
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -116,11 +120,11 @@ class InstagramClient @Inject constructor(
                 )
 
                 // 階段 2：已取得貼文內文
-                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = context.getString(R.string.fetch_progress_body_parsed)), currentResult)
 
                 // 階段 3：若有留言則通知已取得精華留言
                 if (comments.isNotEmpty()) {
-                    onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = "已擷取精華留言 (${comments.size} 則)"), currentResult)
+                    onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = context.getString(R.string.fetch_progress_comments_done, comments.size)), currentResult)
                 }
 
                 // 階段 4：分批非同步下載媒體
@@ -135,7 +139,7 @@ class InstagramClient @Inject constructor(
                     // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
                     currentResult = currentResult.copy(media = distinctMedia)
                     onProgress?.invoke(
-                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = context.getString(R.string.fetch_progress_downloading_media, 0, totalMedia), mediaIndex = 0, mediaTotal = totalMedia),
                         currentResult
                     )
                     distinctMedia.forEachIndexed { index, m ->
@@ -147,7 +151,7 @@ class InstagramClient @Inject constructor(
                                 onProgress?.invoke(
                                     FetchProgressInfo(
                                         stage = FetchStage.DOWNLOADING_MEDIA,
-                                        message = "正在下載媒體 (${succeededMediaCount + 1}/$totalMedia)",
+                                        message = context.getString(R.string.fetch_progress_downloading_media, succeededMediaCount + 1, totalMedia),
                                         mediaIndex = succeededMediaCount + 1,
                                         mediaTotal = totalMedia,
                                         bytesRead = p.bytesRead,
@@ -170,7 +174,7 @@ class InstagramClient @Inject constructor(
                         onProgress?.invoke(
                             FetchProgressInfo(
                                 stage = FetchStage.DOWNLOADING_MEDIA,
-                                message = "正在下載媒體 ($succeededMediaCount/$totalMedia)",
+                                message = context.getString(R.string.fetch_progress_downloading_media, succeededMediaCount, totalMedia),
                                 mediaIndex = succeededMediaCount,
                                 mediaTotal = totalMedia
                             ),
@@ -187,7 +191,8 @@ class InstagramClient @Inject constructor(
                     else -> "FAILED"
                 }
                 val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
-                val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+                val finalMsg = if (failedMediaCount == 0) context.getString(R.string.fetch_progress_media_done)
+                    else context.getString(R.string.fetch_progress_media_partial, downloadedCount, failedMediaCount)
                 currentResult = currentResult.copy(status = status)
                 onProgress?.invoke(
                     FetchProgressInfo(stage = finalStage, message = finalMsg, mediaIndex = downloadedCount, mediaTotal = totalMedia),

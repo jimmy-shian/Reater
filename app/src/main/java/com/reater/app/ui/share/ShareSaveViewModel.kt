@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.reater.app.R
 import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.MediaDao
 import com.reater.app.data.local.entity.CategoryEntity
@@ -166,7 +167,7 @@ class ShareSaveViewModel @Inject constructor(
                 it.copy(
                     targetUrl = igParsed.canonicalUrl,
                     fetchUrl = igParsed.fetchUrl,
-                    shareKindLabel = igParsed.kindLabel,
+                    shareKindLabel = appContext.getString(igParsed.kindLabel),
                     shortcode = igParsed.shortcode,
                     authorHandle = "",
                     bodyText = draft,
@@ -176,7 +177,7 @@ class ShareSaveViewModel @Inject constructor(
                     isFetching = true,
                     isFetchFailed = false,
                     fetchStage = FetchStage.READING_POST,
-                    fetchStatusMessage = "正在讀取貼文資料...",
+                    fetchStatusMessage = appContext.getString(R.string.fetching_post),
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null
@@ -210,7 +211,7 @@ class ShareSaveViewModel @Inject constructor(
                     isFetching = true,
                     isFetchFailed = false,
                     fetchStage = FetchStage.READING_POST,
-                    fetchStatusMessage = "正在讀取貼文資料...",
+                    fetchStatusMessage = appContext.getString(R.string.fetching_post),
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null
@@ -244,7 +245,7 @@ class ShareSaveViewModel @Inject constructor(
                     isFetching = true,
                     isFetchFailed = false,
                     fetchStage = FetchStage.READING_POST,
-                    fetchStatusMessage = "正在讀取貼文資料...",
+                    fetchStatusMessage = appContext.getString(R.string.fetching_post),
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null,
@@ -279,7 +280,7 @@ class ShareSaveViewModel @Inject constructor(
                     isFetching = true,
                     isFetchFailed = false,
                     fetchStage = FetchStage.READING_POST,
-                    fetchStatusMessage = "正在讀取貼文資料...",
+                    fetchStatusMessage = appContext.getString(R.string.fetching_post),
                     webResolving = false,
                     webResolveAttempted = false,
                     fetchedResult = null,
@@ -306,9 +307,7 @@ class ShareSaveViewModel @Inject constructor(
             else -> "sc_${System.currentTimeMillis()}"
         }
         val initialHandle = parsed?.handle ?: ""
-        val kindLabel = parsed?.let {
-            with(UrlParser) { it.shareKindLabel }
-        }.orEmpty()
+        val kindLabel = with(UrlParser) { parsed?.shareKindLabel(appContext) }.orEmpty()
         // 分享文字常自帶全文（URL + 內文）：先預填，使用者立刻看得到內容；
         // 若抓取拿到更權威的正文再取代（見 fetchRemoteData）。
         val draft = UrlParser.extractBodyDraft(sharedText, extractedUrl)
@@ -336,7 +335,7 @@ class ShareSaveViewModel @Inject constructor(
                 isFetching = true,
                 isFetchFailed = false,
                 fetchStage = FetchStage.READING_POST,
-                fetchStatusMessage = "正在讀取貼文資料...",
+                fetchStatusMessage = appContext.getString(R.string.fetching_post),
                 webResolving = false,
                 webResolveAttempted = false,
                 fetchedResult = null
@@ -941,7 +940,7 @@ class ShareSaveViewModel @Inject constructor(
                     conflictIsInTrash = e.isInTrash) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _uiState.update { it.copy(isSaving = false, saveError = e.localizedMessage ?: "儲存失敗") }
+                _uiState.update { it.copy(isSaving = false, saveError = e.localizedMessage ?: appContext.getString(R.string.error_save_failed)) }
             }
         }
     }

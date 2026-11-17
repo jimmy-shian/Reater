@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -35,14 +36,16 @@ fun CategoryDragHandle(
     val handleEnd by rememberUpdatedState(onDragEnd)
     val handleCancel by rememberUpdatedState(onDragCancel)
     val handleMove by rememberUpdatedState(onAccessibilityMove)
+    val moveUpLabel = stringResource(R.string.category_drag_move_up)
+    val moveDownLabel = stringResource(R.string.category_drag_move_down)
 
     Box(
         modifier = modifier
             .size(48.dp)
             .semantics {
                 customActions = listOf(
-                    CustomAccessibilityAction("向上移動分類") { handleMove(-1); true },
-                    CustomAccessibilityAction("向下移動分類") { handleMove(1); true }
+                    CustomAccessibilityAction(moveUpLabel) { handleMove(-1); true },
+                    CustomAccessibilityAction(moveDownLabel) { handleMove(1); true }
                 )
             }
             .pointerInput(id) {
@@ -60,7 +63,7 @@ fun CategoryDragHandle(
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_drag_handle),
-            contentDescription = "拖曳排序",
+            contentDescription = stringResource(R.string.category_drag_reorder_desc),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
@@ -71,13 +74,15 @@ fun CategoryDragHandle(
 fun CategoryDragHandle(id: Long, onMove: (Int) -> Unit) {
     val move by rememberUpdatedState(onMove)
     val threshold = with(LocalDensity.current) { 58.dp.toPx() }
+    val moveUpLabel = stringResource(R.string.category_drag_move_up)
+    val moveDownLabel = stringResource(R.string.category_drag_move_down)
     Box(
         Modifier
             .size(48.dp)
             .semantics {
                 customActions = listOf(
-                    CustomAccessibilityAction("向上移動分類") { move(-1); true },
-                    CustomAccessibilityAction("向下移動分類") { move(1); true }
+                    CustomAccessibilityAction(moveUpLabel) { move(-1); true },
+                    CustomAccessibilityAction(moveDownLabel) { move(1); true }
                 )
             }
             .pointerInput(id, threshold) {
@@ -99,7 +104,7 @@ fun CategoryDragHandle(id: Long, onMove: (Int) -> Unit) {
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_drag_handle),
-            contentDescription = "拖曳排序",
+            contentDescription = stringResource(R.string.category_drag_reorder_desc),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

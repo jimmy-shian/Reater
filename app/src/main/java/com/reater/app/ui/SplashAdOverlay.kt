@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.nativead.MediaView
 import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeAdView
+import com.reater.app.R
 import kotlinx.coroutines.delay
 
 /** 統一倒數長度（秒） */
@@ -185,7 +187,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "串文導讀引擎 · 離線快取",
+                            text = stringResource(R.string.splash_ad_tagline),
                             color = scheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
@@ -199,7 +201,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                     border = BorderStroke(1.dp, scheme.outlineVariant)
                 ) {
                     Text(
-                        text = if (countdown > 0) "0${countdown}s" else "進入",
+                        text = if (countdown > 0) stringResource(R.string.splash_ad_countdown, countdown) else stringResource(R.string.splash_ad_enter),
                         color = scheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -249,7 +251,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "贊助",
+                                    text = stringResource(R.string.splash_ad_sponsored),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = scheme.onPrimaryContainer
@@ -275,7 +277,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
 
                     // 內文
                     Text(
-                        text = "高效消化長文與跨串論點",
+                        text = stringResource(R.string.splash_ad_feature_title),
                         color = scheme.onSurface,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -283,7 +285,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        text = "自動解構 Threads 嵌套引言與回覆階層，離線快取全文並建立結構化導讀。",
+                        text = stringResource(R.string.splash_ad_feature_desc),
                         color = scheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         lineHeight = 17.sp
@@ -321,7 +323,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                                         .background(scheme.primary.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
                                 )
                                 Text(
-                                    text = "贊助內容 · 廣告載位",
+                                    text = stringResource(R.string.splash_ad_label),
                                     color = scheme.onSurfaceVariant,
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace
@@ -339,7 +341,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                text = "#串文脈絡",
+                                text = stringResource(R.string.splash_tag_thread_context),
                                 color = scheme.onPrimaryContainer,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -350,7 +352,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                text = "#離線整理",
+                                text = stringResource(R.string.splash_tag_offline),
                                 color = scheme.onSurfaceVariant,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -369,12 +371,12 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "本機離線運作 · 無追蹤碼",
+                            text = stringResource(R.string.splash_ad_privacy),
                             color = scheme.outline,
                             fontSize = 10.sp
                         )
                         Text(
-                            text = "由 Google 贊助託播",
+                            text = stringResource(R.string.splash_ad_google_ads),
                             color = scheme.outline,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
@@ -438,7 +440,7 @@ private fun buildNativeAdSlotView(context: Context, ad: NativeAd): View {
         )
     }
     val badge = TextView(context).apply {
-        text = "廣告"
+        text = context.getString(R.string.splash_ad_badge)
         setTextColor(android.graphics.Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_DIP, 10f)
         setTypeface(typeface, Typeface.BOLD)
@@ -512,7 +514,7 @@ private fun buildNativeAdSlotView(context: Context, ad: NativeAd): View {
     }
 
     val cta = Button(context).apply {
-        text = ad.callToAction?.takeIf { it.isNotBlank() } ?: "瞭解更多"
+        text = ad.callToAction?.takeIf { it.isNotBlank() } ?: context.getString(R.string.splash_ad_cta_default)
         setTextColor(android.graphics.Color.WHITE)
         isAllCaps = false
         setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13f)

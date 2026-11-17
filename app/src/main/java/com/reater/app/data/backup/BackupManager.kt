@@ -16,6 +16,7 @@ import android.content.Context
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.reater.app.ui.AvatarStorage
+import com.reater.app.R
 import java.io.File
 import java.io.BufferedInputStream
 import java.util.UUID
@@ -192,17 +193,23 @@ data class BackupProgress(
     val fraction: Float
         get() = if (total > 0) (current.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
 
-    val estimatedRemainingText: String?
-        get() = estimatedRemainingSeconds?.let { sec ->
-            if (sec <= 0) "即將完成"
-            else if (sec < 60) "預估剩餘約 $sec 秒"
-            else {
-                val mins = sec / 60
-                val remSec = sec % 60
-                if (remSec == 0L) "預估剩餘約 $mins 分鐘"
-                else "預估剩餘約 $mins 分 $remSec 秒"
-            }
-        }
+    /** 供 UI 顯示的 ETA 文字（需 Context 解析字串資源） */
+    fun etaText(context: Context): String? = estimatedRemainingSeconds?.let { sec ->
+        val (res, args) = etaFormatSelection(sec)
+        context.getString(res, *args.toTypedArray())
+    }
+}
+
+/** ETA 分支選擇（純邏輯：字串資源 ID + 格式參數），供 BackupProgress.etaText 與單元測試使用 */
+internal fun etaFormatSelection(seconds: Long): Pair<Int, LongArray> = if (seconds <= 0L) {
+    R.string.backup_progress_almost_done to LongArray(0)
+} else if (seconds < 60L) {
+    R.string.backup_eta_seconds to longArrayOf(seconds)
+} else {
+    val mins = seconds / 60
+    val remSec = seconds % 60
+    if (remSec == 0L) R.string.backup_eta_minutes to longArrayOf(mins)
+    else R.string.backup_eta_min_sec to longArrayOf(mins, remSec)
 }
 
 class EtaEstimator(val total: Int) {
@@ -328,7 +335,7 @@ class BackupManager @Inject constructor(
             val details = itemDao.getBackupItemDetails()
             val totalItems = details.size.coerceAtLeast(1)
             val exportEta = EtaEstimator(totalItems)
-            onProgress(BackupProgress(0, totalItems, "正在準備備份資料...", "共 ${details.size} 篇文章"))
+            onProgress(BackupProgress(0, totalItems, context.getString(R.string.backup_progress_preparing), context.getString(R.string.backup_progress_items_detail, details.size)))
             val categories = categoryDao.getAllCategories()
             val keywordsByCategory = categoryDao.getAllKeywords().groupBy { it.categoryId }
             val categoryNames = categories.associate { it.id to it.name }
@@ -338,7 +345,7 @@ class BackupManager @Inject constructor(
                 val currentIdx = idx + 1
                 val handleLabel = "@${detail.item.authorHandle.ifBlank { detail.item.shortcode }}"
                 val etaSec = exportEta.estimateRemainingSeconds(currentIdx)
-                onProgress(BackupProgress(currentIdx, totalItems, "正在打包備份資料 (${currentIdx}/${details.size})", handleLabel, etaSec))
+                onProgress(BackupProgress(currentIdx, totalItems, context.getString(R.string.backup_progress_packing, currentIdx, details.size), handleLabel, etaSec))
 
                 var packedMediaList = detail.media.map {
                     ExportedMedia(it.kind, it.remoteUrl, it.width, it.height, it.position, packMedia(it.remoteUrl, it.localPath, it.kind))
@@ -354,7 +361,7 @@ class BackupManager @Inject constructor(
                 val needsRefetch = (packedMediaList.isNotEmpty() && packedMediaList.any { it.archivePath.isBlank() }) ||
                     (packedMediaList.isEmpty() && detail.item.lastFetchStatus == "NOT_FETCHED")
                 if (needsRefetch && (detail.item.canonicalUrl.contains("threads.") || detail.item.shortcode.isNotBlank())) {
-                    onProgress(BackupProgress(currentIdx, totalItems, "正在重新抓取缺失媒體 (${currentIdx}/${details.size})", handleLabel, etaSec))
+                    onProgress(BackupProgress(currentIdx, totalItems, context.getString(R.string.backup_progress_refetching_media, currentIdx, details.size), handleLabel, etaSec))
                     val fresh = graphQLClient.fetchPostByPostIdOrShortcode(
                         detail.item.canonicalUrl, detail.item.shortcode
                     ).getOrNull()
@@ -516,14 +523,14 @@ class BackupManager @Inject constructor(
                 avatarHistory = avatarHistory.map { it.name },
                 currentAvatarReference = currentAvatarReference
             )
-            onProgress(BackupProgress(totalItems, totalItems, "正在封裝 .reater 備份檔...", "共 ${archiveFiles.size} 個媒體資源", 0L))
+            onProgress(BackupProgress(totalItems, totalItems, context.getString(R.string.backup_progress_packaging), context.getString(R.string.backup_progress_packaging_detail, archiveFiles.size), 0L))
             val jsonString = json.encodeToString(ReaterExportV1.serializer(), exportData)
             val encoded = jsonString.toByteArray(StandardCharsets.UTF_8)
             val tempArchive = File(staging, "archive.reater")
             tempArchive.outputStream().buffered(64 * 1024).use { fileOut ->
                 ReaterArchive.write(fileOut, encoded, archiveFiles)
             }
-            check(tempArchive.exists() && tempArchive.length() > 0) { "備份檔產生失敗（檔案大小為 0）" }
+            check(tempArchive.exists() && tempArchive.length() > 0) { context.getString(R.string.backup_error_empty_file) }
             tempArchive.inputStream().buffered(64 * 1024).use { fileIn ->
                 fileIn.copyTo(outputStream, bufferSize = 64 * 1024)
             }
@@ -577,39 +584,39 @@ class BackupManager @Inject constructor(
         val restoredFiles = mutableListOf<File>()
         var databaseCommitted = false
         return try {
-            onProgress(BackupProgress(0, 1, "正在讀取備份檔案..."))
+            onProgress(BackupProgress(0, 1, context.getString(R.string.backup_progress_reading)))
             val tempSourceFile = File(staging, "import_source.tmp")
             tempSourceFile.outputStream().buffered(64 * 1024).use { out ->
                 inputStream.copyTo(out, bufferSize = 64 * 1024)
             }
             require(tempSourceFile.exists() && tempSourceFile.length() > 0) {
-                "備份檔案為空（0 bytes），請確認選取的檔案是否完整"
+                context.getString(R.string.backup_error_file_empty)
             }
 
             val isZip = tempSourceFile.inputStream().buffered().use { stream ->
                 stream.read() == 0x50 && stream.read() == 0x4b
             }
             if (isZip) {
-                onProgress(BackupProgress(0, 1, "正在解壓縮 .reater 備份資源..."))
+                onProgress(BackupProgress(0, 1, context.getString(R.string.backup_progress_extracting)))
             }
             val packed = if (isZip) {
                 tempSourceFile.inputStream().buffered(64 * 1024).use { ReaterArchive.read(it, staging) }
             } else emptyMap()
 
             val content = if (isZip) {
-                val manifestFile = packed[ReaterArchive.MANIFEST] ?: error("備份檔案缺少 manifest.json，非有效備份")
+                val manifestFile = packed[ReaterArchive.MANIFEST] ?: error(context.getString(R.string.backup_error_missing_manifest_file))
                 manifestFile.readText(StandardCharsets.UTF_8)
             } else {
                 tempSourceFile.readText(StandardCharsets.UTF_8)
             }
-            require(content.isNotBlank()) { "備份檔案內容為空，無法解析" }
+            require(content.isNotBlank()) { context.getString(R.string.backup_error_content_empty) }
             val imported = try {
                 json.decodeFromString(ReaterExportV1.serializer(), content)
             } catch (e: Exception) {
-                throw IllegalArgumentException("備份資料格式解析失敗：${e.localizedMessage}", e)
+                throw IllegalArgumentException(context.getString(R.string.backup_error_parse_failed, e.localizedMessage), e)
             }
-            require((isZip && imported.version == "v2") || (!isZip && imported.version == "v1")) { "不支援的備份格式或版本" }
-            require(imported.assets.map { it.path }.distinct().size == imported.assets.size) { "備份資源重複" }
+            require((isZip && imported.version == "v2") || (!isZip && imported.version == "v1")) { context.getString(R.string.backup_error_unsupported_format) }
+            require(imported.assets.map { it.path }.distinct().size == imported.assets.size) { context.getString(R.string.backup_error_duplicate_assets) }
             if (isZip) {
                 val missingAssets = imported.assets.filter { it.path !in packed }
                 if (missingAssets.isNotEmpty()) {
@@ -636,29 +643,29 @@ class BackupManager @Inject constructor(
                 }
                 return destination.absolutePath
             }
-            require(imported.fileFormat == "reater") { "非法的 .reater 專屬格式" }
-            require(imported.items.size <= MAX_IMPORT_ITEMS) { "備份檔項目過多（超過上限）" }
-            require(imported.items.all { it.canonicalUrl.isNotBlank() }) { "匯入資料缺少有效 URL" }
+            require(imported.fileFormat == "reater") { context.getString(R.string.backup_error_illegal_format) }
+            require(imported.items.size <= MAX_IMPORT_ITEMS) { context.getString(R.string.backup_error_too_many_items) }
+            require(imported.items.all { it.canonicalUrl.isNotBlank() }) { context.getString(R.string.backup_error_missing_url) }
 
             // Validate every asset before changing settings or writing files. Never trust backup paths.
             val assets: List<Pair<String, File>> = if (isZip) {
                 packed.filterKeys { it.startsWith("avatars/") }.map { (name, file) -> File(name).name to file }
             } else imported.avatarFiles.map { asset ->
-                require(AvatarStorage.isBackupFileName(asset.name) && ReaterArchive.validName("avatars/${asset.name}")) { "頭像備份檔名無效" }
+                require(AvatarStorage.isBackupFileName(asset.name) && ReaterArchive.validName("avatars/${asset.name}")) { context.getString(R.string.backup_error_invalid_avatar_name) }
                 val file = File(staging, "avatars/${asset.name}").apply { parentFile?.mkdirs() }
                 file.writeBytes(Base64.decode(asset.contentBase64, Base64.DEFAULT))
                 asset.name to file
             }
             assets.forEach { (name, file) ->
-                require(AvatarStorage.isBackupFileName(name) && file.length() > 0) { "頭像備份格式無效" }
+                require(AvatarStorage.isBackupFileName(name) && file.length() > 0) { context.getString(R.string.backup_error_invalid_avatar_format) }
                 if (name.endsWith(".txt")) {
-                    require(file.length() < 4096 && AvatarStorage.decodeTransform(file.readText()) != null) { "頭像裁切資料無效" }
+                    require(file.length() < 4096 && AvatarStorage.decodeTransform(file.readText()) != null) { context.getString(R.string.backup_error_invalid_avatar_crop) }
                 }
             }
             val validCurrentAvatarReference = imported.currentAvatarReference?.takeIf { isZip }?.takeIf { reference ->
                 assets.any { it.first == reference }
             }
-            require(assets.map { it.first }.distinct().size == assets.size) { "頭像備份檔名重複" }
+            require(assets.map { it.first }.distinct().size == assets.size) { context.getString(R.string.backup_error_duplicate_avatar_names) }
             val avatarDir = AvatarStorage.avatarDir(context)
             // New ids preserve local history and avoid overwriting an image with an equal timestamp.
             val importedTimes = assets.mapNotNull { AvatarStorage.extractTs(it.first) }.distinct().sorted()
@@ -701,7 +708,7 @@ class BackupManager @Inject constructor(
                     BackupProgress(
                         current = currentIdx,
                         total = totalItems,
-                        stage = "正在解壓還原文章 (${currentIdx}/${imported.items.size})",
+                        stage = context.getString(R.string.backup_progress_restoring_articles, currentIdx, imported.items.size),
                         detail = handleLabel,
                         estimatedRemainingSeconds = etaSec
                     )
@@ -734,7 +741,7 @@ class BackupManager @Inject constructor(
                 )
             }
 
-            onProgress(BackupProgress(0, totalItems, "正在寫入本機資料庫...", "共 ${preparedItems.size} 篇文章"))
+            onProgress(BackupProgress(0, totalItems, context.getString(R.string.backup_progress_writing_db), context.getString(R.string.backup_progress_items_detail, preparedItems.size)))
 
             var count = 0
             database.withWriteTransaction {
@@ -836,14 +843,14 @@ class BackupManager @Inject constructor(
                             BackupProgress(
                                 current = currentIdx,
                                 total = totalItems,
-                                stage = "正在寫入本機資料庫 (${currentIdx}/${preparedItems.size})",
+                                stage = context.getString(R.string.backup_progress_writing_db_detail, currentIdx, preparedItems.size),
                                 detail = handleLabel,
                                 estimatedRemainingSeconds = etaSec
                             )
                         )
                     }
                     val item = prep.item
-                    require(item.canonicalUrl.isNotBlank()) { "匯入資料缺少有效 URL" }
+                    require(item.canonicalUrl.isNotBlank()) { context.getString(R.string.backup_error_missing_url) }
                     val existing = item.sourceFetchedAt?.let { itemDao.getBackupMatch(item.canonicalUrl, it) }
                         ?: itemDao.getItemByCanonicalUrl(item.canonicalUrl)
                     val entity = ItemEntity(
@@ -970,7 +977,7 @@ class BackupManager @Inject constructor(
                 }
             }
 
-            onProgress(BackupProgress(totalItems, totalItems, "備份資料還原完成", "共 $count 篇文章", 0L))
+            onProgress(BackupProgress(totalItems, totalItems, context.getString(R.string.backup_progress_restore_done, count), "", 0L))
             Result.success(count)
         } catch (e: Exception) {
             if (!databaseCommitted) restoredFiles.forEach { it.delete() }

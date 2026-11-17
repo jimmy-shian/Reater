@@ -6,6 +6,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import android.content.Context
+import com.reater.app.R
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -228,40 +230,40 @@ class OpenAiClient @Inject constructor() {
     }
 
     companion object {
-        fun formatAiError(throwable: Throwable?): String {
-            if (throwable == null) return "AI 分析失敗，請稍後再試"
+        fun formatAiError(context: Context, throwable: Throwable?): String {
+            if (throwable == null) return context.getString(R.string.ai_error_generic)
             if (throwable is OpenAiApiException) {
                 return when (throwable.code) {
-                    401 -> "API 金鑰無效或尚未授權，請至設定檢查"
-                    403 -> "存取遭拒絕，此金鑰沒有該模型的呼叫權限"
-                    404 -> "找不到指定的模型或 API 網址不存在"
-                    429 -> "請求次數過於頻繁或額度已用盡，請稍後再試"
-                    500, 502, 503, 504 -> "AI 服務伺服器連線異常，請稍後重試"
-                    else -> "連線失敗，請稍後再試"
+                    401 -> context.getString(R.string.ai_error_401)
+                    403 -> context.getString(R.string.ai_error_403)
+                    404 -> context.getString(R.string.ai_error_404)
+                    429 -> context.getString(R.string.ai_error_429)
+                    500, 502, 503, 504 -> context.getString(R.string.ai_error_5xx)
+                    else -> context.getString(R.string.ai_error_network)
                 }
             }
             val msg = throwable.message.orEmpty()
             val codeMatch = Regex("""\b(401|403|404|429|500|502|503|504)\b""").find(msg)?.value?.toIntOrNull()
             if (codeMatch != null) {
                 return when (codeMatch) {
-                    401 -> "API 金鑰無效或尚未授權，請至設定檢查"
-                    403 -> "存取遭拒絕，此金鑰沒有該模型的呼叫權限"
-                    404 -> "找不到指定的模型或 API 網址不存在"
-                    429 -> "請求次數過於頻繁或額度已用盡，請稍後再試"
-                    500, 502, 503, 504 -> "AI 服務伺服器連線異常，請稍後重試"
-                    else -> "連線失敗，請稍後再試"
+                    401 -> context.getString(R.string.ai_error_401)
+                    403 -> context.getString(R.string.ai_error_403)
+                    404 -> context.getString(R.string.ai_error_404)
+                    429 -> context.getString(R.string.ai_error_429)
+                    500, 502, 503, 504 -> context.getString(R.string.ai_error_5xx)
+                    else -> context.getString(R.string.ai_error_network)
                 }
             }
             if (throwable is java.net.SocketTimeoutException) {
-                return "AI 伺服器回應超時，請檢查網路連線後再試"
+                return context.getString(R.string.ai_error_timeout)
             }
             if (throwable is java.net.UnknownHostException) {
-                return "無法連線至 AI 伺服器，請檢查網路或網址設定"
+                return context.getString(R.string.ai_error_unreachable)
             }
             return if (msg.isNotBlank() && !msg.contains("Exception") && !msg.contains("HTTP") && !msg.contains("failed to connect")) {
                 msg
             } else {
-                "AI 分析失敗，請稍後再試"
+                context.getString(R.string.ai_error_generic)
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.reater.app.data.repository
 
 import androidx.room3.withWriteTransaction
+import android.content.Context
+import com.reater.app.R
 import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.AiRunDao
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import com.reater.app.domain.CustomKeywordRule
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,7 +45,8 @@ class ThreadPostRepository @Inject constructor(
     private val aiRunDao: AiRunDao,
     private val graphQLClient: ThreadsGraphQLClient,
     private val classifier: OnDeviceClassifier,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context
 ) {
 
     fun observeAllPosts(): Flow<List<ItemDetail>> = itemDao.observeAllItemDetails()
@@ -201,7 +205,7 @@ class ThreadPostRepository @Inject constructor(
         return updatedCount
     }
 
-    class SaveConflictException(val isInTrash: Boolean) : IllegalStateException("這篇文章已經儲存")
+    class SaveConflictException(val isInTrash: Boolean, message: String) : IllegalStateException(message)
 
     suspend fun savePost(
         canonicalUrl: String,
@@ -294,7 +298,7 @@ class ThreadPostRepository @Inject constructor(
           )
           // 平台互斥：同短碼但來自不同平台不視為同一篇（Threads/IG 短碼可能撞名）
           val existingRunnable = existing?.takeIf { it.platform == platform }
-          if (existingRunnable != null && !overwriteConfirmed) throw SaveConflictException(existingRunnable.isDeleted)
+          if (existingRunnable != null && !overwriteConfirmed) throw SaveConflictException(existingRunnable.isDeleted, context.getString(R.string.conflict_title_exists))
           // 主題標籤：抓取結果優先，否則退取內文首個 hashtag（抓取失敗時仍可累積同主題紀錄）
           val resolvedTopic = fetchedResult?.topicTag?.trim().orEmpty()
               .ifBlank { TopicTags.firstHashtag(combinedBody) }
@@ -521,7 +525,7 @@ class ThreadPostRepository @Inject constructor(
                 out.add(at.groupValues[1] to at.groupValues[2].trim())
                 continue
             }
-            out.add("手動筆記" to raw)
+            out.add(context.getString(R.string.repo_manual_note_author) to raw)
         }
         return out.filter { it.second.isNotBlank() }
     }

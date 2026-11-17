@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,7 +107,7 @@ fun PasscodeUnlockDialog(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 DialogHeader(
-                    title = "開通 Reater Pro",
+                    title = stringResource(R.string.passcode_title),
                     onClose = onDismiss,
                     modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                 )
@@ -123,7 +124,7 @@ fun PasscodeUnlockDialog(
                 ) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = ProCopy.UNLOCK_DESC,
+                        text = stringResource(R.string.pro_upsell_body),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.outline,
                         lineHeight = 18.sp
@@ -137,7 +138,7 @@ fun PasscodeUnlockDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isLinkMode) "貼上一鍵開通連結 (單欄自動解析)" else "序號通行碼 / 授權信箱開通",
+                            text = if (isLinkMode) stringResource(R.string.passcode_link_mode_hint) else stringResource(R.string.passcode_manual_mode_hint),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
@@ -155,7 +156,7 @@ fun PasscodeUnlockDialog(
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_mode_switch),
-                                contentDescription = "切換輸入模式",
+                                contentDescription = stringResource(R.string.passcode_switch_mode_desc),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -175,7 +176,7 @@ fun PasscodeUnlockDialog(
                             },
                             placeholder = {
                                 Text(
-                                    "貼上 reater:... 或 http://... 一行文字",
+                                    stringResource(R.string.passcode_link_placeholder),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis
@@ -191,7 +192,7 @@ fun PasscodeUnlockDialog(
                         if (parsed != null) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "已識別信箱：${parsed.first} ｜ 序號：${parsed.second}",
+                                text = stringResource(R.string.passcode_parsed_email_code, parsed.first, parsed.second),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
@@ -204,7 +205,7 @@ fun PasscodeUnlockDialog(
                             onValueChange = { passcode = it },
                             placeholder = {
                                 Text(
-                                    "輸入專屬開通序號 (如 PRO-XXXX-XXXX-XXXX)",
+                                    stringResource(R.string.passcode_code_placeholder),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis
@@ -223,7 +224,7 @@ fun PasscodeUnlockDialog(
                             onValueChange = { emailInput = it },
                             placeholder = {
                                 Text(
-                                    "輸入註冊的 Email (必填，與序號綁定)",
+                                    stringResource(R.string.passcode_email_placeholder),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis
@@ -248,11 +249,11 @@ fun PasscodeUnlockDialog(
                             onClick = {
                                 val intent = Intent(Intent.ACTION_SENDTO).apply {
                                     data = Uri.parse("mailto:jimmy910824@gmail.com")
-                                    putExtra(Intent.EXTRA_SUBJECT, "Reater Pro 授權申請")
-                                    putExtra(Intent.EXTRA_TEXT, "您好，我想申請 Reater Pro 授權憑證 / 密碼。\nEmail: $emailInput")
+                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.passcode_email_subject))
+                                    putExtra(Intent.EXTRA_TEXT, context.getString(R.string.passcode_email_intent_text, emailInput))
                                 }
                                 runCatching { context.startActivity(intent) }
-                                    .onFailure { Toast.makeText(context, "請手動寄信至 jimmy910824@gmail.com", Toast.LENGTH_LONG).show() }
+                                    .onFailure { Toast.makeText(context, context.getString(R.string.passcode_manual_email_hint), Toast.LENGTH_LONG).show() }
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -266,7 +267,7 @@ fun PasscodeUnlockDialog(
                             Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "聯繫作者信箱",
+                                stringResource(R.string.passcode_contact_author),
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
@@ -281,7 +282,7 @@ fun PasscodeUnlockDialog(
                                 if (isLinkMode) {
                                     val parsed = parseUnlockLink(linkInput)
                                     if (parsed == null) {
-                                        Toast.makeText(context, "無法解析連結，請確認格式（需含 email 與 code 參數）或切換雙欄手動輸入", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.passcode_link_parse_error), Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
                                     targetEmail = parsed.first
@@ -296,10 +297,10 @@ fun PasscodeUnlockDialog(
                                     val success = viewModel.unlockWithPasscode(targetCode, targetEmail)
                                     isVerifying = false
                                     if (success) {
-                                        Toast.makeText(context, "Reater Pro 已成功解鎖！", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.passcode_unlock_success), Toast.LENGTH_LONG).show()
                                         onDismiss()
                                     } else {
-                                        Toast.makeText(context, "授權碼或密碼不正確，請確認後重試或聯繫作者。", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.passcode_verify_failed), Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             },
@@ -314,7 +315,7 @@ fun PasscodeUnlockDialog(
                             )
                         ) {
                             Text(
-                                if (isVerifying) "驗證中..." else "驗證並開通",
+                                if (isVerifying) stringResource(R.string.passcode_verifying) else stringResource(R.string.passcode_verify_and_unlock),
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
@@ -327,7 +328,7 @@ fun PasscodeUnlockDialog(
 
                     // Google Play Purchase Section
                     Text(
-                        "透過 Google Play 一次性購買",
+                        stringResource(R.string.passcode_play_billing_title),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         lineHeight = 19.sp,
@@ -336,7 +337,7 @@ fun PasscodeUnlockDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "價格：${billingState.price ?: "讀取中..."}",
+                        stringResource(R.string.passcode_play_billing_price, billingState.price ?: stringResource(R.string.passcode_price_loading)),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
@@ -361,7 +362,7 @@ fun PasscodeUnlockDialog(
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                "恢復已購項目",
+                                stringResource(R.string.passcode_play_billing_restore),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
@@ -371,7 +372,7 @@ fun PasscodeUnlockDialog(
                         Button(
                             onClick = {
                                 if (activity != null) viewModel.buyPro(activity)
-                                else Toast.makeText(context, "無法啟動 Google Play 購買流程", Toast.LENGTH_SHORT).show()
+                                else Toast.makeText(context, context.getString(R.string.passcode_play_billing_error), Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -380,7 +381,7 @@ fun PasscodeUnlockDialog(
                             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                "Google Play 購買",
+                                stringResource(R.string.passcode_play_billing_button),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,

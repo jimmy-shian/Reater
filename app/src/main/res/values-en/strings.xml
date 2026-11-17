@@ -1,0 +1,972 @@
+<resources>
+    <!-- App Identity -->
+    <string name="app_name">Reater</string>
+
+    <!-- General / Common -->
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="delete">Delete</string>
+    <string name="close">Close</string>
+    <string name="ok">Got it</string>
+    <string name="loading">Loading…</string>
+    <string name="processing">Processing…</string>
+    <string name="retry">Reload</string>
+    <string name="error_unknown">Unknown error</string>
+    <string name="error_save_failed">Save failed</string>
+    <string name="error_load_failed">Load failed</string>
+    <string name="copied">Copied</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+
+    <!-- Share / Save Flow -->
+    <string name="share_save_title">Save to Reater</string>
+    <string name="paste_from_clipboard">Paste from clipboard</string>
+    <string name="body_placeholder">Post body…</string>
+    <string name="comments_placeholder">Key comments / discussion notes…</string>
+    <string name="note_placeholder">My personal notes…</string>
+    <string name="summary_placeholder">Key takeaways…</string>
+    <string name="fetching_status">Parsing Threads content…</string>
+    <string name="fetch_failed_tip">Couldn\'t fetch automatically. Paste it below</string>
+    <string name="comments_partial_tip">Fetched some public comments (add more manually)</string>
+    <string name="search_hint">Search body, comments, notes or tags…</string>
+    <string name="fetching_post">Reading post…</string>
+    <string name="save_error">Save failed</string>
+    <string name="notification_permission_missing">Notification permission is off. Downloads continue in background, but progress won\'t show</string>
+    <string name="saved_downloading_media">Saved. Downloading media in background (see notification)</string>
+    <string name="saved_success">Saved to Reater!</string>
+    <string name="share_text_too_long">Shared text is too long. Excess removed.</string>
+    <string name="conflict_title_in_trash">This post is in the trash</string>
+    <string name="conflict_title_exists">This post is already saved</string>
+    <string name="conflict_message_in_trash">Restore and update it, or save as a new one?</string>
+    <string name="conflict_message_exists">Overwrite the existing post, or save as a new one?</string>
+    <string name="conflict_action_restore">Restore &amp; update</string>
+    <string name="conflict_action_overwrite">Overwrite</string>
+    <string name="conflict_action_cancel">Cancel</string>
+    <string name="conflict_action_new">New</string>
+    <string name="conflict_action_save_as">Save as new</string>
+    <string name="save_error_with_reason">Save failed: %1$s</string>
+    <string name="free_category_limit_remaining">%1$d more categories available (used %2$d/%3$d)</string>
+    <string name="free_category_limit_full">Custom categories full (%1$d/%2$d). Upgrade to Pro for unlimited</string>
+    <string name="pro_icon_locked">This icon is Pro-only. Upgrade to unlock</string>
+    <string name="accessibility_favorited">Favorited</string>
+    <string name="accessibility_add_to_favorites">Add to favorites</string>
+    <string name="accessibility_close">Close</string>
+    <string name="label_select_category">Select category</string>
+    <string name="smart_source_smart">Category suggested by content keywords</string>
+    <string name="smart_source_topic">Preselected from similar topics</string>
+    <string name="smart_source_author">Preselected from the same author</string>
+    <string name="status_web_resolving">Resolving shared link…</string>
+    <string name="status_downloading_media">Downloading media (%1$d/%2$d)%3$s%4$s</string>
+    <string name="status_analyzing_instagram">Analyzing Instagram content and downloading media…</string>
+    <string name="status_analyzing_x">Analyzing X post and downloading media…</string>
+    <string name="status_analyzing_facebook">Analyzing Facebook content and downloading media…</string>
+    <string name="status_analyzing_youtube">Analyzing YouTube content and downloading media…</string>
+    <string name="status_analyzing_threads">Analyzing Threads content and downloading media…</string>
+    <string name="status_background_download">Background download</string>
+    <string name="label_post_body">Post body</string>
+    <string name="label_loading">Loading…</string>
+    <string name="button_paste_body">Paste body</string>
+    <string name="fetching_instagram">Fetching Instagram content…</string>
+    <string name="fetching_x">Fetching X post…</string>
+    <string name="fetching_facebook">Fetching Facebook content…</string>
+    <string name="fetching_youtube">Fetching YouTube content…</string>
+    <string name="fetching_threads">Fetching Threads content…</string>
+    <string name="label_comments">Key comments</string>
+    <string name="label_loading_comments">Loading…</string>
+    <string name="button_paste_comments">Paste comments</string>
+    <string name="notice_comment_chain">This is a comment: the top is the original post, the bottom is the comment. Share the original post to save the whole thread.</string>
+    <string name="media_progress">Media %1$d/%2$d · remaining will download in background</string>
+    <string name="media_downloaded_count">Media downloaded (%1$d)</string>
+    <string name="media_no_urls">This post has media but it couldn\'t be resolved. Tap top-right to view on Threads.</string>
+    <string name="label_personal_note">Personal notes</string>
+    <string name="button_create_category">New</string>
+    <string name="button_analyze_and_save">Analyze &amp; save</string>
+
+    <!-- Tab / Navigation -->
+    <string name="tab_all">All</string>
+    <string name="tab_unread">Unread</string>
+    <string name="tab_favorite">Favorites</string>
+    <string name="category_uncategorized">Uncategorized</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="export_data">Export data</string>
+    <string name="import_data">Import data</string>
+    <string name="openai_api_key">OpenAI API Key (BYOK)</string>
+    <string name="model_selection">AI model</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance &amp; Reading</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_system">Follow system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_font_size_title">Font size</string>
+    <string name="settings_section_avatar">Avatar &amp; Icon Gallery (Pro)</string>
+    <string name="settings_avatar_custom_photo">Custom photo avatar</string>
+    <string name="settings_avatar_imported">Imported a custom photo from your gallery</string>
+    <string name="settings_avatar_gallery">Icon gallery</string>
+    <string name="settings_avatar_custom">Custom avatar</string>
+    <string name="settings_avatar_reset">Reset</string>
+    <string name="settings_pro_unlock_avatar">Upgrade to Pro for a custom avatar</string>
+    <string name="settings_pro_unlock_icons">Unlock premium icons and a custom photo avatar</string>
+    <string name="settings_pro_unlock_button">Unlock</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_notification_permission_granted">Notification permission: granted</string>
+    <string name="settings_notification_permission_denied">Notification permission: off</string>
+    <string name="settings_notification_button_grant">Allow</string>
+    <string name="settings_notification_unread_title">Unread reminder</string>
+    <string name="settings_notification_unread_desc">Send a reminder later if still unread</string>
+    <string name="settings_notification_delay_title">Delay</string>
+    <string name="settings_notification_delay_custom_label">Custom minutes</string>
+    <string name="settings_notification_delay_suffix">min</string>
+    <string name="settings_notification_delay_hint">1–120</string>
+    <string name="settings_notification_daily_title">Daily digest</string>
+    <string name="settings_notification_daily_desc">Daily summary of unread posts</string>
+    <string name="settings_notification_daily_period_morning">Morning</string>
+    <string name="settings_notification_daily_period_noon">Noon</string>
+    <string name="settings_notification_daily_period_afternoon">Afternoon</string>
+    <string name="settings_notification_daily_period_evening">Evening</string>
+    <string name="settings_notification_daily_period_late_night">Late night</string>
+    <string name="settings_notification_daily_push_time_title">Push time</string>
+    <string name="settings_notification_daily_custom_hour_label">Custom hour</string>
+    <string name="settings_notification_daily_custom_hour_suffix">:00</string>
+    <string name="settings_notification_daily_custom_hour_hint">0–23</string>
+    <string name="settings_section_backup">Backup &amp; Restore</string>
+    <string name="settings_backup_export">Export backup</string>
+    <string name="settings_backup_import">Import backup</string>
+    <string name="settings_section_uninstall">Uninstall &amp; Data</string>
+    <string name="settings_uninstall_retain_data">Keep restorable Reater data</string>
+    <string name="settings_uninstall_retain_desc">Import again after reinstalling.</string>
+    <string name="settings_ai_expand_desc">Collapse AI settings</string>
+    <string name="settings_ai_collapse_desc">Expand AI settings</string>
+    <string name="settings_ai_provider_openai">OpenAI</string>
+    <string name="settings_ai_provider_custom">Custom endpoint</string>
+    <string name="settings_ai_model_not_specified">No model set</string>
+    <string name="settings_ai_key_configured">API key set</string>
+    <string name="settings_ai_key_not_configured">Not set</string>
+    <string name="settings_ai_model_id_hint">Model ID from the API</string>
+    <string name="settings_ai_fetch_models">Show available models</string>
+    <string name="settings_ai_no_models">No models loaded yet</string>
+    <string name="settings_ai_no_matching_models">No models matching \"%1$s\"</string>
+    <string name="settings_ai_allow_transfer">Send posts and comments to your AI service</string>
+    <string name="settings_ai_auto_analyze_on_save">Auto AI analysis on save</string>
+    <string name="settings_ai_auto_analyze_desc">Summarize in background and notify</string>
+
+    <!-- Smart Collection / Classification -->
+    <string name="smart_field_author">Author</string>
+    <string name="smart_field_tag">Tag</string>
+    <string name="smart_field_category">Category</string>
+    <string name="smart_field_content">Body / Title</string>
+    <string name="smart_field_comment_text">Comments</string>
+    <string name="smart_field_ai_summary">AI summary</string>
+    <string name="smart_field_manual_note">Notes</string>
+    <string name="smart_field_favorite">Favorite status</string>
+    <string name="smart_field_read_status">Read status</string>
+    <string name="smart_field_has_media">Has media</string>
+    <string name="smart_field_has_image">Has images</string>
+    <string name="smart_field_has_video">Has video</string>
+    <string name="smart_field_likes">Likes</string>
+    <string name="smart_field_replies">Replies</string>
+    <string name="smart_field_reposts">Reposts</string>
+    <string name="smart_field_shares">Shares</string>
+    <string name="smart_field_saved_date">Saved date</string>
+    <string name="smart_field_content_match_keywords">Body matches category keywords</string>
+    <string name="smart_field_comment_match_keywords">Comments match category keywords</string>
+
+    <string name="smart_op_equals">=</string>
+    <string name="smart_op_not_equals">≠</string>
+    <string name="smart_op_contains">contains</string>
+    <string name="smart_op_not_contains">doesn\'t contain</string>
+    <string name="smart_op_contains_any">contains any</string>
+    <string name="smart_op_contains_all">contains all</string>
+    <string name="smart_op_gte">≥</string>
+    <string name="smart_op_gt">&gt;</string>
+    <string name="smart_op_lte">≤</string>
+    <string name="smart_op_lt">&lt;</string>
+    <string name="smart_op_between">between</string>
+    <string name="smart_op_within_days">within</string>
+    <string name="smart_op_older_than_days">older than</string>
+    <string name="smart_op_newer_than_days">newer than</string>
+
+    <string name="smart_value_read">Read</string>
+    <string name="smart_value_unread">Unread</string>
+    <string name="smart_value_true">Yes</string>
+    <string name="smart_value_false">No</string>
+    <string name="smart_value_favorited">Favorited</string>
+    <string name="smart_value_unfavorited">Not favorited</string>
+
+    <string name="smart_preset_hot_name">Top liked</string>
+    <string name="smart_preset_study_name">Must-read</string>
+    <string name="smart_preset_sparkles_name">Ideas</string>
+
+    <string name="smart_category_keywords_inspiration">靈感,點子,想法,構思,idea,brainstorm,創意</string>
+    <string name="smart_category_keywords_job">找工作,求職,履歷,面試,徵才,工作機會,104,LinkedIn,職缺,獵頭</string>
+    <string name="smart_category_keywords_ai_art">GPT畫圖,AI畫圖,Prompt,Midjourney,Stable Diffusion,SDXL,圖像生成,生圖,DALL-E,ComfyUI</string>
+
+    <string name="smart_desc_likes">Likes: %1$d %2$s %3$s</string>
+    <string name="smart_desc_replies">Replies: %1$d %2$s %3$s</string>
+    <string name="smart_desc_reposts">Reposts: %1$d %2$s %3$s</string>
+    <string name="smart_desc_shares">Shares match</string>
+    <string name="smart_desc_author">Author matches \"%1$s\"</string>
+    <string name="smart_desc_tag">Tag contains \"%1$s\"</string>
+    <string name="smart_desc_content">Body/title contains \"%1$s\"</string>
+    <string name="smart_desc_comment">Comments contain \"%1$s\"</string>
+    <string name="smart_desc_manual_note">Notes contain \"%1$s\"</string>
+    <string name="smart_desc_category">Category is \"%1$s\"</string>
+    <string name="smart_desc_favorite_true">Favorited</string>
+    <string name="smart_desc_favorite_false">Not favorited</string>
+    <string name="smart_desc_read_status_read">Read</string>
+    <string name="smart_desc_read_status_unread">Unread</string>
+    <string name="smart_desc_has_media">Has media</string>
+    <string name="smart_desc_has_image">Has images</string>
+    <string name="smart_desc_has_video">Has video</string>
+    <string name="smart_desc_saved_date">Saved date matches (%1$s %2$s days)</string>
+    <string name="smart_desc_content_keywords">Body matches \"%1$s\" keywords</string>
+    <string name="smart_desc_comment_keywords">Comments match \"%1$s\" keywords</string>
+
+    <string name="smart_summary_likes">Likes %1$s %2$s</string>
+    <string name="smart_summary_replies">Replies %1$s %2$s</string>
+    <string name="smart_summary_reposts">Reposts %1$s %2$s</string>
+    <string name="smart_summary_shares">Shares %1$s %2$s</string>
+    <string name="smart_summary_author">Author \"%1$s\"</string>
+    <string name="smart_summary_tag">Tag \"%1$s\"</string>
+    <string name="smart_summary_content">Body has \"%1$s\"</string>
+    <string name="smart_summary_comment">Comments have \"%1$s\"</string>
+    <string name="smart_summary_manual_note">Notes have \"%1$s\"</string>
+    <string name="smart_summary_category">Category \"%1$s\"</string>
+    <string name="smart_summary_favorite_true">Favorited</string>
+    <string name="smart_summary_favorite_false">Not favorited</string>
+    <string name="smart_summary_read_status_read">Read</string>
+    <string name="smart_summary_read_status_unread">Unread</string>
+    <string name="smart_summary_has_media_true">Has media</string>
+    <string name="smart_summary_has_media_false">No media</string>
+    <string name="smart_summary_has_image_true">Has images</string>
+    <string name="smart_summary_has_image_false">No images</string>
+    <string name="smart_summary_has_video_true">Has video</string>
+    <string name="smart_summary_has_video_false">No video</string>
+    <string name="smart_summary_saved_date">Last %1$s days</string>
+    <string name="smart_summary_content_keywords">Body matched \"%1$s\"</string>
+    <string name="smart_summary_comment_keywords">Comments matched \"%1$s\"</string>
+
+    <string name="smart_error_no_conditions">No conditions set</string>
+
+    <!-- Avatar Icons -->
+    <string name="avatar_category_tech">Tech</string>
+    <string name="avatar_category_reading">Reading</string>
+    <string name="avatar_category_finance">Finance</string>
+    <string name="avatar_category_travel">Travel</string>
+    <string name="avatar_category_creative">Creative</string>
+    <string name="avatar_category_life">Life</string>
+
+    <string name="avatar_item_life_name">Daily Life</string>
+    <string name="avatar_item_life_desc">Everyday notes and journals</string>
+    <string name="avatar_item_tech_name">Tech &amp; Dev</string>
+    <string name="avatar_item_tech_desc">Architecture, coding and trends</string>
+    <string name="avatar_item_study_name">Study</string>
+    <string name="avatar_item_study_desc">Book picks and deep reading</string>
+    <string name="avatar_item_finance_name">Finance</string>
+    <string name="avatar_item_finance_desc">Markets, investing and business</string>
+    <string name="avatar_item_travel_name">Travel</string>
+    <string name="avatar_item_travel_desc">Food, trips and local life</string>
+
+    <string name="avatar_item_crown_name">Crown</string>
+    <string name="avatar_item_crown_desc">Top decisions and curated picks</string>
+    <string name="avatar_item_diamond_name">Diamond</string>
+    <string name="avatar_item_diamond_desc">Timeless high-value knowledge</string>
+    <string name="avatar_item_rocket_name">Rocket</string>
+    <string name="avatar_item_rocket_desc">Growth and productivity</string>
+    <string name="avatar_item_sparkles_name">Sparkles</string>
+    <string name="avatar_item_sparkles_desc">AI, ideas and inspiration</string>
+    <string name="avatar_item_shield_name">Vault</string>
+    <string name="avatar_item_shield_desc">Privacy and personal safe</string>
+    <string name="avatar_item_compass_name">Compass</string>
+    <string name="avatar_item_compass_desc">Vision and strategy guide</string>
+    <string name="avatar_item_fire_name">Hot</string>
+    <string name="avatar_item_fire_desc">Trending topics and buzz</string>
+    <string name="avatar_item_palette_name">Creative</string>
+    <string name="avatar_item_palette_desc">Design, art and culture</string>
+    <string name="avatar_item_globe_name">Global</string>
+    <string name="avatar_item_globe_desc">World insight and international trends</string>
+    <string name="avatar_item_trophy_name">Trophy</string>
+    <string name="avatar_item_trophy_desc">Milestones and achievements</string>
+
+    <string name="avatar_item_smart_hot_name">Top liked</string>
+    <string name="avatar_item_smart_hot_desc">For like-based rules</string>
+    <string name="avatar_item_smart_study_name">Must-read</string>
+    <string name="avatar_item_smart_study_desc">For unread favorites</string>
+    <string name="avatar_item_smart_sparkles_name">Ideas</string>
+    <string name="avatar_item_smart_sparkles_desc">For inspiration rules</string>
+    <string name="avatar_item_smart_filter_name">Smart filter</string>
+    <string name="avatar_item_smart_filter_desc">For custom condition rules</string>
+    <string name="avatar_item_smart_trending_name">Trending</string>
+    <string name="avatar_item_smart_trending_desc">For metric-based rules</string>
+
+    <!-- Media Viewer -->
+    <string name="media_viewer_close">Close</string>
+    <string name="media_viewer_download">Download image</string>
+    <string name="media_viewer_content_desc">Image %1$d / %2$d</string>
+    <string name="media_viewer_load_failed">Load failed</string>
+
+    <!-- Post Card / Feed -->
+    <string name="post_card_status_unread">Unread</string>
+    <string name="post_card_status_read">Read</string>
+    <string name="post_card_action_mark_unread">Mark as unread</string>
+    <string name="post_card_action_mark_read">Mark as read</string>
+    <string name="post_card_action_copy_url_summary">Copy link &amp; summary</string>
+    <string name="post_card_toast_copied_url_summary">Link and summary copied</string>
+    <string name="post_card_toast_copied_post">Post link and summary copied</string>
+    <string name="post_card_accessibility_copy_share">Copy to share</string>
+    <string name="post_card_accessibility_open_external">Open externally</string>
+    <string name="post_card_accessibility_favorite">Favorite</string>
+    <string name="post_card_accessibility_trash">Move to trash</string>
+    <string name="post_card_empty_body">No content</string>
+    <string name="post_card_label_text_attachment">Text attachment</string>
+    <string name="post_card_button_detail">Details</string>
+    <string name="post_card_label_note">Note: %1$s</string>
+    <string name="post_card_label_comments">%1$d key comments</string>
+
+    <!-- Detail Dialog -->
+    <string name="detail_block_root_post">Original</string>
+    <string name="detail_block_share">Shared</string>
+    <string name="detail_ai_consent_title">Allow AI analysis?</string>
+    <string name="detail_ai_consent_message">Post content and comments will be sent to your AI service for analysis. You can turn this off anytime in Settings.</string>
+    <string name="detail_ai_consent_cancel">Cancel</string>
+    <string name="detail_ai_consent_confirm">Agree &amp; analyze</string>
+    <string name="detail_accessibility_more">More actions</string>
+    <string name="detail_action_copy_url_summary">Copy link &amp; summary</string>
+    <string name="detail_toast_copied">Post link and summary copied</string>
+    <string name="detail_action_change_category">Change category</string>
+    <string name="detail_ai_button">Summary · Category · Tags</string>
+    <string name="detail_toast_category_updated">Category updated</string>
+    <string name="detail_toast_set_uncategorized">Set to Uncategorized</string>
+    <string name="detail_accessibility_open_in_browser">Open in Threads / browser</string>
+    <string name="detail_accessibility_copy_share">Copy to share</string>
+    <string name="detail_accessibility_close">Close</string>
+    <string name="detail_free_category_limit_remaining">%1$d more categories available (used %2$d/%3$d)</string>
+    <string name="detail_free_category_limit_full">Custom categories full (%1$d/%2$d). Upgrade to Pro for unlimited</string>
+    <string name="detail_toast_pro_icon">This icon is Pro-only. Upgrade to unlock</string>
+    <string name="detail_notice_comment_chain">Legacy comment archive. Images were re-attached to the original. Save again to fix permanently.</string>
+    <string name="detail_label_share">Shared</string>
+    <string name="detail_empty_body">No content</string>
+    <string name="detail_label_text_attachment">Text attachment</string>
+    <string name="detail_media_not_downloaded">Media wasn\'t downloaded. Tap the button above to view the original post.</string>
+    <string name="detail_section_note">Notes</string>
+    <string name="detail_note_placeholder">Write your thoughts…</string>
+    <string name="detail_section_comments">Key comments (%1$d)</string>
+    <string name="detail_action_move_to_trash">Move to trash</string>
+    <string name="detail_button_processing">Processing…</string>
+    <string name="detail_accessibility_lyrics">Lyrics</string>
+    <string name="detail_lyrics_title">Lyrics</string>
+    <string name="detail_button_expand">Expand</string>
+    <string name="detail_button_collapse">Collapse</string>
+
+    <!-- Analytics Screen -->
+    <string name="analytics_title_today_saved">Saved today</string>
+    <string name="analytics_title_today_opened">Opened today</string>
+    <string name="analytics_title_total_review">Total reviews</string>
+    <string name="analytics_saved_trend_pro">Save trends (last 30 days)</string>
+    <string name="analytics_saved_trend_free">Save trends (this week)</string>
+    <string name="analytics_chart_hint">Tap a bar to see that day\'s details</string>
+    <string name="analytics_empty">No saves in this period</string>
+    <string name="analytics_bar_percent">%1$d%% of period</string>
+    <string name="analytics_articles">posts</string>
+    <string name="analytics_label_total">Total</string>
+    <string name="analytics_label_daily_max">Daily max</string>
+    <string name="analytics_label_daily_avg">Daily avg</string>
+    <string name="analytics_unlock_pro">Upgrade to Pro for 30-day and unlimited trends</string>
+    <string name="analytics_y_axis_count">Posts</string>
+    <string name="analytics_selected_data">Selected: %1$s (%2$d posts)</string>
+    <string name="analytics_timeslot_morning">Morning</string>
+    <string name="analytics_timeslot_afternoon">Afternoon</string>
+    <string name="analytics_timeslot_evening">Evening</string>
+    <string name="analytics_timeslot_night">Night</string>
+    <string name="analytics_timeslot_title">Time-of-day activity</string>
+    <string name="analytics_timeslot_desc">When you read and save the most</string>
+    <string name="analytics_peak_slot">Peak: %1$s</string>
+
+    <!-- Splash Ad Overlay -->
+    <string name="splash_ad_tagline">Thread reading engine · Offline cache</string>
+    <string name="splash_ad_countdown">0%1$ds</string>
+    <string name="splash_ad_enter">Enter</string>
+    <string name="splash_ad_sponsored">Sponsored</string>
+    <string name="splash_ad_feature_title">Read long threads faster</string>
+    <string name="splash_ad_feature_desc">Auto-organizes Threads quotes and replies, caches full text offline.</string>
+    <string name="splash_ad_label">Sponsored content · ad slot</string>
+    <string name="splash_ad_privacy">Runs offline · no trackers</string>
+    <string name="splash_ad_google_ads">Served by Google</string>
+    <string name="splash_ad_badge">Ad</string>
+    <string name="splash_ad_cta_default">Learn more</string>
+
+    <!-- Notifications -->
+    <string name="notify_channel_reading_reminder">Reading reminders</string>
+    <string name="notify_channel_reading_reminder_desc">Unread and daily digest notifications</string>
+    <string name="notify_channel_offline_download">Offline media download</string>
+    <string name="notify_channel_offline_download_desc">Progress for background media downloads</string>
+    <string name="notify_content_unread_title">You have unread posts</string>
+    <string name="notify_content_unread_text_default">You have unread saved posts. Tap to review</string>
+    <string name="notify_content_unread_text_with_title">\"%1$s\" is still unread. Tap to review</string>
+    <string name="notify_content_unread_title_with_author">Featured post (%1$s):\n%2$s</string>
+    <string name="notify_content_unread_text_no_author">Featured post:\n%1$s</string>
+    <string name="notify_content_unread_summary">%1$d unread. Tap to review</string>
+    <string name="notify_content_unread_summary_total">%1$d unread in total</string>
+    <string name="notify_content_analysis_done">Analysis finished and summary saved</string>
+    <string name="notify_content_downloading_preparing">Preparing download…</string>
+    <string name="notify_content_downloading_multi">Downloading (%1$d/%2$d) · %3$d%%%4$s</string>
+    <string name="notify_content_downloading_single">Downloading %1$d%%%2$s</string>
+    <string name="notify_content_downloading_title">Downloading media</string>
+    <string name="notify_content_downloading_title_with_name">Downloading media: %1$s</string>
+    <string name="notify_content_download_done_default">Finished downloading %1$d media files</string>
+    <string name="notify_content_download_done_with_title">\"%1$s\" finished downloading %2$d media files</string>
+    <string name="notify_content_download_done_title">Media download complete</string>
+    <string name="notify_content_download_failed_reason">Some media failed to download</string>
+    <string name="notify_content_download_failed_title">Media download incomplete</string>
+
+    <!-- Backup / Archive -->
+    <string name="backup_error_size_limit">Backup exceeds size limit</string>
+    <string name="backup_error_file_count">Too many files in backup</string>
+    <string name="backup_error_total_size">Backup exceeds total size limit</string>
+    <string name="backup_error_invalid_name">Invalid backup file name: %1$s</string>
+    <string name="backup_error_missing_manifest">Backup file may be corrupted</string>
+    <string name="backup_progress_almost_done">Almost done</string>
+    <string name="backup_error_unsupported_format">Unsupported backup format or version</string>
+    <string name="backup_error_duplicate_assets">Duplicate backup assets</string>
+    <string name="backup_error_invalid_avatar_name">Invalid avatar file name in backup</string>
+    <string name="backup_error_invalid_avatar_format">Invalid avatar format in backup</string>
+    <string name="backup_error_invalid_avatar_crop">Invalid avatar crop data</string>
+    <string name="backup_error_duplicate_avatar_names">Duplicate avatar names in backup</string>
+    <string name="backup_progress_restore_done">Restore complete: %1$d posts</string>
+
+    <!-- On-Device Classifier -->
+    <string name="classifier_uncategorized">Uncategorized</string>
+    <string name="classifier_time_unknown">Unknown time</string>
+    <string name="classifier_saved_on">Saved %1$s</string>
+
+    <!-- URL Parser -->
+    <string name="parser_kind_post">Post</string>
+    <string name="parser_kind_short">Short link</string>
+    <string name="parser_kind_share_link">Comment / share</string>
+    <string name="parser_instagram_reel">Reels</string>
+    <string name="parser_instagram_post">Post</string>
+
+    <!-- Pro Copy / Upgrade -->
+    <string name="pro_copy_body">Upgrade to Pro: unlimited custom categories, exclusive icons and smart curation.\nFree features stay unchanged.</string>
+    <string name="pro_lock_cta">Upgrade to Pro</string>
+    <string name="pro_share_limit_title">Free version notice</string>
+    <string name="pro_share_limit_body">Free version allows up to %1$d custom categories. Upgrade to Pro for unlimited.</string>
+    <string name="pro_upsell_body">Upgrade to Pro: unlimited custom categories, exclusive icons and smart curation.</string>
+
+    <!-- Passcode / Unlock Dialog -->
+    <string name="passcode_title">Unlock Reater Pro</string>
+    <string name="passcode_link_mode_hint">Paste your one-tap activation link</string>
+    <string name="passcode_manual_mode_hint">License key / Email</string>
+    <string name="passcode_switch_mode_desc">Switch input mode</string>
+    <string name="passcode_link_placeholder">Paste a reater:… or http://… link</string>
+    <string name="passcode_parsed_email_code">Email: %1$s ｜ Key: %2$s</string>
+    <string name="passcode_code_placeholder">Enter license key (PRO-XXXX-XXXX-XXXX)</string>
+    <string name="passcode_email_placeholder">Enter your registered Email (required)</string>
+    <string name="passcode_email_intent_text">Hello, I\'d like to request a Reater Pro license.\nEmail: %1$s</string>
+    <string name="passcode_contact_author">Email the author</string>
+    <string name="passcode_link_parse_error">Couldn\'t parse the link. Use manual input instead</string>
+    <string name="passcode_verify_failed">Invalid key. Please retry or contact the author.</string>
+    <string name="passcode_verifying">Verifying…</string>
+    <string name="passcode_verify_and_unlock">Verify &amp; unlock</string>
+    <string name="passcode_play_billing_title">One-time purchase via Google Play</string>
+    <string name="passcode_play_billing_price">Price: %1$s</string>
+    <string name="passcode_play_billing_restore">Restore purchases</string>
+    <string name="passcode_play_billing_error">Couldn\'t start the Google Play purchase</string>
+
+    <!-- Icon Gallery Dialog -->
+    <string name="icon_gallery_filter_all">All</string>
+    <string name="icon_gallery_filter_free">Free</string>
+    <string name="icon_gallery_filter_pro">PRO</string>
+    <string name="icon_gallery_cannot_read_avatar">Couldn\'t read the original avatar</string>
+    <string name="icon_gallery_import_failed">Import failed. Pick another image</string>
+    <string name="icon_gallery_cannot_read_image">Couldn\'t read image. Pick another</string>
+    <string name="icon_gallery_save_failed">Couldn\'t save avatar. Please retry</string>
+    <string name="icon_gallery_delete_current_title">Delete current avatar?</string>
+    <string name="icon_gallery_delete_history_title">Delete this avatar?</string>
+    <string name="icon_gallery_delete_current_body">Reverts to the built-in icon.</string>
+    <string name="icon_gallery_delete_history_body">Deletes this avatar\'s original image and edit history.</string>
+    <string name="icon_gallery_delete_button">Delete</string>
+    <string name="icon_gallery_cancel">Cancel</string>
+    <string name="icon_gallery_gallery_title">Icon Gallery</string>
+    <string name="icon_gallery_close">Close</string>
+    <string name="icon_gallery_type_label">Type: %1$s</string>
+    <string name="icon_gallery_expand_type">Expand type</string>
+    <string name="icon_gallery_collapse_type">Collapse type</string>
+    <string name="icon_gallery_go_pro">Go PRO</string>
+    <string name="icon_gallery_apply_avatar">Set as my avatar</string>
+    <string name="icon_gallery_custom_avatar_title">Custom photo avatar</string>
+    <string name="icon_gallery_custom_avatar_desc">Use your own photo as your avatar (Pro).</string>
+    <string name="icon_gallery_go_pro_button">Go PRO</string>
+    <string name="icon_gallery_select_from_gallery">Choose from gallery</string>
+    <string name="icon_gallery_history_avatars">Avatar history</string>
+    <string name="icon_gallery_no_history">No avatar history yet. Pick your first photo.</string>
+    <string name="icon_gallery_current_avatar">Current</string>
+    <string name="icon_gallery_history_avatar">History</string>
+    <string name="icon_gallery_current_custom_avatar">Current custom avatar</string>
+    <string name="icon_gallery_saved_custom_avatar">Saved custom avatar</string>
+    <string name="icon_gallery_set_as_avatar">Set as avatar</string>
+    <string name="icon_gallery_edit">Edit</string>
+    <string name="icon_gallery_delete_avatar">Delete avatar</string>
+    <string name="icon_gallery_save_edited_title">Save edited avatar</string>
+    <string name="icon_gallery_save_edited_body">Save as new, or overwrite this one?</string>
+    <string name="icon_gallery_overwrite">Overwrite</string>
+    <string name="icon_gallery_save_as_new">Save as new</string>
+    <string name="icon_gallery_accessibility_custom_avatar">Custom avatar</string>
+    <string name="icon_gallery_accessibility_avatar">Avatar</string>
+
+    <!-- Smart Classification Dialog -->
+    <string name="smart_class_title_new">New keyword rule</string>
+    <string name="smart_class_title_edit">Edit keyword rule</string>
+    <string name="smart_class_close">Close</string>
+    <string name="smart_class_hint">Posts containing these words go to the chosen category automatically.</string>
+    <string name="smart_class_match_text_label">Match words (multiple allowed)</string>
+    <string name="smart_class_match_text_placeholder">e.g. AI, tech, ChatGPT</string>
+    <string name="smart_class_target_category_label">Target category</string>
+    <string name="smart_class_select_target_category">Choose a category</string>
+    <string name="smart_class_custom_tag_label">Custom tag (optional)</string>
+    <string name="smart_class_custom_tag_placeholder">Optional, e.g. notes, important</string>
+    <string name="smart_class_delete_rule">Delete rule</string>
+    <string name="smart_class_cancel">Cancel</string>
+    <string name="smart_class_save">Save</string>
+
+    <!-- Smart Collection Rule Dialog -->
+    <string name="smart_collection_title">Edit smart rule</string>
+    <string name="smart_collection_close">Close</string>
+    <string name="smart_collection_basic_settings">Basics</string>
+    <string name="smart_collection_change_icon_desc">Change icon</string>
+    <string name="smart_collection_rule_name_label">Rule name</string>
+    <string name="smart_collection_enabled">Enable this rule</string>
+    <string name="smart_collection_enabled_desc">Matching posts appear in this smart view</string>
+    <string name="smart_collection_condition_mode">Match mode</string>
+    <string name="smart_collection_mode_or">Any condition (OR)</string>
+    <string name="smart_collection_mode_and">All conditions (AND)</string>
+    <string name="smart_collection_conditions_label">Conditions</string>
+    <string name="smart_collection_matched_count">Matches: %1$d posts</string>
+    <string name="smart_collection_no_matches">No matching posts</string>
+    <string name="smart_collection_preview_matching">Preview matches</string>
+    <string name="smart_collection_reset_default">Restore default</string>
+    <string name="smart_collection_delete_rule">Delete rule</string>
+    <string name="smart_collection_cancel">Cancel</string>
+    <string name="smart_collection_save">Save</string>
+    <string name="smart_collection_discard_changes_title">Discard unsaved changes?</string>
+    <string name="smart_collection_discard_changes_body">Your unsaved changes will be lost.</string>
+    <string name="smart_collection_discard_confirm">Discard</string>
+    <string name="smart_collection_continue_editing">Keep editing</string>
+    <string name="smart_collection_delete_confirm_title">Delete this rule?</string>
+    <string name="smart_collection_delete_confirm_body">Deleting the rule won\'t delete any posts.</string>
+    <string name="smart_collection_delete_confirm">Delete</string>
+    <string name="smart_collection_reset_confirm_title">Restore default?</string>
+    <string name="smart_collection_reset_confirm_body">Resets conditions to the default for \"%1$s\".</string>
+    <string name="smart_collection_reset_confirm">Restore</string>
+    <string name="smart_collection_delete_condition_desc">Delete condition</string>
+    <string name="smart_collection_field_group_content">Content</string>
+    <string name="smart_collection_field_group_status">Status</string>
+    <string name="smart_collection_field_group_interaction">Engagement</string>
+    <string name="smart_collection_field_group_time">Time</string>
+    <string name="smart_collection_field_group_smart">Smart</string>
+    <string name="smart_collection_default_read_status_unread">Unread</string>
+    <string name="smart_collection_hint_min_value">Min</string>
+    <string name="smart_collection_hint_max_value">Max</string>
+    <string name="smart_collection_example_likes">e.g. 100</string>
+    <string name="smart_collection_example_replies">e.g. 20</string>
+    <string name="smart_collection_example_reposts">e.g. 10</string>
+    <string name="smart_collection_example_shares">e.g. 5</string>
+    <string name="smart_collection_example_author">e.g. @user</string>
+    <string name="smart_collection_example_tag">e.g. AI</string>
+    <string name="smart_collection_example_content">e.g. Midjourney</string>
+    <string name="smart_collection_example_comment">e.g. tutorial resources</string>
+    <string name="smart_collection_example_ai_summary">e.g. highlights</string>
+    <string name="smart_collection_example_manual_note">e.g. must-read</string>
+    <string name="smart_collection_favorite_true_label">Favorited</string>
+    <string name="smart_collection_favorite_false_label">Not favorited</string>
+    <string name="smart_collection_read_status_unread_label">Unread</string>
+    <string name="smart_collection_read_status_read_label">Read</string>
+    <string name="smart_collection_has_media_true_label">Yes</string>
+    <string name="smart_collection_has_media_false_label">No</string>
+    <string name="smart_collection_has_image_true_label">Yes</string>
+    <string name="smart_collection_has_image_false_label">No</string>
+    <string name="smart_collection_has_video_true_label">Yes</string>
+    <string name="smart_collection_has_video_false_label">No</string>
+    <string name="smart_collection_days_label">Days</string>
+    <string name="smart_collection_days_suffix">days</string>
+    <string name="smart_collection_days_placeholder">e.g. 30</string>
+    <string name="smart_collection_select_category_hint">Select category</string>
+    <string name="smart_collection_current_category">Category: %1$s</string>
+    <string name="smart_collection_match_source_label">Match from:</string>
+    <string name="smart_collection_source_title">Title</string>
+    <string name="smart_collection_source_body">Body</string>
+    <string name="smart_collection_source_comments">Comments</string>
+    <string name="smart_collection_source_manual_note">Notes</string>
+    <string name="smart_collection_preview_title">Matching posts (%1$d)</string>
+    <string name="smart_collection_preview_empty">No matching posts</string>
+    <string name="smart_collection_preview_close">Close preview</string>
+    <string name="smart_collection_preview_matched_label">Matched conditions:</string>
+    <string name="smart_collection_icon_title">Choose rule icon</string>
+    <string name="smart_collection_icon_smart_rule">Smart rule icons</string>
+    <string name="smart_collection_icon_other">Other icons</string>
+
+    <!-- Threads Stats Row -->
+    <string name="threads_stats_like">Likes</string>
+    <string name="threads_stats_reply">Replies</string>
+    <string name="threads_stats_repost">Reposts</string>
+    <string name="threads_stats_share">Shares</string>
+
+    <!-- Reater Dropdown -->
+    <string name="dropdown_collapse_menu">Collapse menu</string>
+    <string name="dropdown_expand_menu">Expand menu</string>
+    <string name="dropdown_apply">Apply</string>
+
+    <!-- Pro Category Filter Row -->
+    <string name="filter_all">All</string>
+    <string name="filter_uncategorized">Uncategorized</string>
+
+    <!-- Copyable Text Block -->
+    <string name="copyable_toast_copied">Body copied</string>
+    <string name="copyable_accessibility_copy">Copy body</string>
+    <string name="copyable_expand">Show all</string>
+    <string name="copyable_collapse">Show less</string>
+
+    <!-- Time Format -->
+    <string name="time_unknown">Unknown time</string>
+    <string name="time_saved_on">Saved %1$s</string>
+
+    <!-- Media Download Worker -->
+    <string name="worker_download_failed">%1$d media downloads failed%2$s</string>
+    <string name="worker_download_skipped"> (%1$d streams skipped)</string>
+
+    <!-- AI Analysis Worker -->
+    <string name="worker_ai_not_authorized">AI transfer not authorized</string>
+    <string name="worker_ai_no_api_key">No API key configured</string>
+    <string name="worker_ai_user_note_prefix">User notes:\n%1$s</string>
+
+    <!-- Reater Glance Widget -->
+    <string name="widget_empty_no_posts">No unread posts. Share from Threads!</string>
+    <string name="widget_label_unread">Unread</string>
+    <string name="widget_label_note">Note: %1$s</string>
+
+    <!-- Fetch Progress -->
+    <string name="fetch_progress_body_parsed">Post body fetched</string>
+    <string name="fetch_progress_comments_done">Fetched %1$d key comments</string>
+    <string name="fetch_progress_downloading_media">Downloading media (%1$d/%2$d)</string>
+    <string name="fetch_progress_media_done">Media download complete</string>
+    <string name="fetch_progress_media_partial">Partially done (%1$d ok, %2$d failed, rest continues in background)</string>
+    <string name="fetch_error_invalid_x_url">Invalid X post link</string>
+    <string name="fetch_error_x_failed">Failed to fetch the X post</string>
+    <string name="fetch_error_invalid_youtube_url">Invalid YouTube link</string>
+    <string name="fetch_youtube_fallback_title">YouTube video</string>
+
+    <!-- AI Client Errors -->
+    <string name="ai_error_generic">AI analysis failed. Please try again later</string>
+    <string name="ai_error_401">Invalid or unauthorized API key. Check Settings</string>
+    <string name="ai_error_403">Access denied. This key can\'t use this model</string>
+    <string name="ai_error_404">Model or API endpoint not found</string>
+    <string name="ai_error_429">Too many requests or quota exhausted. Try again later</string>
+    <string name="ai_error_5xx">AI service error. Please retry later</string>
+    <string name="ai_error_network">Connection failed. Please try again later</string>
+    <string name="ai_error_timeout">AI server timed out. Check your network and retry</string>
+    <string name="ai_error_unreachable">Can\'t reach the AI server. Check network or endpoint</string>
+
+    <!-- Backup Manager -->
+    <string name="backup_eta_seconds">About %1$d s left</string>
+    <string name="backup_eta_minutes">About %1$d min left</string>
+    <string name="backup_eta_min_sec">About %1$d min %2$d s left</string>
+    <string name="backup_progress_preparing">Preparing backup…</string>
+    <string name="backup_progress_packing">Packing backup (%1$d/%2$d)</string>
+    <string name="backup_progress_refetching_media">Re-fetching missing media (%1$d/%2$d)</string>
+    <string name="backup_progress_packaging">Creating .reater backup…</string>
+    <string name="backup_progress_packaging_detail">%1$d media assets</string>
+    <string name="backup_error_empty_file">Backup failed (file is empty)</string>
+    <string name="backup_progress_reading">Reading backup…</string>
+    <string name="backup_error_file_empty">Backup file is empty. Pick a valid file</string>
+    <string name="backup_progress_extracting">Extracting backup…</string>
+    <string name="backup_error_missing_manifest_file">Not a valid backup file</string>
+    <string name="backup_error_content_empty">Backup file is empty</string>
+    <string name="backup_error_parse_failed">Invalid backup format: %1$s</string>
+    <string name="backup_warning_missing_assets">%1$d media missing. Restoring with links instead</string>
+    <string name="backup_error_illegal_format">Not a valid .reater backup</string>
+    <string name="backup_error_too_many_items">Too many items in backup</string>
+    <string name="backup_error_missing_url">Import data missing valid URL</string>
+    <string name="backup_progress_restoring_articles">Restoring posts (%1$d/%2$d)</string>
+    <string name="backup_progress_writing_db">Writing to local database…</string>
+    <string name="backup_progress_writing_db_detail">Writing to local database (%1$d/%2$d)</string>
+
+    <!-- Billing -->
+    <string name="billing_connecting">Connecting to Google Play. Please wait…</string>
+    <string name="billing_processing">Payment processing. Pro will unlock automatically.</string>
+    <string name="billing_purchase_done_verify_fail">Purchase done, but verification failed. It will retry next launch.</string>
+    <string name="billing_unavailable">Google Play can\'t offer Pro right now.</string>
+    <string name="billing_pro_activated">Reater Pro is now active.</string>
+
+    <!-- Avatar Errors -->
+    <string name="avatar_error_copy_failed">Couldn\'t copy avatar to app storage</string>
+    <string name="avatar_error_read_failed">Couldn\'t read avatar image</string>
+    <string name="avatar_error_save_failed">Couldn\'t save avatar image</string>
+
+    <!-- Repository -->
+    <string name="repo_manual_note_author">Manual notes</string>
+
+    <!-- Notifications (extra) -->
+    <string name="notify_ai_done_title">AI analysis done</string>
+    <string name="notify_ai_done_title_with_name">AI analysis done: %1$s</string>
+    <string name="notify_ai_failed_title">AI analysis incomplete</string>
+    <string name="notify_ai_failed_title_with_name">AI analysis incomplete: %1$s</string>
+    <string name="notify_download_done_with_failures">%1$s (%2$d failed)</string>
+
+    <!-- MainActivity: AI / Backup / Pro -->
+    <string name="main_error_ai_not_authorized">Allow AI analysis in Settings first</string>
+    <string name="main_error_no_api_key">Set an API key in Settings first</string>
+    <string name="main_export_preparing">Preparing export…</string>
+    <string name="main_error_open_export_file">Couldn\'t open the export file</string>
+    <string name="main_export_done">Exported .reater backup</string>
+    <string name="main_export_failed">Export failed: %1$s</string>
+    <string name="main_import_reading">Reading and extracting backup…</string>
+    <string name="main_error_invalid_file_type">Only .reater backups are supported</string>
+    <string name="main_error_open_backup_file">Couldn\'t open the selected backup</string>
+    <string name="main_restore_done">Backup restored: %1$d posts</string>
+    <string name="main_restore_failed">Restore failed: %1$s</string>
+    <string name="main_pro_unlock_success">Reater Pro unlocked!</string>
+    <string name="main_pro_deeplink_failed">Activation failed. Key pre-filled — tap \"Verify &amp; unlock\" to retry</string>
+
+    <!-- MainActivity: Notification Permission Dialog -->
+    <string name="main_notif_permission_dialog_message">Allow notifications to receive reading reminders on time.</string>
+    <string name="main_button_go_settings">Go to settings</string>
+    <string name="main_button_later">Later</string>
+
+    <!-- MainActivity: Trash -->
+    <string name="main_trash_move_dialog_message">Moves to trash and is kept for 30 days. You can restore it anytime.</string>
+    <string name="main_trash_moved_with_retention">Moved to trash (kept 30 days)</string>
+    <string name="main_trash_clear_title">Empty trash?</string>
+    <string name="main_trash_clear_message">Permanently delete everything? This can\'t be undone.</string>
+    <string name="main_trash_cleared">Trash emptied</string>
+    <string name="main_moved_to_trash">Moved to trash</string>
+    <string name="main_trash_empty_hint">Trash is empty\nRemoved items stay here for 30 days</string>
+    <string name="main_trash_count_title">Trash (%1$d)</string>
+    <string name="main_trash_clear_button">Empty trash</string>
+    <string name="main_trash_remaining_days">Permanently deleted in %1$d days</string>
+    <string name="main_delete_permanently">Delete forever</string>
+
+    <!-- MainActivity: Feed / Search / Status -->
+    <string name="main_avatar_changed">Avatar updated</string>
+    <string name="main_category_deleted">Category deleted. Posts set to Uncategorized</string>
+    <string name="main_copied_filter_with_count">Copied %1$d links and summaries</string>
+    <string name="main_no_posts_in_filter">No posts in this filter</string>
+    <string name="main_accessibility_copy_filter">Copy all links and summaries in this filter</string>
+    <string name="main_accessibility_clear_search">Clear search</string>
+    <string name="main_search_no_match">No results for \"%1$s\"</string>
+    <string name="main_empty_all_hint">Nothing here yet\nTap \"Share\" to Reater in Threads or Instagram!</string>
+    <string name="main_marked_read">Marked as read (removed from unread)</string>
+    <string name="main_marked_unread">Marked as unread</string>
+    <string name="main_favorited">Added to favorites</string>
+    <string name="main_unfavorited">Removed from favorites</string>
+    <string name="main_search_no_match_unread">No unread matches for \"%1$s\"</string>
+    <string name="main_all_read_congrats">All caught up! Everything is read</string>
+    <string name="main_search_no_match_favorite">No favorite matches for \"%1$s\"</string>
+    <string name="main_empty_favorite_hint">No favorites yet\nTap the bookmark on a post to save it!</string>
+    <string name="main_deleted_permanently">Deleted permanently</string>
+    <string name="main_smart_rule_applied">Smart sorting updated %1$d posts!</string>
+    <string name="main_restore_success">Restored!</string>
+
+    <!-- MainActivity: Category Management -->
+    <string name="main_category_management">Manage categories</string>
+    <string name="main_category_count_summary">%1$d categories. Drag to reorder</string>
+    <string name="main_category_free_limit_summary">Free %1$d/%2$d · unlimited with Pro</string>
+    <string name="main_category_add_new">＋ New category</string>
+    <string name="main_category_edit">Edit category</string>
+    <string name="main_smart_rules_desc">Auto-sort posts on save</string>
+    <string name="main_smart_rule_keyword_title">Sort by body keywords</string>
+    <string name="main_smart_rule_keyword_desc">Sort by keywords in title and body</string>
+    <string name="main_smart_rule_author_title">Sort by author</string>
+    <string name="main_smart_rule_author_desc">Sort by the author\'s past habits</string>
+    <string name="main_smart_rule_custom_title">Custom keyword rules</string>
+    <string name="main_smart_rule_custom_priority">Highest priority</string>
+    <string name="main_smart_rule_custom_desc">Posts with specific text go to a chosen category first</string>
+    <string name="main_smart_rule_custom_empty">No rules yet. Tap \"New rule\" to add one.</string>
+    <string name="main_smart_rule_add_rule">New rule</string>
+    <string name="main_smart_rule_reapply_hint">Re-apply to all posts</string>
+
+    <!-- Splash Ad Tags -->
+    <string name="splash_tag_thread_context">#ThreadContext</string>
+    <string name="splash_tag_offline">#Offline</string>
+
+    <!-- Avatar Crop Dialog -->
+    <string name="avatar_crop_title">Adjust avatar</string>
+    <string name="avatar_crop_close_desc">Close editor</string>
+    <string name="avatar_crop_hint">Drag to move · pinch to zoom. Inside circle = avatar</string>
+    <string name="avatar_crop_image_desc">Image to crop</string>
+    <string name="avatar_crop_rotate">Rotate 90°</string>
+    <string name="avatar_crop_apply">Apply</string>
+
+    <!-- Category Drag Handle -->
+    <string name="category_drag_move_up">Move category up</string>
+    <string name="category_drag_move_down">Move category down</string>
+    <string name="category_drag_reorder_desc">Drag to reorder</string>
+
+    <!-- Category Dropdown -->
+    <string name="category_dropdown_search_or_new">Search or type a new category…</string>
+    <string name="category_dropdown_clear_desc">Clear category</string>
+    <string name="category_dropdown_no_match">No matching category</string>
+    <string name="category_dropdown_has_match">Matching categories</string>
+    <string name="category_dropdown_add_new">＋ Add \"%1$s\"</string>
+
+    <!-- Category Filter Bar -->
+    <string name="category_filter_all_categories">All categories</string>
+    <string name="category_filter_search_hint">Search categories</string>
+    <string name="category_filter_clear_desc">Clear</string>
+    <string name="category_filter_item_count">%1$d</string>
+    <string name="category_filter_platform_desc">Platform: %1$s (%2$d)</string>
+
+    <!-- Category Manage Dialogs -->
+    <string name="category_new_title">New category</string>
+    <string name="category_edit_title">Edit category</string>
+    <string name="category_name_placeholder">Name (e.g. Tech, Life, Reading)</string>
+    <string name="category_name_label">Category name</string>
+    <string name="category_select_icon">Choose icon</string>
+    <string name="category_pro_badge_desc">Pro only</string>
+    <string name="category_create">Create</string>
+    <string name="category_discard_title">Discard this category?</string>
+    <string name="category_discard_message">\"%1$s\" hasn\'t been created yet. Going back discards it.</string>
+    <string name="category_discard_confirm">Discard</string>
+    <string name="category_continue_editing">Keep editing</string>
+    <string name="category_builtin_no_delete">Built-in categories can\'t be deleted. Rename and re-icon are available</string>
+    <string name="category_delete_confirm_title">Delete \"%1$s\"?</string>
+    <string name="category_delete_confirm_message">Its posts will be marked Uncategorized.</string>
+
+    <!-- Category Badge -->
+    <string name="category_badge_fallback">Uncategorized</string>
+
+    <!-- Icon Gallery -->
+    <string name="icon_gallery_in_use">In use</string>
+
+    <!-- Passcode / Pro -->
+    <string name="passcode_email_subject">Reater Pro license request</string>
+    <string name="passcode_manual_email_hint">Or email jimmy910824@gmail.com</string>
+    <string name="passcode_unlock_success">Reater Pro unlocked!</string>
+    <string name="pro_smart_curation_badge">Pro smart curation</string>
+
+    <!-- Smart Collection Rule Dialog (extra) -->
+    <string name="smart_collection_add_condition">＋ Add condition</string>
+    <string name="smart_collection_matching_live">Matching…</string>
+    <string name="smart_collection_hint_contains_any">Separate keywords with spaces. Any match counts</string>
+    <string name="smart_collection_hint_contains_all">Separate keywords with spaces. All must match</string>
+    <string name="smart_collection_preview_more">… and %1$d more</string>
+    <string name="smart_desc_ai_summary">AI summary contains \"%1$s\"</string>
+    <string name="smart_summary_ai_summary">AI summary has \"%1$s\"</string>
+    <string name="smart_op_label_equals">equals</string>
+    <string name="smart_op_label_not_equals">not equal</string>
+    <string name="smart_op_label_contains_any_keywords">any keyword</string>
+    <string name="smart_op_label_contains_all_keywords">all keywords</string>
+    <string name="smart_op_label_gte">greater or equal</string>
+    <string name="smart_op_label_lte">less or equal</string>
+
+    <!-- Detail Dialog (extra) -->
+    <string name="detail_ai_started_background">AI analysis started in background. You\'ll be notified when done</string>
+    <string name="detail_ai_summary_section">AI summary</string>
+
+    <!-- Inline Video Player -->
+    <string name="video_poster_desc">Audio cover</string>
+    <string name="video_play_failed">Can\'t play this video</string>
+    <string name="video_retry">Retry</string>
+    <string name="video_pause_desc">Pause</string>
+    <string name="video_play_desc">Play</string>
+    <string name="video_unmute_desc">Unmute</string>
+    <string name="video_mute_desc">Mute</string>
+    <string name="video_fullscreen_desc">Enter fullscreen</string>
+    <string name="video_fullscreen_close_desc">Exit fullscreen</string>
+    <string name="video_rotate_desc">Rotate screen</string>
+    <string name="video_rotate_button">Rotate</string>
+    <string name="video_rewind_10_desc">Rewind 10 seconds</string>
+    <string name="video_forward_10_desc">Forward 10 seconds</string>
+    <string name="video_download_desc">Download video</string>
+    <string name="video_download_button">Download</string>
+    <string name="video_speed_title">Playback speed</string>
+    <string name="video_speed_normal">1.0x (normal)</string>
+    <string name="video_speed_selected_desc">Selected</string>
+    <string name="video_export_format_title">Choose download format</string>
+    <string name="video_export_format_message">This is an audio (music) post. Choose a version to save:</string>
+    <string name="video_export_music">Music</string>
+    <string name="video_export_video">Video</string>
+    <string name="video_export_music_title">Music (.m4a)</string>
+    <string name="video_export_music_desc">Audio-only file with cover and lyrics, saved to Music/Reater.</string>
+    <string name="video_export_video_title">Video (.mp4)</string>
+    <string name="video_export_video_desc">Video with a static cover, saved to Movies/Reater.</string>
+    <string name="video_export_music_progress">Writing music file (cover/lyrics)…</string>
+    <string name="video_export_video_progress">Composing video (cover)…</string>
+    <string name="video_exporting_title">Exporting</string>
+    <string name="video_music_desc">Music version</string>
+    <string name="video_movie_desc">Video version</string>
+
+    <!-- SafeBarModifiers -->
+    <string name="save_error_no_media">No valid media to save</string>
+    <string name="save_done_music">Saved to Music</string>
+    <string name="save_done_gallery">Saved to gallery</string>
+    <string name="save_error_network">Download failed. Check your connection</string>
+    <string name="save_error_audio_unavailable">Audio unavailable. Open it during playback first</string>
+    <string name="save_done_music_with_meta">Saved to Music (with cover/lyrics)</string>
+    <string name="save_error_audio_check">Save failed. Check network and audio file</string>
+    <string name="save_done_gallery_with_cover">Saved to gallery (video with cover)</string>
+    <string name="save_error_compose_failed">Composition failed (cover or encoding)</string>
+
+    <!-- Settings Dialog (extra) -->
+    <string name="settings_reader_preview_tagline">Reater reader preview: discover and keep great posts</string>
+    <string name="settings_backup_format_label">.reater backup format</string>
+
+    <!-- Share Save (extra) -->
+    <string name="share_fetching_comments_auto">Fetching key comments…</string>
+    <string name="share_eta_prefix"> · about %1$s left</string>
+
+    <!-- Widget -->
+    <string name="widget_title_later_reading">Reater read later</string>
+
+    <!-- AdMob Config (non-translatable) -->
+    <string name="admob_app_id" translatable="false">ca-app-pub-2415998114933157~8828014028</string>
+    <string name="admob_unit_splash" translatable="false">ca-app-pub-2415998114933157/2889592955</string>
+
+    <string name="tab_pro_categories">PRO Categories</string>
+    <string name="tab_trash">Trash (30 days)</string>
+    <string name="tab_analytics">Analytics</string>
+    <string name="smart_summary_separator_or"> or </string>
+    <string name="parser_instagram_share">IG share</string>
+    <string name="pro_lock_desc_unlocked_features">Upgrade to Pro: unlimited custom categories, exclusive icons and smart curation.\nFree features stay unchanged.</string>
+    <string name="passcode_play_billing_button">Buy on Google Play</string>
+    <string name="icon_gallery_tab_icons">Icons</string>
+    <string name="icon_gallery_tab_custom_avatar">Custom avatar</string>
+    <string name="icon_gallery_unlock_pro">Unlock PRO</string>
+    <string name="backup_progress_items_detail">%1$d posts</string>
+    <string name="main_notif_permission_dialog_title">Enable notifications</string>
+    <string name="main_notif_permission_dialog_body">Reading reminders are on, but notification permission is off.\n\nAllow notifications to receive reminders on time.</string>
+    <string name="main_trash_move_dialog_title">Move to trash?</string>
+    <string name="main_trash_restore_button">Restore</string>
+    <string name="main_smart_rules_title">Smart rules</string>
+    <string name="main_smart_rule_target_category_fallback">Target category</string>
+    <string name="smart_op_label_gt">greater than</string>
+    <string name="smart_op_label_lt">less than</string>
+    <string name="smart_op_label_within_days">within N days</string>
+    <string name="smart_op_label_older_than_days">older than N days</string>
+    <string name="smart_op_label_newer_than_days">newer than N days</string>
+    <string name="detail_ai_summary">AI summary</string>
+    <string name="post_card_ai_summary_prefix">✨ AI summary: %1$s</string>
+    <string name="media_viewer_image">Image</string>
+    <string name="analytics_pro_full">PRO full</string>
+    <string name="analytics_count_suffix">%1$d</string>
+    <string name="analytics_slot_count_percent">%1$d (%2$d%%)</string>
+    <string name="detail_avatar_desc">@%1$s avatar</string>
+    <string name="settings_daily_preset_morning">08:00 Morning</string>
+    <string name="settings_daily_preset_noon">12:00 Noon</string>
+    <string name="settings_daily_preset_evening">18:00 After work</string>
+    <string name="settings_daily_preset_night">21:00 Evening</string>
+    <string name="settings_daily_preset_bedtime">23:00 Bedtime</string>
+    <string name="settings_ai_service_title">AI service (BYOK)</string>
+    <string name="settings_ai_key_saved_placeholder">•••••••••••••••• (saved)</string>
+    <string name="notify_unread_count_title">%1$d unread</string>
+    <string name="notify_eta_remaining"> · %1$02d:%2$02d left</string>
+    <string name="share_badge_video">▶ Video</string>
+    <string name="share_badge_audio">♪ Audio</string>
+    <string name="passcode_price_loading">Loading…</string>
+    <string name="save_type_audio">audio</string>
+    <string name="save_type_video">video</string>
+    <string name="save_type_image">image</string>
+    <string name="save_downloading_what">Downloading %1$s…</string>
+    <string name="smart_collection_preview_no_body">(no body)</string>
+</resources>

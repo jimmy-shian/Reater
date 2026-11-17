@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.reater.app.R
 import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.entity.MediaEntity
 import com.reater.app.data.remote.MediaDownloader
@@ -183,7 +184,7 @@ class MediaDownloadWorker(
                 appContext,
                 itemId,
                 postTitle,
-                reason = "有 $failedCount 個媒體下載失敗" + if (skippedCount > 0) "（$skippedCount 個串流略過）" else ""
+                reason = appContext.getString(R.string.worker_download_failed, failedCount, if (skippedCount > 0) appContext.getString(R.string.worker_download_skipped, skippedCount) else "")
             )
         } else {
             // 全部略過（例如整篇都是 HLS）：收起進度通知，不留一條跑不完的通知在通知欄

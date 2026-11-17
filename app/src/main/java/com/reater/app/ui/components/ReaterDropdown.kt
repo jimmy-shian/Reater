@@ -72,6 +72,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.reater.app.R
 
 /**
  * 全站共用下拉選單動效（對應「下拉式選單動畫」規格）。
@@ -118,7 +120,7 @@ fun ReaterDropdownArrow(
     )
     Icon(
         imageVector = Icons.Default.ArrowDropDown,
-        contentDescription = if (expanded) "收合選單" else "展開選單",
+        contentDescription = if (expanded) stringResource(R.string.dropdown_collapse_menu) else stringResource(R.string.dropdown_expand_menu),
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
             .size(22.dp)
@@ -371,7 +373,7 @@ fun ReaterDropdownNumberInput(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 modifier = Modifier.heightIn(min = 44.dp)
             ) {
-                Text("套用", fontSize = 13.sp, maxLines = 1, softWrap = false)
+                Text(stringResource(R.string.dropdown_apply), fontSize = 13.sp, maxLines = 1, softWrap = false)
             }
         }
     }

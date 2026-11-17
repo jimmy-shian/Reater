@@ -14,7 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.reater.app.R
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.ui.AvatarIcons
 
@@ -40,13 +42,13 @@ fun ProCategoryFilterRow(
         FilterChip(
             selected = selectedId == null,
             onClick = { onSelect(null) },
-            label = { Text("全部", maxLines = 1) }
+            label = { Text(stringResource(R.string.filter_all), maxLines = 1) }
         )
         if (showUncategorized) {
             FilterChip(
                 selected = selectedId == -1L,
                 onClick = { onSelect(-1L) },
-                label = { Text("未分類", maxLines = 1) }
+                label = { Text(stringResource(R.string.filter_uncategorized), maxLines = 1) }
             )
         }
         categories.forEach { cat ->

@@ -76,6 +76,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -85,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.reater.app.R
 import com.reater.app.notify.NotifyCenter
 import com.reater.app.ui.MainViewModel
 import com.reater.app.ui.components.DialogHeader
@@ -270,7 +272,7 @@ fun SettingsDialog(
             ) {
                 // 固定頂欄
                 DialogHeader(
-                    title = "系統設定",
+                    title = stringResource(R.string.settings_title),
                     onClose = { dismissWithApply() },
                     modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                 )
@@ -288,15 +290,15 @@ fun SettingsDialog(
                 ) {
 
                     // ---------- 外觀 ----------
-                    SettingsSectionTitle("外觀與閱讀")
+                    SettingsSectionTitle(stringResource(R.string.settings_section_appearance))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "亮暗模式", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text(text = stringResource(R.string.settings_theme_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("system" to "跟隨系統", "light" to "淺色", "dark" to "深色").forEach { (id, label) ->
+                        listOf("system" to stringResource(R.string.settings_theme_system), "light" to stringResource(R.string.settings_theme_light), "dark" to stringResource(R.string.settings_theme_dark)).forEach { (id, label) ->
                             FilterChip(
                                 selected = themeMode == id,
                                 onClick = { viewModel.setThemeMode(id) },
@@ -310,7 +312,7 @@ fun SettingsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "字體大小", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(text = stringResource(R.string.settings_font_size_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Text(
                             text = "${(previewScale * 100).toInt()}%",
                             style = MaterialTheme.typography.labelLarge,
@@ -335,7 +337,7 @@ fun SettingsDialog(
                             .padding(10.dp)
                     ) {
                         Text(
-                            text = "Reater 閱讀器預覽：探索與典藏優質貼文",
+                            text = stringResource(R.string.settings_reader_preview_tagline),
                             fontSize = (14 * previewScale).sp,
                             lineHeight = (20 * previewScale).sp,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -346,7 +348,7 @@ fun SettingsDialog(
                     Spacer(modifier = Modifier.height(20.dp))
 
                     // ---------- 個人大頭像與圖示庫 ----------
-                    SettingsSectionTitle("個人大頭像與圖示庫 (PRO 專屬)")
+                    SettingsSectionTitle(stringResource(R.string.settings_section_avatar))
                     Spacer(modifier = Modifier.height(8.dp))
                     if (isPro) {
                         androidx.compose.material3.Card(
@@ -372,7 +374,7 @@ fun SettingsDialog(
                                         val iconItem = AvatarIcons.getIconItem(customAvatarId)
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = if (customAvatarUri != null) "自訂相片頭貼" else iconItem.name,
+                                                text = if (customAvatarUri != null) stringResource(R.string.settings_avatar_custom_photo) else stringResource(iconItem.name),
                                                 fontSize = 15.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -387,7 +389,7 @@ fun SettingsDialog(
                                         }
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = if (customAvatarUri != null) "已從本機相簿匯入自訂個人照片" else iconItem.desc,
+                                            text = if (customAvatarUri != null) stringResource(R.string.settings_avatar_imported) else stringResource(iconItem.desc),
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.outline,
                                             maxLines = 1,
@@ -409,7 +411,7 @@ fun SettingsDialog(
                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            "圖示展覽室",
+                                            stringResource(R.string.settings_avatar_gallery),
                                             style = MaterialTheme.typography.labelMedium,
                                             maxLines = 1,
                                             softWrap = false,
@@ -423,7 +425,7 @@ fun SettingsDialog(
                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            "自訂頭像",
+                                            stringResource(R.string.settings_avatar_custom),
                                             fontSize = 12.sp,
                                             maxLines = 1,
                                             softWrap = false,
@@ -436,7 +438,7 @@ fun SettingsDialog(
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                         ) {
-                                            Text("重設", fontSize = 12.sp, maxLines = 1)
+                                            Text(stringResource(R.string.settings_avatar_reset), fontSize = 12.sp, maxLines = 1)
                                         }
                                     }
                                 }
@@ -473,13 +475,13 @@ fun SettingsDialog(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "升級 Pro 解鎖自訂大頭像",
+                                        text = stringResource(R.string.settings_pro_unlock_avatar),
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "解鎖 10 款尊爵圖示、圖示展覽室與自訂相片",
+                                        text = stringResource(R.string.settings_pro_unlock_icons),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.outline
                                     )
@@ -490,7 +492,7 @@ fun SettingsDialog(
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text("解鎖", style = MaterialTheme.typography.labelMedium)
+                                    Text(stringResource(R.string.settings_pro_unlock_button), style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                         }
@@ -499,7 +501,7 @@ fun SettingsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 通知與排程 ----------
-                    SettingsSectionTitle("通知與推播提醒")
+                    SettingsSectionTitle(stringResource(R.string.settings_section_notifications))
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -507,8 +509,8 @@ fun SettingsDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (notifGranted) "推播權限：已授權"
-                            else "推播權限：未授權",
+                            text = if (notifGranted) stringResource(R.string.settings_notification_permission_granted)
+                            else stringResource(R.string.settings_notification_permission_denied),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.weight(1f)
@@ -524,7 +526,7 @@ fun SettingsDialog(
                                 modifier = Modifier.height(32.dp),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("授權", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.settings_notification_button_grant), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -542,9 +544,9 @@ fun SettingsDialog(
                                 .weight(1f)
                                 .padding(end = 12.dp)
                         ) {
-                            Text(text = "未讀提醒", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(text = stringResource(R.string.settings_notification_unread_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = "儲存後若仍未讀，延遲自動發送推播提醒",
+                                text = stringResource(R.string.settings_notification_unread_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -571,8 +573,8 @@ fun SettingsDialog(
                             ReaterDropdownTrigger(
                                 expanded = delayExpanded,
                                 onClick = { delayExpanded = !delayExpanded },
-                                title = "延遲時間",
-                                value = "$nudgeDelay 分鐘",
+                                title = stringResource(R.string.settings_notification_delay_title),
+                                value = "$nudgeDelay ${stringResource(R.string.settings_notification_delay_suffix)}",
                                 leading = {
                                     Icon(
                                         Icons.Default.NotificationsActive,
@@ -585,7 +587,7 @@ fun SettingsDialog(
                             ReaterDropdownPanel(expanded = delayExpanded) {
                                 listOf(10, 15, 30, 45, 60, 120).forEach { mins ->
                                     ReaterDropdownOption(
-                                        text = "$mins 分鐘",
+                                        text = "$mins ${stringResource(R.string.settings_notification_delay_suffix)}",
                                         selected = nudgeDelay == mins,
                                         onClick = {
                                             viewModel.setUnreadNudgeDelayMin(mins)
@@ -597,9 +599,9 @@ fun SettingsDialog(
                                 ReaterDropdownNumberInput(
                                     value = customDelay,
                                     onValueChange = { customDelay = it },
-                                    label = "自訂分鐘數",
-                                    suffix = "分鐘",
-                                    hint = "可輸入 1～120",
+                                    label = stringResource(R.string.settings_notification_delay_custom_label),
+                                    suffix = stringResource(R.string.settings_notification_delay_suffix),
+                                    hint = stringResource(R.string.settings_notification_delay_hint),
                                     onApply = {
                                         customDelay.toIntOrNull()?.let {
                                             viewModel.setUnreadNudgeDelayMin(it)
@@ -624,9 +626,9 @@ fun SettingsDialog(
                                 .weight(1f)
                                 .padding(end = 12.dp)
                         ) {
-                            Text(text = "每日回顧", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(text = stringResource(R.string.settings_notification_daily_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = "每天固定時間點推播彙整未讀數",
+                                text = stringResource(R.string.settings_notification_daily_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -643,11 +645,11 @@ fun SettingsDialog(
                         exit = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeOut()
                     ) {
                         val periodLabel = when (digestHour) {
-                            in 5..10 -> "晨間"
-                            in 11..13 -> "午間"
-                            in 14..17 -> "下午"
-                            in 18..22 -> "晚間"
-                            else -> "深夜"
+                            in 5..10 -> stringResource(R.string.settings_notification_daily_period_morning)
+                            in 11..13 -> stringResource(R.string.settings_notification_daily_period_noon)
+                            in 14..17 -> stringResource(R.string.settings_notification_daily_period_afternoon)
+                            in 18..22 -> stringResource(R.string.settings_notification_daily_period_evening)
+                            else -> stringResource(R.string.settings_notification_daily_period_late_night)
                         }
                         var timeExpanded by remember { mutableStateOf(false) }
                         var customHour by remember(digestEnabled) { mutableStateOf("") }
@@ -660,7 +662,7 @@ fun SettingsDialog(
                             ReaterDropdownTrigger(
                                 expanded = timeExpanded,
                                 onClick = { timeExpanded = !timeExpanded },
-                                title = "推送時間",
+                                title = stringResource(R.string.settings_notification_daily_push_time_title),
                                 value = String.format("%02d:00", digestHour),
                                 leading = {
                                     Icon(
@@ -708,9 +710,9 @@ fun SettingsDialog(
                                 ReaterDropdownNumberInput(
                                     value = customHour,
                                     onValueChange = { customHour = it },
-                                    label = "自訂小時",
-                                    suffix = "時",
-                                    hint = "可輸入 0～23",
+                                    label = stringResource(R.string.settings_notification_daily_custom_hour_label),
+                                    suffix = stringResource(R.string.settings_notification_daily_custom_hour_suffix),
+                                    hint = stringResource(R.string.settings_notification_daily_custom_hour_hint),
                                     onApply = {
                                         customHour.toIntOrNull()?.let {
                                             viewModel.setReviewDigestHour(context, it)
@@ -726,9 +728,9 @@ fun SettingsDialog(
 
                     // ---------- AI 服務 (BYOK) - 收合式設計 ----------
                     val keyConfigured = apiKeyInput.isNotBlank() || hasSavedApiKey
-                    val providerLabel = if (baseUrlInput.contains("openai.com")) "OpenAI" else "自訂端點"
-                    val modelLabel = if (modelInput.isNotBlank()) modelInput else "尚未指定模型"
-                    val keyStatusText = if (keyConfigured) "API Key 已設定" else "尚未設定"
+                    val providerLabel = if (baseUrlInput.contains("openai.com")) "OpenAI" else stringResource(R.string.settings_ai_provider_custom)
+                    val modelLabel = if (modelInput.isNotBlank()) modelInput else stringResource(R.string.settings_ai_model_not_specified)
+                    val keyStatusText = if (keyConfigured) stringResource(R.string.settings_ai_key_configured) else stringResource(R.string.settings_ai_key_not_configured)
 
                     androidx.compose.material3.Card(
                         modifier = Modifier
@@ -783,7 +785,7 @@ fun SettingsDialog(
                                 )
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = if (aiExpanded) "收合 AI 設定" else "展開 AI 設定",
+                                    contentDescription = if (aiExpanded) stringResource(R.string.settings_ai_expand_desc) else stringResource(R.string.settings_ai_collapse_desc),
                                     modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
                                     tint = MaterialTheme.colorScheme.outline
                                 )
@@ -901,7 +903,7 @@ fun SettingsDialog(
                                             },
                                             placeholder = {
                                                 Text(
-                                                    "從 API 取得的 Model ID",
+                                                    stringResource(R.string.settings_ai_model_id_hint),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     maxLines = 1,
                                                     softWrap = false,
@@ -915,7 +917,7 @@ fun SettingsDialog(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.ArrowDropDown,
-                                                        contentDescription = "展開可用模型清單",
+                                                        contentDescription = stringResource(R.string.settings_ai_fetch_models),
                                                         tint = MaterialTheme.colorScheme.outline
                                                     )
                                                 }
@@ -968,9 +970,9 @@ fun SettingsDialog(
                                             if (filteredModels.isEmpty()) {
                                                 Text(
                                                     text = if (availableModels.isEmpty()) {
-                                                        "尚未取得可用模型清單"
+                                                        stringResource(R.string.settings_ai_no_models)
                                                     } else {
-                                                        "沒有符合「${modelQuery}」的模型"
+                                                        stringResource(R.string.settings_ai_no_matching_models, modelQuery)
                                                     },
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.outline,
@@ -1051,7 +1053,7 @@ fun SettingsDialog(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "允許將貼文與留言內容傳送至設定的 AI 服務",
+                                            text = stringResource(R.string.settings_ai_allow_transfer),
                                             style = MaterialTheme.typography.bodySmall,
                                             lineHeight = 16.sp,
                                             modifier = Modifier.weight(1f)
@@ -1073,12 +1075,12 @@ fun SettingsDialog(
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "儲存後自動 AI 分析",
+                                                text = stringResource(R.string.settings_ai_auto_analyze_on_save),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                             Text(
-                                                text = "儲存貼文時在背景產生摘要並發送通知",
+                                                text = stringResource(R.string.settings_ai_auto_analyze_desc),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.outline
                                             )
@@ -1092,10 +1094,10 @@ fun SettingsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 備份與資料管理 ----------
-                    SettingsSectionTitle("資料備份與還原")
+                    SettingsSectionTitle(stringResource(R.string.settings_section_backup))
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = ".reater 專屬備份格式",
+                        text = stringResource(R.string.settings_backup_format_label),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         lineHeight = 16.sp,
@@ -1116,7 +1118,7 @@ fun SettingsDialog(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                "匯出備份",
+                                stringResource(R.string.settings_backup_export),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
@@ -1131,7 +1133,7 @@ fun SettingsDialog(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                "匯入備份",
+                                stringResource(R.string.settings_backup_import),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
@@ -1144,7 +1146,7 @@ fun SettingsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // ---------- 解除安裝與資料保留 ----------
-                    SettingsSectionTitle("解除安裝與資料保留")
+                    SettingsSectionTitle(stringResource(R.string.settings_section_uninstall))
                     Spacer(modifier = Modifier.height(6.dp))
                     val keepDataAfterUninstall by viewModel.keepDataAfterUninstall.collectAsState()
                     Surface(
@@ -1185,13 +1187,13 @@ fun SettingsDialog(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "保留可還原的 Reater 資料",
+                                    text = stringResource(R.string.settings_uninstall_retain_data),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "重新安裝後可再次匯入。",
+                                    text = stringResource(R.string.settings_uninstall_retain_desc),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline,
                                     lineHeight = 16.sp

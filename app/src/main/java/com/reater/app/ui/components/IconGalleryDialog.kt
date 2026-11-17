@@ -42,11 +42,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.reater.app.R
 import com.reater.app.ui.AvatarIcons
 import com.reater.app.ui.AvatarStorage
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +73,10 @@ fun IconGalleryDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pager = rememberPagerState { 2 }
-    var filter by rememberSaveable { mutableStateOf("全部") }
+    val filterAll = stringResource(R.string.icon_gallery_filter_all)
+    val filterFree = stringResource(R.string.icon_gallery_filter_free)
+    val filterPro = stringResource(R.string.icon_gallery_filter_pro)
+    var filter by rememberSaveable { mutableStateOf(filterAll) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var history by remember { mutableStateOf(AvatarStorage.listHistoryPaths(context)) }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
@@ -82,7 +87,7 @@ fun IconGalleryDialog(
     var busy by remember { mutableStateOf(false) }
     var pendingCrop by remember { mutableStateOf<PendingAvatarCrop?>(null) }
     var inspectingId by rememberSaveable { mutableStateOf<String?>(null) }
-    val filters = listOf("全部", "基礎免費", "PRO")
+    val filters = listOf(filterAll, filterFree, filterPro)
 
     fun beginEdit(path: String) {
         scope.launch {
@@ -97,7 +102,7 @@ fun IconGalleryDialog(
                 editFromPath = path
                 editTs = result.second
                 editOriginal = result.first
-            } else Toast.makeText(context, "無法讀取頭像原圖", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(context, context.getString(R.string.icon_gallery_cannot_read_avatar), Toast.LENGTH_SHORT).show()
         }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -110,7 +115,7 @@ fun IconGalleryDialog(
                 editFromPath = null
                 editTs = ts
                 editOriginal = original
-            } else Toast.makeText(context, "圖片匯入失敗，請重新選擇", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(context, context.getString(R.string.icon_gallery_import_failed), Toast.LENGTH_SHORT).show()
         }
     }
     LaunchedEffect(pager.currentPage) { expanded = false }
@@ -120,7 +125,7 @@ fun IconGalleryDialog(
             bitmap = withContext(Dispatchers.IO) { AvatarStorage.decodeFile(path) }
             if (bitmap == null) {
                 editOriginal = null
-                Toast.makeText(context, "無法讀取圖片，請重新選擇", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.icon_gallery_cannot_read_image), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -141,7 +146,7 @@ fun IconGalleryDialog(
                 history = AvatarStorage.listHistoryPaths(context)
                 pendingCrop = null
                 editOriginal = null
-            } else Toast.makeText(context, "頭像儲存失敗，請重試", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(context, context.getString(R.string.icon_gallery_save_failed), Toast.LENGTH_SHORT).show()
         }
     }
     bitmap?.let { source ->
@@ -163,8 +168,8 @@ fun IconGalleryDialog(
         val isDeletingCurrent = (path == currentAvatarUri)
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(if (isDeletingCurrent) "刪除目前頭像？" else "刪除歷史頭像？") },
-            text = { Text(if (isDeletingCurrent) "將刪除目前使用的自訂頭像並回復為內建圖示。" else "將刪除此頭像的原圖與編輯紀錄。") },
+            title = { Text(if (isDeletingCurrent) stringResource(R.string.icon_gallery_delete_current_title) else stringResource(R.string.icon_gallery_delete_history_title)) },
+            text = { Text(if (isDeletingCurrent) stringResource(R.string.icon_gallery_delete_current_body) else stringResource(R.string.icon_gallery_delete_history_body)) },
             confirmButton = { TextButton(onClick = {
                 if (isDeletingCurrent) {
                     onSelectCustomAvatar(null)
@@ -175,22 +180,22 @@ fun IconGalleryDialog(
                     history = AvatarStorage.listHistoryPaths(context)
                 }
                 pendingDelete = null
-            }) { Text("刪除") } },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
+            }) { Text(stringResource(R.string.icon_gallery_delete_button)) } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.icon_gallery_cancel)) } }
         )
     }
     inspectingId?.let { id ->
         val item = AvatarIcons.getIconItem(id)
         AlertDialog(
             onDismissRequest = { inspectingId = null },
-            icon = { Icon(painterResource(item.resId), item.name, Modifier.size(80.dp), tint = androidx.compose.ui.graphics.Color.Unspecified) },
-            title = { Text(item.name) },
-            text = { Text(item.desc) },
+            icon = { Icon(painterResource(item.resId), stringResource(item.name), Modifier.size(80.dp), tint = androidx.compose.ui.graphics.Color.Unspecified) },
+            title = { Text(stringResource(item.name)) },
+            text = { Text(stringResource(item.desc)) },
             confirmButton = { TextButton(onClick = {
                 inspectingId = null
                 if (item.isPro && !isPro) onOpenUnlock() else onSelectAvatar(item.id)
-            }) { Text(if (item.isPro && !isPro) "前往 PRO" else "套用為個人頭像") } },
-            dismissButton = { TextButton(onClick = { inspectingId = null }) { Text("關閉") } }
+            }) { Text(if (item.isPro && !isPro) stringResource(R.string.icon_gallery_go_pro) else stringResource(R.string.icon_gallery_apply_avatar)) } },
+            dismissButton = { TextButton(onClick = { inspectingId = null }) { Text(stringResource(R.string.icon_gallery_close)) } }
         )
     }
     Dialog(onDismissRequest = { if (expanded) expanded = false else onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -198,11 +203,14 @@ fun IconGalleryDialog(
         Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.90f), shape = MaterialTheme.shapes.large) {
             Column(Modifier.fillMaxSize().navigationBarsPadding().clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { expanded = false }) {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("圖示展覽室", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "關閉") }
+                    Text(stringResource(R.string.icon_gallery_gallery_title), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.icon_gallery_close)) }
                 }
                 TabRow(selectedTabIndex = pager.currentPage) {
-                    listOf("圖示", "自訂頭像").forEachIndexed { index, title ->
+                    listOf(
+                        stringResource(R.string.icon_gallery_tab_icons),
+                        stringResource(R.string.icon_gallery_tab_custom_avatar)
+                    ).forEachIndexed { index, title ->
                         Tab(selected = pager.currentPage == index, onClick = {
                             expanded = false
                             scope.launch { pager.animateScrollToPage(index) }
@@ -212,9 +220,9 @@ fun IconGalleryDialog(
                 HorizontalPager(state = pager, modifier = Modifier.weight(1f)) { page ->
                     if (page == 0) Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         TextButton(onClick = { expanded = !expanded }) {
-                            Text("類型：$filter", style = MaterialTheme.typography.labelLarge)
+                            Text(stringResource(R.string.icon_gallery_type_label, filter), style = MaterialTheme.typography.labelLarge)
                             val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, tween(275), label = "avatarFilterArrow")
-                            Icon(Icons.Default.KeyboardArrowDown, if (expanded) "收合類型" else "展開類型", Modifier.graphicsLayer { rotationZ = arrowRotation })
+                            Icon(Icons.Default.KeyboardArrowDown, if (expanded) stringResource(R.string.icon_gallery_collapse_type) else stringResource(R.string.icon_gallery_expand_type), Modifier.graphicsLayer { rotationZ = arrowRotation })
                         }
                         AnimatedVisibility(expanded, enter = fadeIn(tween(275)) + expandVertically(tween(275)),
                             exit = fadeOut(tween(275)) + shrinkVertically(tween(275))) {
@@ -225,10 +233,10 @@ fun IconGalleryDialog(
                             }
                         }
                         val icons = AvatarIcons.ALL.filter { item -> when (filter) {
-                            "全部" -> true
-                            "基礎免費" -> !item.isPro
-                            "PRO" -> item.isPro
-                            else -> item.category == filter
+                            filterAll -> true
+                            filterFree -> !item.isPro
+                            filterPro -> item.isPro
+                            else -> context.getString(item.category) == filter
                         } }
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -237,7 +245,7 @@ fun IconGalleryDialog(
                             icons.groupBy { it.category }.forEach { (category, entries) ->
                                 item(key = "section_$category") {
                                     Text(
-                                        category,
+                                        stringResource(category),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -284,7 +292,7 @@ fun IconGalleryDialog(
                                             ) {
                                                 Icon(
                                                     painter = painterResource(item.resId),
-                                                    contentDescription = item.name,
+                                                    contentDescription = stringResource(item.name),
                                                     modifier = Modifier.size(46.dp),
                                                     tint = Color.Unspecified
                                                 )
@@ -298,7 +306,7 @@ fun IconGalleryDialog(
                                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
                                                     Text(
-                                                        text = item.name,
+                                                        text = stringResource(item.name),
                                                         style = MaterialTheme.typography.titleMedium,
                                                         fontWeight = FontWeight.Bold
                                                     )
@@ -333,7 +341,7 @@ fun IconGalleryDialog(
                                                                 )
                                                                 Spacer(Modifier.width(2.dp))
                                                                 Text(
-                                                                    "使用中",
+                                                                    stringResource(R.string.icon_gallery_in_use),
                                                                     style = MaterialTheme.typography.labelSmall.copy(
                                                                         fontSize = 11.sp,
                                                                         fontWeight = FontWeight.Bold
@@ -348,7 +356,7 @@ fun IconGalleryDialog(
                                                 Spacer(Modifier.height(3.dp))
 
                                                 Text(
-                                                    text = item.desc,
+                                                    text = stringResource(item.desc),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.outline,
                                                     maxLines = 2,
@@ -369,7 +377,7 @@ fun IconGalleryDialog(
                                                                 shape = RoundedCornerShape(8.dp),
                                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
                                                             ) {
-                                                                Text("解鎖 PRO", style = MaterialTheme.typography.labelMedium)
+                                                                Text(stringResource(R.string.icon_gallery_unlock_pro), style = MaterialTheme.typography.labelMedium)
                                                             }
                                                         } else {
                                                             Button(
@@ -378,7 +386,7 @@ fun IconGalleryDialog(
                                                                 shape = RoundedCornerShape(8.dp),
                                                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)
                                                             ) {
-                                                                Text("設為使用", style = MaterialTheme.typography.labelMedium)
+                                                                Text(stringResource(R.string.icon_gallery_set_as_avatar), style = MaterialTheme.typography.labelMedium)
                                                             }
                                                         }
                                                     }
@@ -401,16 +409,16 @@ fun IconGalleryDialog(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text("自訂個人頭像", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.icon_gallery_custom_avatar_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.height(6.dp))
                                     Text(
-                                        "使用自己的圖片作為 Reater 個人頭像，並保存縮放位置、裁切範圍與歷史頭像。此功能需要 PRO。",
+                                        stringResource(R.string.icon_gallery_custom_avatar_desc),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                     Spacer(Modifier.height(14.dp))
                                     Button(onClick = onOpenUnlock, shape = RoundedCornerShape(8.dp)) {
-                                        Text("前往 PRO")
+                                        Text(stringResource(R.string.icon_gallery_go_pro))
                                     }
                                 }
                             }
@@ -426,12 +434,12 @@ fun IconGalleryDialog(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("從相簿選擇", style = MaterialTheme.typography.labelLarge)
+                                    Text(stringResource(R.string.icon_gallery_select_from_gallery), style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                             item {
                                 Text(
-                                    "歷史頭像",
+                                    stringResource(R.string.icon_gallery_history_avatars),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary,
@@ -445,7 +453,7 @@ fun IconGalleryDialog(
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                 ) {
                                     Text(
-                                        "尚無歷史頭像，從相簿選擇第一張圖片。",
+                                        stringResource(R.string.icon_gallery_no_history),
                                         modifier = Modifier.padding(16.dp),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.outline
@@ -488,7 +496,7 @@ fun IconGalleryDialog(
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Text(
-                                                    text = if (isSelected) "目前頭像" else "歷史頭像",
+                                                    text = if (isSelected) stringResource(R.string.icon_gallery_current_avatar) else stringResource(R.string.icon_gallery_history_avatar),
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.Bold
                                                 )
@@ -509,7 +517,7 @@ fun IconGalleryDialog(
                                                             )
                                                             Spacer(Modifier.width(2.dp))
                                                             Text(
-                                                                "使用中",
+                                                                stringResource(R.string.icon_gallery_in_use),
                                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                                     fontSize = 11.sp,
                                                                     fontWeight = FontWeight.Bold
@@ -524,7 +532,7 @@ fun IconGalleryDialog(
                                             Spacer(Modifier.height(3.dp))
 
                                             Text(
-                                                text = if (isSelected) "目前使用的自訂頭像" else "已儲存的自訂裁切頭像",
+                                                text = if (isSelected) stringResource(R.string.icon_gallery_current_custom_avatar) else stringResource(R.string.icon_gallery_saved_custom_avatar),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.outline
                                             )
@@ -543,7 +551,7 @@ fun IconGalleryDialog(
                                                         shape = RoundedCornerShape(8.dp),
                                                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)
                                                     ) {
-                                                        Text("設為使用", style = MaterialTheme.typography.labelMedium)
+                                                        Text(stringResource(R.string.icon_gallery_set_as_avatar), style = MaterialTheme.typography.labelMedium)
                                                     }
                                                 }
 
@@ -556,7 +564,7 @@ fun IconGalleryDialog(
                                                 ) {
                                                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                                                     Spacer(Modifier.width(4.dp))
-                                                    Text("編輯", style = MaterialTheme.typography.labelMedium)
+                                                    Text(stringResource(R.string.icon_gallery_edit), style = MaterialTheme.typography.labelMedium)
                                                 }
 
                                                 // 目前使用中或歷史頭像都可刪除
@@ -568,7 +576,7 @@ fun IconGalleryDialog(
                                                     ) {
                                                         Icon(
                                                             Icons.Default.Delete,
-                                                            contentDescription = "刪除頭像",
+                                                            contentDescription = stringResource(R.string.icon_gallery_delete_avatar),
                                                             tint = MaterialTheme.colorScheme.error,
                                                             modifier = Modifier.size(18.dp)
                                                         )
@@ -589,13 +597,13 @@ fun IconGalleryDialog(
     pendingCrop?.let { crop ->
         AlertDialog(
             onDismissRequest = { if (!busy) pendingCrop = null },
-            title = { Text("儲存編輯後的頭像") },
-            text = { Text("要保留原頭像另存一份，還是覆蓋更新這張歷史頭像？") },
-            confirmButton = { TextButton(onClick = { saveAvatar(crop, true) }, enabled = !busy) { Text("覆蓋更新") } },
+            title = { Text(stringResource(R.string.icon_gallery_save_edited_title)) },
+            text = { Text(stringResource(R.string.icon_gallery_save_edited_body)) },
+            confirmButton = { TextButton(onClick = { saveAvatar(crop, true) }, enabled = !busy) { Text(stringResource(R.string.icon_gallery_overwrite)) } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { pendingCrop = null }, enabled = !busy) { Text("取消") }
-                    TextButton(onClick = { saveAvatar(crop, false) }, enabled = !busy) { Text("另存新的") }
+                    TextButton(onClick = { pendingCrop = null }, enabled = !busy) { Text(stringResource(R.string.icon_gallery_cancel)) }
+                    TextButton(onClick = { saveAvatar(crop, false) }, enabled = !busy) { Text(stringResource(R.string.icon_gallery_save_as_new)) }
                 }
             }
         )
@@ -628,7 +636,7 @@ fun UserAvatarView(
         if (!avatarUri.isNullOrBlank()) {
             coil.compose.AsyncImage(
                 model = com.reater.app.ui.AvatarStorage.resolveModel(androidx.compose.ui.platform.LocalContext.current, avatarUri),
-                contentDescription = "個人自訂頭貼",
+                contentDescription = stringResource(R.string.icon_gallery_accessibility_custom_avatar),
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
@@ -636,7 +644,7 @@ fun UserAvatarView(
             val resId = AvatarIcons.getDrawableRes(avatarId)
             Icon(
                 painter = painterResource(id = resId),
-                contentDescription = "個人頭貼",
+                contentDescription = stringResource(R.string.icon_gallery_accessibility_avatar),
                 modifier = Modifier.size(size * 0.65f),
                 tint = Color.Unspecified
             )

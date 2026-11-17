@@ -1,5 +1,8 @@
 package com.reater.app.domain
 
+import android.content.Context
+import androidx.annotation.StringRes
+import com.reater.app.R
 import com.reater.app.data.local.dao.CategoryDao
 import com.reater.app.data.local.dao.ItemDao
 import com.reater.app.data.local.dao.ProDao
@@ -15,53 +18,53 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Serializable
-enum class RuleField(val label: String, val group: String) {
+enum class RuleField(@StringRes val labelRes: Int, @StringRes val groupRes: Int) {
     // 內容
-    AUTHOR("作者", "內容"),
-    TAG("標籤", "內容"),
-    CATEGORY("分類", "內容"),
-    CONTENT("內文 / 標題", "內容"),
-    COMMENT_TEXT("留言內容", "內容"),
-    AI_SUMMARY("AI 摘要", "內容"),
-    MANUAL_NOTE("筆記", "內容"),
+    AUTHOR(R.string.smart_field_author, R.string.smart_collection_field_group_content),
+    TAG(R.string.smart_field_tag, R.string.smart_collection_field_group_content),
+    CATEGORY(R.string.smart_field_category, R.string.smart_collection_field_group_content),
+    CONTENT(R.string.smart_field_content, R.string.smart_collection_field_group_content),
+    COMMENT_TEXT(R.string.smart_field_comment_text, R.string.smart_collection_field_group_content),
+    AI_SUMMARY(R.string.smart_field_ai_summary, R.string.smart_collection_field_group_content),
+    MANUAL_NOTE(R.string.smart_field_manual_note, R.string.smart_collection_field_group_content),
 
     // 狀態
-    FAVORITE("收藏狀態", "狀態"),
-    READ_STATUS("閱讀狀態", "狀態"),
-    HAS_MEDIA("包含媒體", "狀態"),
-    HAS_IMAGE("包含圖片", "狀態"),
-    HAS_VIDEO("包含影片", "狀態"),
+    FAVORITE(R.string.smart_field_favorite, R.string.smart_collection_field_group_status),
+    READ_STATUS(R.string.smart_field_read_status, R.string.smart_collection_field_group_status),
+    HAS_MEDIA(R.string.smart_field_has_media, R.string.smart_collection_field_group_status),
+    HAS_IMAGE(R.string.smart_field_has_image, R.string.smart_collection_field_group_status),
+    HAS_VIDEO(R.string.smart_field_has_video, R.string.smart_collection_field_group_status),
 
     // 互動數據
-    LIKES("按讚數", "互動"),
-    REPLIES("留言數", "互動"),
-    REPOSTS("轉發數", "互動"),
-    SHARES("分享數", "互動"),
+    LIKES(R.string.smart_field_likes, R.string.smart_collection_field_group_interaction),
+    REPLIES(R.string.smart_field_replies, R.string.smart_collection_field_group_interaction),
+    REPOSTS(R.string.smart_field_reposts, R.string.smart_collection_field_group_interaction),
+    SHARES(R.string.smart_field_shares, R.string.smart_collection_field_group_interaction),
 
     // 時間
-    SAVED_DATE("收藏時間", "時間"),
+    SAVED_DATE(R.string.smart_field_saved_date, R.string.smart_collection_field_group_time),
 
     // 智慧分類
-    CONTENT_MATCH_CATEGORY_KEYWORDS("內容命中分類關鍵字", "智慧分類"),
-    COMMENT_MATCH_CATEGORY_KEYWORDS("留言命中分類關鍵字", "智慧分類")
+    CONTENT_MATCH_CATEGORY_KEYWORDS(R.string.smart_field_content_match_keywords, R.string.smart_collection_field_group_smart),
+    COMMENT_MATCH_CATEGORY_KEYWORDS(R.string.smart_field_comment_match_keywords, R.string.smart_collection_field_group_smart)
 }
 
 @Serializable
-enum class ComparisonOperator(val symbol: String, val label: String) {
-    EQUALS("=", "等於"),
-    NOT_EQUALS("≠", "不等於"),
-    CONTAINS("包含", "包含"),
-    NOT_CONTAINS("不包含", "不包含"),
-    CONTAINS_ANY("包含任一", "包含任一關鍵字"),
-    CONTAINS_ALL("包含所有", "包含所有關鍵字"),
-    GREATER_EQUAL("≥", "大於等於"),
-    GREATER_THAN(">", "大於"),
-    LESS_EQUAL("≤", "小於等於"),
-    LESS_THAN("<", "小於"),
-    BETWEEN("介於", "介於"),
-    WITHIN_DAYS("最近", "最近 N 天"),
-    OLDER_THAN_DAYS("早於", "早於 N 天前"),
-    NEWER_THAN_DAYS("晚於", "晚於 N 天內")
+enum class ComparisonOperator(val symbol: String, @StringRes val labelRes: Int) {
+    EQUALS("=", R.string.smart_op_label_equals),
+    NOT_EQUALS("≠", R.string.smart_op_label_not_equals),
+    CONTAINS("包含", R.string.smart_op_contains),
+    NOT_CONTAINS("不包含", R.string.smart_op_not_contains),
+    CONTAINS_ANY("包含任一", R.string.smart_op_contains_any),
+    CONTAINS_ALL("包含所有", R.string.smart_op_contains_all),
+    GREATER_EQUAL("≥", R.string.smart_op_label_gte),
+    GREATER_THAN(">", R.string.smart_op_label_gt),
+    LESS_EQUAL("≤", R.string.smart_op_label_lte),
+    LESS_THAN("<", R.string.smart_op_label_lt),
+    BETWEEN("介於", R.string.smart_op_between),
+    WITHIN_DAYS("最近", R.string.smart_op_label_within_days),
+    OLDER_THAN_DAYS("早於", R.string.smart_op_label_older_than_days),
+    NEWER_THAN_DAYS("晚於", R.string.smart_op_label_newer_than_days)
 }
 
 @Serializable
@@ -240,6 +243,7 @@ class SmartCollectionEngine @Inject constructor(
          * 取得貼文符合此規則的各項具體原因（供預覽展開呈現「為什麼這篇被抓進來」）
          */
         fun getMatchReasons(
+            context: Context,
             rule: CollectionRule,
             item: ItemDetail,
             categories: List<CategoryEntity> = emptyList(),
@@ -251,7 +255,7 @@ class SmartCollectionEngine @Inject constructor(
             val reasons = mutableListOf<String>()
             for (criterion in criteria) {
                 if (evaluateCriterion(criterion, item, categories, keywords)) {
-                    val desc = describeMatchedCriterion(criterion, item, categories)
+                    val desc = describeMatchedCriterion(context, criterion, item, categories)
                     if (desc.isNotBlank()) reasons.add(desc)
                 }
             }
@@ -259,38 +263,39 @@ class SmartCollectionEngine @Inject constructor(
         }
 
         private fun describeMatchedCriterion(
+            context: Context,
             c: RuleCriterion,
             item: ItemDetail,
             categories: List<CategoryEntity>
         ): String {
             return when (c.field) {
-                RuleField.LIKES -> "按讚數 ${item.item.likeCount} ${c.operator.symbol} ${c.value}"
-                RuleField.REPLIES -> "留言數 ${item.item.replyCount} ${c.operator.symbol} ${c.value}"
-                RuleField.REPOSTS -> "轉發數 ${item.item.repostCount} ${c.operator.symbol} ${c.value}"
-                RuleField.SHARES -> "分享數符合條件"
-                RuleField.AUTHOR -> "作者符合「${c.value}」"
-                RuleField.TAG -> "標籤包含「${c.value}」"
-                RuleField.CONTENT -> "內文/標題包含「${c.value}」"
-                RuleField.COMMENT_TEXT -> "留言包含「${c.value}」"
-                RuleField.AI_SUMMARY -> "AI 摘要包含「${c.value}」"
-                RuleField.MANUAL_NOTE -> "筆記包含「${c.value}」"
+                RuleField.LIKES -> context.getString(R.string.smart_desc_likes, item.item.likeCount, c.operator.symbol, c.value)
+                RuleField.REPLIES -> context.getString(R.string.smart_desc_replies, item.item.replyCount, c.operator.symbol, c.value)
+                RuleField.REPOSTS -> context.getString(R.string.smart_desc_reposts, item.item.repostCount, c.operator.symbol, c.value)
+                RuleField.SHARES -> context.getString(R.string.smart_desc_shares)
+                RuleField.AUTHOR -> context.getString(R.string.smart_desc_author, c.value)
+                RuleField.TAG -> context.getString(R.string.smart_desc_tag, c.value)
+                RuleField.CONTENT -> context.getString(R.string.smart_desc_content, c.value)
+                RuleField.COMMENT_TEXT -> context.getString(R.string.smart_desc_comment, c.value)
+                RuleField.AI_SUMMARY -> context.getString(R.string.smart_desc_ai_summary, c.value)
+                RuleField.MANUAL_NOTE -> context.getString(R.string.smart_desc_manual_note, c.value)
                 RuleField.CATEGORY -> {
                     val catName = categories.firstOrNull { it.id.toString() == c.value }?.name ?: c.value
-                    "目前分類為「$catName」"
+                    context.getString(R.string.smart_desc_category, catName)
                 }
-                RuleField.FAVORITE -> if (c.value.equals("true", ignoreCase = true)) "狀態為已收藏" else "狀態為未收藏"
-                RuleField.READ_STATUS -> if (c.value.contains("已讀")) "閱讀狀態為已讀" else "閱讀狀態為未讀"
-                RuleField.HAS_MEDIA -> "含有多媒體附件"
-                RuleField.HAS_IMAGE -> "含有圖片內容"
-                RuleField.HAS_VIDEO -> "含有影片內容"
-                RuleField.SAVED_DATE -> "收藏時間符合（${c.operator.label} ${c.value} 天）"
+                RuleField.FAVORITE -> if (c.value.equals("true", ignoreCase = true)) context.getString(R.string.smart_desc_favorite_true) else context.getString(R.string.smart_desc_favorite_false)
+                RuleField.READ_STATUS -> if (c.value.contains("已讀")) context.getString(R.string.smart_desc_read_status_read) else context.getString(R.string.smart_desc_read_status_unread)
+                RuleField.HAS_MEDIA -> context.getString(R.string.smart_desc_has_media)
+                RuleField.HAS_IMAGE -> context.getString(R.string.smart_desc_has_image)
+                RuleField.HAS_VIDEO -> context.getString(R.string.smart_desc_has_video)
+                RuleField.SAVED_DATE -> context.getString(R.string.smart_desc_saved_date, context.getString(c.operator.labelRes), c.value)
                 RuleField.CONTENT_MATCH_CATEGORY_KEYWORDS -> {
                     val catName = c.config?.categoryName?.ifBlank { c.value } ?: c.value
-                    "內容命中分類關鍵字「$catName」"
+                    context.getString(R.string.smart_desc_content_keywords, catName)
                 }
                 RuleField.COMMENT_MATCH_CATEGORY_KEYWORDS -> {
                     val catName = c.config?.categoryName?.ifBlank { c.value } ?: c.value
-                    "留言命中分類關鍵字「$catName」"
+                    context.getString(R.string.smart_desc_comment_keywords, catName)
                 }
             }
         }
@@ -532,45 +537,46 @@ class SmartCollectionEngine @Inject constructor(
         }
 
         fun generateRuleSummary(
+            context: Context,
             rule: CollectionRule,
             categories: List<CategoryEntity> = emptyList()
         ): String {
-            if (!rule.hasActiveConditions()) return "尚未設定條件"
+            if (!rule.hasActiveConditions()) return context.getString(R.string.smart_error_no_conditions)
             val criteria = rule.normalizedCriteria().filter {
                 it.value.isNotBlank() || it.config?.categoryId != null || it.config?.categoryName?.isNotBlank() == true
             }
-            if (criteria.isEmpty()) return "尚未設定條件"
+            if (criteria.isEmpty()) return context.getString(R.string.smart_error_no_conditions)
 
-            val separator = if (rule.matchMode.equals("OR", ignoreCase = true)) " 或 " else " · "
+            val separator = if (rule.matchMode.equals("OR", ignoreCase = true)) context.getString(R.string.smart_summary_separator_or) else " · "
             return criteria.joinToString(separator) { c ->
                 when (c.field) {
-                    RuleField.LIKES -> "按讚數 ${c.operator.symbol} ${c.value}"
-                    RuleField.REPLIES -> "留言數 ${c.operator.symbol} ${c.value}"
-                    RuleField.REPOSTS -> "轉發數 ${c.operator.symbol} ${c.value}"
-                    RuleField.SHARES -> "分享數 ${c.operator.symbol} ${c.value}"
-                    RuleField.AUTHOR -> "作者「${c.value}」"
-                    RuleField.TAG -> "標籤「${c.value}」"
-                    RuleField.CONTENT -> "內文含「${c.value}」"
-                    RuleField.COMMENT_TEXT -> "留言含「${c.value}」"
-                    RuleField.AI_SUMMARY -> "AI 摘要含「${c.value}」"
-                    RuleField.MANUAL_NOTE -> "筆記含「${c.value}」"
+                    RuleField.LIKES -> context.getString(R.string.smart_summary_likes, c.operator.symbol, c.value)
+                    RuleField.REPLIES -> context.getString(R.string.smart_summary_replies, c.operator.symbol, c.value)
+                    RuleField.REPOSTS -> context.getString(R.string.smart_summary_reposts, c.operator.symbol, c.value)
+                    RuleField.SHARES -> context.getString(R.string.smart_summary_shares, c.operator.symbol, c.value)
+                    RuleField.AUTHOR -> context.getString(R.string.smart_summary_author, c.value)
+                    RuleField.TAG -> context.getString(R.string.smart_summary_tag, c.value)
+                    RuleField.CONTENT -> context.getString(R.string.smart_summary_content, c.value)
+                    RuleField.COMMENT_TEXT -> context.getString(R.string.smart_summary_comment, c.value)
+                    RuleField.AI_SUMMARY -> context.getString(R.string.smart_summary_ai_summary, c.value)
+                    RuleField.MANUAL_NOTE -> context.getString(R.string.smart_summary_manual_note, c.value)
                     RuleField.CATEGORY -> {
                         val catName = categories.firstOrNull { it.id.toString() == c.value }?.name ?: c.value
-                        "分類「$catName」"
+                        context.getString(R.string.smart_summary_category, catName)
                     }
-                    RuleField.FAVORITE -> if (c.value.equals("true", ignoreCase = true) || c.value == "已收藏") "已收藏" else "未收藏"
-                    RuleField.READ_STATUS -> if (c.value.contains("已讀")) "已讀" else "未讀"
-                    RuleField.HAS_MEDIA -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") "含媒體" else "無媒體"
-                    RuleField.HAS_IMAGE -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") "含圖片" else "無圖片"
-                    RuleField.HAS_VIDEO -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") "含影片" else "無影片"
-                    RuleField.SAVED_DATE -> "最近 ${c.value} 天"
+                    RuleField.FAVORITE -> if (c.value.equals("true", ignoreCase = true) || c.value == "已收藏") context.getString(R.string.smart_summary_favorite_true) else context.getString(R.string.smart_summary_favorite_false)
+                    RuleField.READ_STATUS -> if (c.value.contains("已讀")) context.getString(R.string.smart_summary_read_status_read) else context.getString(R.string.smart_summary_read_status_unread)
+                    RuleField.HAS_MEDIA -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") context.getString(R.string.smart_summary_has_media_true) else context.getString(R.string.smart_summary_has_media_false)
+                    RuleField.HAS_IMAGE -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") context.getString(R.string.smart_summary_has_image_true) else context.getString(R.string.smart_summary_has_image_false)
+                    RuleField.HAS_VIDEO -> if (c.value.equals("true", ignoreCase = true) || c.value == "是") context.getString(R.string.smart_summary_has_video_true) else context.getString(R.string.smart_summary_has_video_false)
+                    RuleField.SAVED_DATE -> context.getString(R.string.smart_summary_saved_date, c.value)
                     RuleField.CONTENT_MATCH_CATEGORY_KEYWORDS -> {
                         val catName = c.config?.categoryName?.ifBlank { c.value } ?: c.value
-                        "內容命中「$catName」"
+                        context.getString(R.string.smart_summary_content_keywords, catName)
                     }
                     RuleField.COMMENT_MATCH_CATEGORY_KEYWORDS -> {
                         val catName = c.config?.categoryName?.ifBlank { c.value } ?: c.value
-                        "留言命中「$catName」"
+                        context.getString(R.string.smart_summary_comment_keywords, catName)
                     }
                 }
             }

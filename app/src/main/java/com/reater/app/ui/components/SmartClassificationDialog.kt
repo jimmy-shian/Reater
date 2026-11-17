@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +27,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.domain.CustomKeywordRule
+import com.reater.app.R
 import com.reater.app.ui.AvatarIcons
 
 /**
@@ -99,12 +101,12 @@ fun EditCustomKeywordRuleDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (initialRule == null) "新增關鍵字規則" else "編輯關鍵字規則",
+                            text = if (initialRule == null) stringResource(R.string.smart_class_title_new) else stringResource(R.string.smart_class_title_edit),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "關閉")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.smart_class_close))
                         }
                     }
 
@@ -126,7 +128,7 @@ fun EditCustomKeywordRuleDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "當貼文內文或留言包含以下文字時，儲存時將自動歸入指定的 APP 分類。",
+                                text = stringResource(R.string.smart_class_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -137,7 +139,7 @@ fun EditCustomKeywordRuleDialog(
                         // 1. 比對文字輸入
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "比對文字（可多個關鍵字）",
+                                text = stringResource(R.string.smart_class_match_text_label),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -145,7 +147,7 @@ fun EditCustomKeywordRuleDialog(
                             OutlinedTextField(
                                 value = keywordInput,
                                 onValueChange = { keywordInput = it },
-                                placeholder = { Text("輸入文字，例如：AI, 科技, ChatGPT") },
+                                placeholder = { Text(stringResource(R.string.smart_class_match_text_placeholder)) },
                                 singleLine = false,
                                 minLines = 2,
                                 maxLines = 3,
@@ -179,7 +181,7 @@ fun EditCustomKeywordRuleDialog(
                         // 2. 目標分類（Reater APP 分類）
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "目標分類（APP 分類）",
+                                text = stringResource(R.string.smart_class_target_category_label),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -209,7 +211,7 @@ fun EditCustomKeywordRuleDialog(
                                         )
                                     } else {
                                         Text(
-                                            text = "選擇目標分類",
+                                            text = stringResource(R.string.smart_class_select_target_category),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.outline
                                         )
@@ -250,7 +252,7 @@ fun EditCustomKeywordRuleDialog(
                         // 3. 自訂附加標籤（選填純文字，不含 #）
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "自訂標籤（選填）",
+                                text = stringResource(R.string.smart_class_custom_tag_label),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -258,7 +260,7 @@ fun EditCustomKeywordRuleDialog(
                             OutlinedTextField(
                                 value = targetTagName,
                                 onValueChange = { targetTagName = it },
-                                placeholder = { Text("選填純文字，例如：筆記、重要") },
+                                placeholder = { Text(stringResource(R.string.smart_class_custom_tag_placeholder)) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -287,7 +289,7 @@ fun EditCustomKeywordRuleDialog(
                             ) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("刪除規則")
+                                Text(stringResource(R.string.smart_class_delete_rule))
                             }
                         } else {
                             Spacer(Modifier.width(1.dp))
@@ -298,7 +300,7 @@ fun EditCustomKeywordRuleDialog(
                                 onClick = onDismiss,
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("取消")
+                                Text(stringResource(R.string.smart_class_cancel))
                             }
                             Button(
                                 enabled = canSave,
@@ -322,7 +324,7 @@ fun EditCustomKeywordRuleDialog(
                                     onDismiss()
                                 }
                             ) {
-                                Text("儲存")
+                                Text(stringResource(R.string.smart_class_save))
                             }
                         }
                     }

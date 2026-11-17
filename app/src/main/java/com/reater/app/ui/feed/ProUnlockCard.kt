@@ -24,10 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.reater.app.ui.components.ProCopy
+import com.reater.app.R
 
 @Composable
 fun ProUnlockCard(
@@ -60,14 +61,14 @@ fun ProUnlockCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = ProCopy.LOCK_TITLE,
+                text = stringResource(R.string.pro_smart_curation_badge),
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = titleColor
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = ProCopy.LOCK_DESC_UNLOCKED_FEATURES,
+                text = stringResource(R.string.pro_lock_desc_unlocked_features),
                 fontSize = 13.sp,
                 color = descColor,
                 lineHeight = 19.sp,
@@ -84,7 +85,7 @@ fun ProUnlockCard(
             ) {
                 Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(ProCopy.LOCK_CTA, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.pro_lock_cta), fontWeight = FontWeight.SemiBold)
             }
         }
     }

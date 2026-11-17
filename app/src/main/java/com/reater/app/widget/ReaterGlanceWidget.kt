@@ -23,6 +23,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import androidx.room3.Room
+import com.reater.app.R
 import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_1_2
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_2_3
@@ -76,7 +77,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Reater 稍後閱讀",
+                                text = context.getString(R.string.widget_title_later_reading),
                                 style = TextStyle(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
@@ -85,7 +86,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                             )
                             Spacer(modifier = GlanceModifier.height(4.dp))
                             Text(
-                                text = "目前無待讀貼文，快去 Threads 分享吧！",
+                                text = context.getString(R.string.widget_empty_no_posts),
                                 style = TextStyle(
                                     fontSize = 12.sp,
                                     color = ColorProvider(Color(0xFFAAAAAA))
@@ -110,7 +111,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                                 )
                                 Spacer(modifier = GlanceModifier.defaultWeight())
                                 Text(
-                                    text = "待讀",
+                                    text = context.getString(R.string.widget_label_unread),
                                     style = TextStyle(
                                         fontSize = 11.sp,
                                         color = ColorProvider(Color(0xFFAAAAAA))
@@ -132,7 +133,7 @@ class ReaterGlanceWidget : GlanceAppWidget() {
                             if (displayItem.manualNote.isNotBlank()) {
                                 Spacer(modifier = GlanceModifier.height(4.dp))
                                 Text(
-                                    text = "筆記: ${displayItem.manualNote.take(40)}",
+                                    text = context.getString(R.string.widget_label_note, displayItem.manualNote.take(40)),
                                     maxLines = 1,
                                     style = TextStyle(
                                         fontSize = 11.sp,

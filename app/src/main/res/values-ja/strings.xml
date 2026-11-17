@@ -1,0 +1,972 @@
+<resources>
+    <!-- App Identity -->
+    <string name="app_name">Reater</string>
+
+    <!-- General / Common -->
+    <string name="save">保存</string>
+    <string name="cancel">キャンセル</string>
+    <string name="confirm">確認</string>
+    <string name="delete">削除</string>
+    <string name="close">閉じる</string>
+    <string name="ok">わかりました</string>
+    <string name="loading">読み込み中…</string>
+    <string name="processing">処理中…</string>
+    <string name="retry">再読み込み</string>
+    <string name="error_unknown">不明なエラー</string>
+    <string name="error_save_failed">保存に失敗しました</string>
+    <string name="error_load_failed">読み込みに失敗しました</string>
+    <string name="copied">コピーしました</string>
+    <string name="copied_to_clipboard">クリップボードにコピーしました</string>
+
+    <!-- Share / Save Flow -->
+    <string name="share_save_title">Reater に保存</string>
+    <string name="paste_from_clipboard">クリップボードから貼り付け</string>
+    <string name="body_placeholder">投稿本文…</string>
+    <string name="comments_placeholder">重要なコメント・議論のメモ…</string>
+    <string name="note_placeholder">自分用のノート…</string>
+    <string name="summary_placeholder">重要なポイント…</string>
+    <string name="fetching_status">Threads の内容を解析中…</string>
+    <string name="fetch_failed_tip">自動取得できませんでした。下から手動で貼り付けてください</string>
+    <string name="comments_partial_tip">公開コメントの一部を取得しました（手動で補完できます）</string>
+    <string name="search_hint">本文・コメント・ノート・タグを検索…</string>
+    <string name="fetching_post">投稿データを読み込み中…</string>
+    <string name="save_error">保存に失敗しました</string>
+    <string name="notification_permission_missing">通知権限が許可されていないため、ダウンロードは続行しますが進捗は表示されません</string>
+    <string name="saved_downloading_media">保存しました。メディアをバックグラウンドでダウンロード中（通知バーで進捗を確認できます）</string>
+    <string name="saved_success">Reater に保存しました！</string>
+    <string name="share_text_too_long">共有テキストが長すぎるため、超過分は削除されました。</string>
+    <string name="conflict_title_in_trash">この投稿はゴミ箱にあります</string>
+    <string name="conflict_title_exists">この投稿は保存済みです</string>
+    <string name="conflict_message_in_trash">復元して更新しますか、新規として保存しますか？</string>
+    <string name="conflict_message_exists">上書きして更新しますか、新規として保存しますか？</string>
+    <string name="conflict_action_restore">復元して更新</string>
+    <string name="conflict_action_overwrite">上書き</string>
+    <string name="conflict_action_cancel">キャンセル</string>
+    <string name="conflict_action_new">新規作成</string>
+    <string name="conflict_action_save_as">新規保存</string>
+    <string name="save_error_with_reason">保存に失敗しました：%1$s</string>
+    <string name="free_category_limit_remaining">カテゴリはあと %1$d 個追加できます（使用 %2$d/%3$d）</string>
+    <string name="free_category_limit_full">カスタムカテゴリが上限に達しました（%1$d/%2$d）。Pro にアップグレードすると無制限</string>
+    <string name="pro_icon_locked">これは Pro 専用アイコンです。アップグレードして解放してください</string>
+    <string name="accessibility_favorited">お気に入り済み</string>
+    <string name="accessibility_add_to_favorites">お気に入りに追加</string>
+    <string name="accessibility_close">閉じる</string>
+    <string name="label_select_category">カテゴリを選択</string>
+    <string name="smart_source_smart">本文のキーワードとスマート仕分けからカテゴリを提案しました</string>
+    <string name="smart_source_topic">過去の同トピックの記録からカテゴリを事前選択しました</string>
+    <string name="smart_source_author">過去の同じ投稿者の記録からカテゴリを事前選択しました</string>
+    <string name="status_web_resolving">共有リンクを解析中…</string>
+    <string name="status_downloading_media">メディアをダウンロード中 (%1$d/%2$d)%5$s%6$s</string>
+    <string name="status_analyzing_instagram">Instagram の内容を自動分析し、メディアをダウンロード中…</string>
+    <string name="status_analyzing_x">X の投稿を自動分析し、メディアをダウンロード中…</string>
+    <string name="status_analyzing_facebook">Facebook の内容を自動分析し、メディアをダウンロード中…</string>
+    <string name="status_analyzing_youtube">YouTube の内容を自動分析し、メディアをダウンロード中…</string>
+    <string name="status_analyzing_threads">Threads の内容を自動分析し、メディアをダウンロード中…</string>
+    <string name="status_background_download">バックグラウンドダウンロード</string>
+    <string name="label_post_body">投稿本文</string>
+    <string name="label_loading">読み込み中…</string>
+    <string name="button_paste_body">本文を貼り付け</string>
+    <string name="fetching_instagram">Instagram の内容を自動取得中…</string>
+    <string name="fetching_x">X の投稿を自動取得中…</string>
+    <string name="fetching_facebook">Facebook の内容を自動取得中…</string>
+    <string name="fetching_youtube">YouTube の内容を自動取得中…</string>
+    <string name="fetching_threads">Threads の内容を自動取得中…</string>
+    <string name="label_comments">重要コメント</string>
+    <string name="label_loading_comments">読み込み中…</string>
+    <string name="button_paste_comments">コメントを貼り付け</string>
+    <string name="notice_comment_chain">これはコメントです。上側が元の投稿、下側がコメントの内容です。スレッド全体を保存するには元の投稿を共有してください。</string>
+    <string name="media_progress">メディア %1$d/%2$d · 未取得分はバックグラウンドで続行します</string>
+    <string name="media_downloaded_count">ダウンロード済みメディア (%1$d)</string>
+    <string name="media_no_urls">この投稿にはメディアが含まれていますが、解析に失敗しました。右上から Threads を開いて確認してください。</string>
+    <string name="label_personal_note">個人ノート</string>
+    <string name="button_create_category">新規作成</string>
+    <string name="button_analyze_and_save">分析して保存</string>
+
+    <!-- Tab / Navigation -->
+    <string name="tab_all">すべて</string>
+    <string name="tab_unread">未読</string>
+    <string name="tab_favorite">お気に入り</string>
+    <string name="category_uncategorized">未分類</string>
+
+    <!-- Settings -->
+    <string name="settings">設定</string>
+    <string name="export_data">データをエクスポート</string>
+    <string name="import_data">データをインポート</string>
+    <string name="openai_api_key">OpenAI API Key (BYOK)</string>
+    <string name="model_selection">AI モデルの選択</string>
+    <string name="settings_title">システム設定</string>
+    <string name="settings_section_appearance">外観と閲覧</string>
+    <string name="settings_theme_title">テーマ</string>
+    <string name="settings_theme_system">システムに従う</string>
+    <string name="settings_theme_light">ライト</string>
+    <string name="settings_theme_dark">ダーク</string>
+    <string name="settings_font_size_title">文字サイズ</string>
+    <string name="settings_section_avatar">個人アイコンとアイコンギャラリー（PRO 専用）</string>
+    <string name="settings_avatar_custom_photo">カスタム写真アイコン</string>
+    <string name="settings_avatar_imported">端末のアルバムからカスタム写真を読み込みました</string>
+    <string name="settings_avatar_gallery">アイコンギャラリー</string>
+    <string name="settings_avatar_custom">カスタムアイコン</string>
+    <string name="settings_avatar_reset">リセット</string>
+    <string name="settings_pro_unlock_avatar">Pro にアップグレードしてカスタムアイコンを解放</string>
+    <string name="settings_pro_unlock_icons">プレミアムアイコンとカスタム写真アイコンを解放</string>
+    <string name="settings_pro_unlock_button">解放</string>
+    <string name="settings_section_notifications">通知とプッシュ通知</string>
+    <string name="settings_notification_permission_granted">通知権限：許可済み</string>
+    <string name="settings_notification_permission_denied">通知権限：未許可</string>
+    <string name="settings_notification_button_grant">許可する</string>
+    <string name="settings_notification_unread_title">未読リマインダー</string>
+    <string name="settings_notification_unread_desc">保存後も未読の場合、遅延して自動でプッシュ通知を送信します</string>
+    <string name="settings_notification_delay_title">遅延時間</string>
+    <string name="settings_notification_delay_custom_label">分をカスタム</string>
+    <string name="settings_notification_delay_suffix">分</string>
+    <string name="settings_notification_delay_hint">1〜120 で入力できます</string>
+    <string name="settings_notification_daily_title">毎日のまとめ</string>
+    <string name="settings_notification_daily_desc">毎日決まった時刻に未読数をまとめて通知します</string>
+    <string name="settings_notification_daily_period_morning">朝</string>
+    <string name="settings_notification_daily_period_noon">昼</string>
+    <string name="settings_notification_daily_period_afternoon">午後</string>
+    <string name="settings_notification_daily_period_evening">夜</string>
+    <string name="settings_notification_daily_period_late_night">深夜</string>
+    <string name="settings_notification_daily_push_time_title">通知時刻</string>
+    <string name="settings_notification_daily_custom_hour_label">時をカスタム</string>
+    <string name="settings_notification_daily_custom_hour_suffix">時</string>
+    <string name="settings_notification_daily_custom_hour_hint">0〜23 で入力できます</string>
+    <string name="settings_section_backup">データのバックアップと復元</string>
+    <string name="settings_backup_export">バックアップをエクスポート</string>
+    <string name="settings_backup_import">バックアップをインポート</string>
+    <string name="settings_section_uninstall">アンインストールとデータ保持</string>
+    <string name="settings_uninstall_retain_data">復元可能な Reater データを保持</string>
+    <string name="settings_uninstall_retain_desc">再インストール後に再度インポートできます。</string>
+    <string name="settings_ai_expand_desc">AI 設定を折りたたむ</string>
+    <string name="settings_ai_collapse_desc">AI 設定を展開</string>
+    <string name="settings_ai_provider_openai">OpenAI</string>
+    <string name="settings_ai_provider_custom">カスタムエンドポイント</string>
+    <string name="settings_ai_model_not_specified">モデル未設定</string>
+    <string name="settings_ai_key_configured">API Key 設定済み</string>
+    <string name="settings_ai_key_not_configured">未設定</string>
+    <string name="settings_ai_model_id_hint">API から取得した Model ID</string>
+    <string name="settings_ai_fetch_models">利用可能なモデル一覧を取得</string>
+    <string name="settings_ai_no_models">利用可能なモデル一覧はまだ取得していません</string>
+    <string name="settings_ai_no_matching_models">「%1$s」に一致するモデルがありません</string>
+    <string name="settings_ai_allow_transfer">投稿とコメントを AI サービスに送信することを許可</string>
+    <string name="settings_ai_auto_analyze_on_save">保存後に AI 自動分析</string>
+    <string name="settings_ai_auto_analyze_desc">投稿の保存時にバックグラウンドで要約を生成し、通知を送信します</string>
+
+    <!-- Smart Collection / Classification -->
+    <string name="smart_field_author">投稿者</string>
+    <string name="smart_field_tag">タグ</string>
+    <string name="smart_field_category">カテゴリ</string>
+    <string name="smart_field_content">本文 / タイトル</string>
+    <string name="smart_field_comment_text">コメント内容</string>
+    <string name="smart_field_ai_summary">AI 要約</string>
+    <string name="smart_field_manual_note">ノート</string>
+    <string name="smart_field_favorite">お気に入り状態</string>
+    <string name="smart_field_read_status">既読状態</string>
+    <string name="smart_field_has_media">メディアを含む</string>
+    <string name="smart_field_has_image">画像を含む</string>
+    <string name="smart_field_has_video">動画を含む</string>
+    <string name="smart_field_likes">いいね数</string>
+    <string name="smart_field_replies">返信数</string>
+    <string name="smart_field_reposts">リポスト数</string>
+    <string name="smart_field_shares">シェア数</string>
+    <string name="smart_field_saved_date">保存日時</string>
+    <string name="smart_field_content_match_keywords">本文がカテゴリキーワードに一致</string>
+    <string name="smart_field_comment_match_keywords">コメントがカテゴリキーワードに一致</string>
+
+    <string name="smart_op_equals">=</string>
+    <string name="smart_op_not_equals">≠</string>
+    <string name="smart_op_contains">含む</string>
+    <string name="smart_op_not_contains">含まない</string>
+    <string name="smart_op_contains_any">いずれかを含む</string>
+    <string name="smart_op_contains_all">すべて含む</string>
+    <string name="smart_op_gte">≥</string>
+    <string name="smart_op_gt">&gt;</string>
+    <string name="smart_op_lte">≤</string>
+    <string name="smart_op_lt">&lt;</string>
+    <string name="smart_op_between">範囲</string>
+    <string name="smart_op_within_days">直近</string>
+    <string name="smart_op_older_than_days">より前</string>
+    <string name="smart_op_newer_than_days">より後</string>
+
+    <string name="smart_value_read">既読</string>
+    <string name="smart_value_unread">未読</string>
+    <string name="smart_value_true">はい</string>
+    <string name="smart_value_false">いいえ</string>
+    <string name="smart_value_favorited">お気に入り済み</string>
+    <string name="smart_value_unfavorited">未お気に入り</string>
+
+    <string name="smart_preset_hot_name">いいね人気</string>
+    <string name="smart_preset_study_name">あとで読む</string>
+    <string name="smart_preset_sparkles_name">アイデア</string>
+
+    <string name="smart_category_keywords_inspiration">靈感,點子,想法,構思,idea,brainstorm,創意</string>
+    <string name="smart_category_keywords_job">找工作,求職,履歷,面試,徵才,工作機會,104,LinkedIn,職缺,獵頭</string>
+    <string name="smart_category_keywords_ai_art">GPT畫圖,AI畫圖,Prompt,Midjourney,Stable Diffusion,SDXL,圖像生成,生圖,DALL-E,ComfyUI</string>
+
+    <string name="smart_desc_likes">いいね数 %1$d %2$s %3$s</string>
+    <string name="smart_desc_replies">返信数 %1$d %2$s %3$s</string>
+    <string name="smart_desc_reposts">リポスト数 %1$d %2$s %3$s</string>
+    <string name="smart_desc_shares">シェア数が条件に一致</string>
+    <string name="smart_desc_author">投稿者が「%1$s」に一致</string>
+    <string name="smart_desc_tag">タグに「%1$s」を含む</string>
+    <string name="smart_desc_content">本文/タイトルに「%1$s」を含む</string>
+    <string name="smart_desc_comment">コメントに「%1$s」を含む</string>
+    <string name="smart_desc_manual_note">ノートに「%1$s」を含む</string>
+    <string name="smart_desc_category">現在のカテゴリは「%1$s」</string>
+    <string name="smart_desc_favorite_true">状態：お気に入り済み</string>
+    <string name="smart_desc_favorite_false">状態：未お気に入り</string>
+    <string name="smart_desc_read_status_read">状態：既読</string>
+    <string name="smart_desc_read_status_unread">状態：未読</string>
+    <string name="smart_desc_has_media">メディア添付あり</string>
+    <string name="smart_desc_has_image">画像を含む</string>
+    <string name="smart_desc_has_video">動画を含む</string>
+    <string name="smart_desc_saved_date">保存日時が一致（%1$s %2$s 日）</string>
+    <string name="smart_desc_content_keywords">本文がカテゴリキーワード「%1$s」に一致</string>
+    <string name="smart_desc_comment_keywords">コメントがカテゴリキーワード「%1$s」に一致</string>
+
+    <string name="smart_summary_likes">いいね数 %1$s %2$s</string>
+    <string name="smart_summary_replies">返信数 %1$s %2$s</string>
+    <string name="smart_summary_reposts">リポスト数 %1$s %2$s</string>
+    <string name="smart_summary_shares">シェア数 %1$s %2$s</string>
+    <string name="smart_summary_author">投稿者「%1$s」</string>
+    <string name="smart_summary_tag">タグ「%1$s」</string>
+    <string name="smart_summary_content">本文に「%1$s」を含む</string>
+    <string name="smart_summary_comment">コメントに「%1$s」を含む</string>
+    <string name="smart_summary_manual_note">ノートに「%1$s」を含む</string>
+    <string name="smart_summary_category">カテゴリ「%1$s」</string>
+    <string name="smart_summary_favorite_true">お気に入り済み</string>
+    <string name="smart_summary_favorite_false">未お気に入り</string>
+    <string name="smart_summary_read_status_read">既読</string>
+    <string name="smart_summary_read_status_unread">未読</string>
+    <string name="smart_summary_has_media_true">メディアあり</string>
+    <string name="smart_summary_has_media_false">メディアなし</string>
+    <string name="smart_summary_has_image_true">画像あり</string>
+    <string name="smart_summary_has_image_false">画像なし</string>
+    <string name="smart_summary_has_video_true">動画あり</string>
+    <string name="smart_summary_has_video_false">動画なし</string>
+    <string name="smart_summary_saved_date">直近 %1$s 日</string>
+    <string name="smart_summary_content_keywords">本文が「%1$s」に一致</string>
+    <string name="smart_summary_comment_keywords">コメントが「%1$s」に一致</string>
+
+    <string name="smart_error_no_conditions">条件が未設定です</string>
+
+    <!-- Avatar Icons -->
+    <string name="avatar_category_tech">テック</string>
+    <string name="avatar_category_reading">読書</string>
+    <string name="avatar_category_finance">マネー</string>
+    <string name="avatar_category_travel">旅行</string>
+    <string name="avatar_category_creative">クリエイティブ</string>
+    <string name="avatar_category_life">生活</string>
+
+    <string name="avatar_item_life_name">日々の暮らし</string>
+    <string name="avatar_item_life_desc">暮らしのエッセイ、日常の雑記、日々の記録</string>
+    <string name="avatar_item_tech_name">テック開発</string>
+    <string name="avatar_item_tech_desc">技術アーキテクチャ、プログラミング、最先端情報</string>
+    <string name="avatar_item_study_name">読書と学習</string>
+    <string name="avatar_item_study_desc">おすすめの本、深い読書、知識のノート</string>
+    <string name="avatar_item_finance_name">マネーと投資</string>
+    <string name="avatar_item_finance_desc">市場動向、資産運用、経済とビジネス</string>
+    <string name="avatar_item_travel_name">旅行とレジャー</string>
+    <string name="avatar_item_travel_desc">グルメ探索、旅の記録、現地の暮らし</string>
+
+    <string name="avatar_item_crown_name">王冠</string>
+    <string name="avatar_item_crown_desc">王者の意思決定、最高の知恵、厳選キュレーション</string>
+    <string name="avatar_item_diamond_name">ダイヤモンド</string>
+    <string name="avatar_item_diamond_desc">永遠の宝物、純粋で価値の高い知識の結晶</string>
+    <string name="avatar_item_rocket_name">ロケット</string>
+    <string name="avatar_item_rocket_desc">効率的な成長、爆発的な生産性、開拓の実践</string>
+    <string name="avatar_item_sparkles_name">スパークル</string>
+    <string name="avatar_item_sparkles_desc">AI 活用、創造のひらめき、発想の交流</string>
+    <string name="avatar_item_shield_name">プライバシー金庫</string>
+    <string name="avatar_item_shield_desc">安全な保護、個人金庫、最重要機密</string>
+    <string name="avatar_item_compass_name">コンパス</string>
+    <string name="avatar_item_compass_desc">視野の拡大、長期的な視点、戦略の指針</string>
+    <string name="avatar_item_fire_name">バズ</string>
+    <string name="avatar_item_fire_desc">バズった話題、SNS で注目のテーマ、流行の動向</string>
+    <string name="avatar_item_palette_name">パレット</string>
+    <string name="avatar_item_palette_desc">デザイン美学、文化と芸術、クリエイティブな表現</string>
+    <string name="avatar_item_globe_name">グローバル</string>
+    <string name="avatar_item_globe_desc">世界の洞察、マクロな視点、国際動向</string>
+    <string name="avatar_item_trophy_name">トロフィー</string>
+    <string name="avatar_item_trophy_desc">成果のマイルストーン、エリートコレクション、栄誉の証</string>
+
+    <string name="avatar_item_smart_hot_name">いいね人気</string>
+    <string name="avatar_item_smart_hot_desc">いいね・インタラクションの人気ルール専用アイコン</string>
+    <string name="avatar_item_smart_study_name">あとで読む</string>
+    <string name="avatar_item_smart_study_desc">お気に入り未読・必読ルール専用アイコン</string>
+    <string name="avatar_item_smart_sparkles_name">アイデア</string>
+    <string name="avatar_item_smart_sparkles_desc">ひらめき・発想ルール専用アイコン</string>
+    <string name="avatar_item_smart_filter_name">スマートフィルター</string>
+    <string name="avatar_item_smart_filter_desc">カスタム条件・スマート仕分けルール専用アイコン</string>
+    <string name="avatar_item_smart_trending_name">トレンド</string>
+    <string name="avatar_item_smart_trending_desc">指標データ・トレンドルール専用アイコン</string>
+
+    <!-- Media Viewer -->
+    <string name="media_viewer_close">閉じる</string>
+    <string name="media_viewer_download">画像をダウンロード</string>
+    <string name="media_viewer_content_desc">画像 %1$d / %2$d</string>
+    <string name="media_viewer_load_failed">読み込みに失敗しました</string>
+
+    <!-- Post Card / Feed -->
+    <string name="post_card_status_unread">未読</string>
+    <string name="post_card_status_read">既読</string>
+    <string name="post_card_action_mark_unread">未読にする</string>
+    <string name="post_card_action_mark_read">既読にする</string>
+    <string name="post_card_action_copy_url_summary">URL と要約をコピー</string>
+    <string name="post_card_toast_copied_url_summary">URL と要約をコピーしました</string>
+    <string name="post_card_toast_copied_post">投稿の URL と要約をコピーしました</string>
+    <string name="post_card_accessibility_copy_share">共有用にコピー</string>
+    <string name="post_card_accessibility_open_external">外部アプリで開く</string>
+    <string name="post_card_accessibility_favorite">お気に入り</string>
+    <string name="post_card_accessibility_trash">ゴミ箱へ移動</string>
+    <string name="post_card_empty_body">本文なし</string>
+    <string name="post_card_label_text_attachment">テキスト添付</string>
+    <string name="post_card_button_detail">詳細</string>
+    <string name="post_card_label_note">ノート：%1$s</string>
+    <string name="post_card_label_comments">重要コメント %1$d 件を含む</string>
+
+    <!-- Detail Dialog -->
+    <string name="detail_block_root_post">元投稿</string>
+    <string name="detail_block_share">共有</string>
+    <string name="detail_ai_consent_title">AI 分析を許可しますか？</string>
+    <string name="detail_ai_consent_message">投稿の内容とコメントは、設定した AI サービスに送信されて分析されます。設定でいつでもオフにできます。</string>
+    <string name="detail_ai_consent_cancel">キャンセル</string>
+    <string name="detail_ai_consent_confirm">同意して分析</string>
+    <string name="detail_accessibility_more">その他の操作</string>
+    <string name="detail_action_copy_url_summary">URL と要約をコピー</string>
+    <string name="detail_toast_copied">投稿の URL と要約をコピーしました</string>
+    <string name="detail_action_change_category">カテゴリを変更</string>
+    <string name="detail_ai_button">要約・カテゴリ候補・タグを生成</string>
+    <string name="detail_toast_category_updated">カテゴリを更新しました</string>
+    <string name="detail_toast_set_uncategorized">未分類に変更しました</string>
+    <string name="detail_accessibility_open_in_browser">Threads / ブラウザで開く</string>
+    <string name="detail_accessibility_copy_share">共有用にコピー</string>
+    <string name="detail_accessibility_close">閉じる</string>
+    <string name="detail_free_category_limit_remaining">カテゴリはあと %1$d 個追加できます（使用 %2$d/%3$d）</string>
+    <string name="detail_free_category_limit_full">カスタムカテゴリが上限に達しました（%1$d/%2$d）。Pro にアップグレードすると無制限</string>
+    <string name="detail_toast_pro_icon">これは Pro 専用アイコンです。アップグレードして解放してください</string>
+    <string name="detail_notice_comment_chain">旧形式のコメント保存です。画像は自動で配置されました。再保存すると修正されます。</string>
+    <string name="detail_label_share">共有</string>
+    <string name="detail_empty_body">本文なし</string>
+    <string name="detail_label_text_attachment">テキスト添付</string>
+    <string name="detail_media_not_downloaded">メディアを自動ダウンロードできませんでした。上のボタンから元の投稿を確認できます。</string>
+    <string name="detail_section_note">ノート</string>
+    <string name="detail_note_placeholder">考えたことを書いてみましょう…</string>
+    <string name="detail_section_comments">重要コメント（%1$d）</string>
+    <string name="detail_action_move_to_trash">ゴミ箱へ移動</string>
+    <string name="detail_button_processing">処理中…</string>
+    <string name="detail_accessibility_lyrics">歌詞</string>
+    <string name="detail_lyrics_title">歌詞</string>
+    <string name="detail_button_expand">展開</string>
+    <string name="detail_button_collapse">折りたたむ</string>
+
+    <!-- Analytics Screen -->
+    <string name="analytics_title_today_saved">今日の保存</string>
+    <string name="analytics_title_today_opened">今日の閲覧</string>
+    <string name="analytics_title_total_review">累計の振り返り</string>
+    <string name="analytics_saved_trend_pro">保存トレンド分析（直近 30 日）</string>
+    <string name="analytics_saved_trend_free">保存トレンド分析（今週）</string>
+    <string name="analytics_chart_hint">棒グラフをタップするとその日の明細を表示できます</string>
+    <string name="analytics_empty">この期間の保存記録はまだありません</string>
+    <string name="analytics_bar_percent">期間合計の %1$d%%</string>
+    <string name="analytics_articles">件</string>
+    <string name="analytics_label_total">期間合計</string>
+    <string name="analytics_label_daily_max">1 日の最多</string>
+    <string name="analytics_label_daily_avg">1 日平均</string>
+    <string name="analytics_unlock_pro">Pro を解放して直近 30 日と全期間のトレンドを表示</string>
+    <string name="analytics_y_axis_count">回数（件）</string>
+    <string name="analytics_selected_data">選択：%1$s（%2$d 件）</string>
+    <string name="analytics_timeslot_morning">朝の時間帯</string>
+    <string name="analytics_timeslot_afternoon">午後の時間帯</string>
+    <string name="analytics_timeslot_evening">夜のゴールデンタイム</string>
+    <string name="analytics_timeslot_night">深夜の静けさ</string>
+    <string name="analytics_timeslot_title">時間帯別の保存頻度</string>
+    <string name="analytics_timeslot_desc">よく閲覧してお気に入りする時間帯</string>
+    <string name="analytics_peak_slot">ピーク：%1$s</string>
+
+    <!-- Splash Ad Overlay -->
+    <string name="splash_ad_tagline">スレッド読解エンジン · オフラインキャッシュ</string>
+    <string name="splash_ad_countdown">0%1$ds</string>
+    <string name="splash_ad_enter">開始</string>
+    <string name="splash_ad_sponsored">スポンサー</string>
+    <string name="splash_ad_feature_title">長文とスレッド全体の議論を効率よく読む</string>
+    <string name="splash_ad_feature_desc">Threads の引用と返信を自動整理し、全文をオフラインで読めます。</string>
+    <string name="splash_ad_label">スポンサーコンテンツ · 広告枠</string>
+    <string name="splash_ad_privacy">端末内でオフライン動作 · トラッキングなし</string>
+    <string name="splash_ad_google_ads">Google がスポンサーとして配信</string>
+    <string name="splash_ad_badge">広告</string>
+    <string name="splash_ad_cta_default">詳細はこちら</string>
+
+    <!-- Notifications -->
+    <string name="notify_channel_reading_reminder">閲覧リマインダー</string>
+    <string name="notify_channel_reading_reminder_desc">未読の振り返りと毎日のまとめの通知</string>
+    <string name="notify_channel_offline_download">オフラインメディアのダウンロード</string>
+    <string name="notify_channel_offline_download_desc">バックグラウンドでの画像・動画ダウンロードの進捗</string>
+    <string name="notify_content_unread_title">未読の投稿があります</string>
+    <string name="notify_content_unread_text_default">保存した投稿がまだ未読です。タップして振り返る</string>
+    <string name="notify_content_unread_text_with_title">「%1$s」がまだ未読です。タップして振り返る</string>
+    <string name="notify_content_unread_title_with_author">注目の投稿（%1$s）：\n%2$s</string>
+    <string name="notify_content_unread_text_no_author">注目の投稿：\n%1$s</string>
+    <string name="notify_content_unread_summary">未読があと %1$d 件あります。タップして振り返る</string>
+    <string name="notify_content_unread_summary_total">未読合計 %1$d 件</string>
+    <string name="notify_content_analysis_done">記事の分析が完了し、要約を保存しました</string>
+    <string name="notify_content_downloading_preparing">ダウンロードを準備中…</string>
+    <string name="notify_content_downloading_multi">ダウンロード中 (%1$d/%2$d) · %3$d%%%4$s</string>
+    <string name="notify_content_downloading_single">ダウンロード中 %1$d%%%2$s</string>
+    <string name="notify_content_downloading_title">オフラインメディアをダウンロード中</string>
+    <string name="notify_content_downloading_title_with_name">メディアをダウンロード中：%1$s</string>
+    <string name="notify_content_download_done_default">%1$d 件のメディアのダウンロードが完了しました</string>
+    <string name="notify_content_download_done_with_title">「%1$s」の %2$d 件のメディアのダウンロードが完了しました</string>
+    <string name="notify_content_download_done_title">オフラインメディアのダウンロード完了</string>
+    <string name="notify_content_download_failed_reason">一部のメディアのダウンロードに失敗しました</string>
+    <string name="notify_content_download_failed_title">オフラインメディアのダウンロード未完了</string>
+
+    <!-- Backup / Archive -->
+    <string name="backup_error_size_limit">バックアップがサイズ上限を超えました</string>
+    <string name="backup_error_file_count">バックアップのファイル数が多すぎます</string>
+    <string name="backup_error_total_size">バックアップの合計サイズが上限を超えました</string>
+    <string name="backup_error_invalid_name">無効なバックアップファイル名：%1$s</string>
+    <string name="backup_error_missing_manifest">バックアップファイルが破損している可能性があります</string>
+    <string name="backup_progress_almost_done">もうすぐ完了です</string>
+    <string name="backup_error_unsupported_format">サポートされていないバックアップ形式またはバージョンです</string>
+    <string name="backup_error_duplicate_assets">バックアップのリソースが重複しています</string>
+    <string name="backup_error_invalid_avatar_name">アイコンのバックアップファイル名が無効です</string>
+    <string name="backup_error_invalid_avatar_format">アイコンのバックアップ形式が無効です</string>
+    <string name="backup_error_invalid_avatar_crop">アイコンのトリミングデータが無効です</string>
+    <string name="backup_error_duplicate_avatar_names">アイコンのバックアップファイル名が重複しています</string>
+    <string name="backup_progress_restore_done">復元完了：%1$d 件の投稿</string>
+
+    <!-- On-Device Classifier -->
+    <string name="classifier_uncategorized">未分類</string>
+    <string name="classifier_time_unknown">時刻不明</string>
+    <string name="classifier_saved_on">%1$s に保存</string>
+
+    <!-- URL Parser -->
+    <string name="parser_kind_post">スレッド</string>
+    <string name="parser_kind_short">短縮リンク</string>
+    <string name="parser_kind_share_link">コメント / 共有</string>
+    <string name="parser_instagram_reel">Reels</string>
+    <string name="parser_instagram_post">投稿</string>
+
+    <!-- Pro Copy / Upgrade -->
+    <string name="pro_copy_body">Pro にアップグレード：カスタムカテゴリ無制限、専用アイコン、スマートキュレーション。\n無料版の機能は変わりません。</string>
+    <string name="pro_lock_cta">Proを解錠</string>
+    <string name="pro_share_limit_title">無料版のお知らせ</string>
+    <string name="pro_share_limit_body">無料版はカテゴリ%1$d個まで。Proにアップグレードすると無制限になります。</string>
+    <string name="pro_upsell_body">Proで解錠：カテゴリ無制限、専用アイコン、スマート仕分け。</string>
+
+    <!-- Passcode / Unlock Dialog -->
+    <string name="passcode_title">Reater Pro を有効化</string>
+    <string name="passcode_link_mode_hint">ワンタップ有効化リンクを貼り付け</string>
+    <string name="passcode_manual_mode_hint">ライセンスキー / Email で有効化</string>
+    <string name="passcode_switch_mode_desc">入力モードを切り替え</string>
+    <string name="passcode_link_placeholder">reater:... または http://... の行を貼り付け</string>
+    <string name="passcode_parsed_email_code">Email：%1$s ｜ ライセンスキー：%2$s</string>
+    <string name="passcode_code_placeholder">有効化キーを入力（PRO-XXXX-XXXX-XXXX）</string>
+    <string name="passcode_email_placeholder">登録済みの Email を入力（必須）</string>
+    <string name="passcode_email_intent_text">こんにちは。Reater Pro のライセンスキー / パスワードを申請します。\nEmail: %1$s</string>
+    <string name="passcode_contact_author">作者にメール</string>
+    <string name="passcode_link_parse_error">リンクを解析できませんでした。手動入力をご利用ください</string>
+    <string name="passcode_verify_failed">ライセンスキーが正しくありません。再試行するか、作者までご連絡ください。</string>
+    <string name="passcode_verifying">確認中…</string>
+    <string name="passcode_verify_and_unlock">確認して有効化</string>
+    <string name="passcode_play_billing_title">Google Play で 1 回きりの購入</string>
+    <string name="passcode_play_billing_price">価格：%1$s</string>
+    <string name="passcode_play_billing_restore">購入を復元</string>
+    <string name="passcode_play_billing_error">Google Play の購入フローを開始できませんでした</string>
+
+    <!-- Icon Gallery Dialog -->
+    <string name="icon_gallery_filter_all">すべて</string>
+    <string name="icon_gallery_filter_free">無料</string>
+    <string name="icon_gallery_filter_pro">PRO</string>
+    <string name="icon_gallery_cannot_read_avatar">アイコンの元画像を読み込めません</string>
+    <string name="icon_gallery_import_failed">画像の読み込みに失敗しました。選び直してください</string>
+    <string name="icon_gallery_cannot_read_image">画像を読み込めません。選び直してください</string>
+    <string name="icon_gallery_save_failed">アイコンの保存に失敗しました。再試行してください</string>
+    <string name="icon_gallery_delete_current_title">現在のアイコンを削除しますか？</string>
+    <string name="icon_gallery_delete_history_title">この履歴アイコンを削除しますか？</string>
+    <string name="icon_gallery_delete_current_body">内蔵アイコンに戻ります。</string>
+    <string name="icon_gallery_delete_history_body">このアイコンの元画像と編集履歴を削除します。</string>
+    <string name="icon_gallery_delete_button">削除</string>
+    <string name="icon_gallery_cancel">キャンセル</string>
+    <string name="icon_gallery_gallery_title">アイコンギャラリー</string>
+    <string name="icon_gallery_close">閉じる</string>
+    <string name="icon_gallery_type_label">種類：%1$s</string>
+    <string name="icon_gallery_expand_type">種類を展開</string>
+    <string name="icon_gallery_collapse_type">種類を折りたたむ</string>
+    <string name="icon_gallery_go_pro">PRO に進む</string>
+    <string name="icon_gallery_apply_avatar">個人アイコンに設定</string>
+    <string name="icon_gallery_custom_avatar_title">カスタム個人アイコン</string>
+    <string name="icon_gallery_custom_avatar_desc">自分の写真をアイコンとして使えます（Pro が必要）。</string>
+    <string name="icon_gallery_go_pro_button">PRO に進む</string>
+    <string name="icon_gallery_select_from_gallery">アルバムから選択</string>
+    <string name="icon_gallery_history_avatars">アイコン履歴</string>
+    <string name="icon_gallery_no_history">履歴アイコンはまだありません。アルバムから最初の画像を選びましょう。</string>
+    <string name="icon_gallery_current_avatar">現在のアイコン</string>
+    <string name="icon_gallery_history_avatar">履歴アイコン</string>
+    <string name="icon_gallery_current_custom_avatar">使用中のカスタムアイコン</string>
+    <string name="icon_gallery_saved_custom_avatar">保存済みのカスタムトリミングアイコン</string>
+    <string name="icon_gallery_set_as_avatar">使用する</string>
+    <string name="icon_gallery_edit">編集</string>
+    <string name="icon_gallery_delete_avatar">アイコンを削除</string>
+    <string name="icon_gallery_save_edited_title">編集後のアイコンを保存</string>
+    <string name="icon_gallery_save_edited_body">新規保存しますか、このアイコンに上書きしますか？</string>
+    <string name="icon_gallery_overwrite">上書き</string>
+    <string name="icon_gallery_save_as_new">新規保存</string>
+    <string name="icon_gallery_accessibility_custom_avatar">個人カスタムアイコン</string>
+    <string name="icon_gallery_accessibility_avatar">個人アイコン</string>
+
+    <!-- Smart Classification Dialog -->
+    <string name="smart_class_title_new">キーワードルールを追加</string>
+    <string name="smart_class_title_edit">キーワードルールを編集</string>
+    <string name="smart_class_close">閉じる</string>
+    <string name="smart_class_hint">投稿に以下の文字が含まれる場合、指定したカテゴリに自動で仕分けされます。</string>
+    <string name="smart_class_match_text_label">比較するテキスト（複数キーワード可）</string>
+    <string name="smart_class_match_text_placeholder">テキストを入力（例：AI, テック, ChatGPT）</string>
+    <string name="smart_class_target_category_label">対象カテゴリ（アプリのカテゴリ）</string>
+    <string name="smart_class_select_target_category">対象カテゴリを選択</string>
+    <string name="smart_class_custom_tag_label">カスタムタグ（任意）</string>
+    <string name="smart_class_custom_tag_placeholder">任意のテキスト（例：ノート、重要）</string>
+    <string name="smart_class_delete_rule">ルールを削除</string>
+    <string name="smart_class_cancel">キャンセル</string>
+    <string name="smart_class_save">保存</string>
+
+    <!-- Smart Collection Rule Dialog -->
+    <string name="smart_collection_title">スマート仕分けルールを編集</string>
+    <string name="smart_collection_close">閉じる</string>
+    <string name="smart_collection_basic_settings">基本設定</string>
+    <string name="smart_collection_change_icon_desc">アイコンを変更</string>
+    <string name="smart_collection_rule_name_label">ルール名</string>
+    <string name="smart_collection_enabled">このスマートルールを有効にする</string>
+    <string name="smart_collection_enabled_desc">条件に一致すると、このスマートカテゴリのビューに自動で表示されます</string>
+    <string name="smart_collection_condition_mode">条件モード</string>
+    <string name="smart_collection_mode_or">いずれかの条件に一致（OR）</string>
+    <string name="smart_collection_mode_and">すべての条件に一致（AND）</string>
+    <string name="smart_collection_conditions_label">一致条件</string>
+    <string name="smart_collection_matched_count">一致コンテンツ：%1$d 件</string>
+    <string name="smart_collection_no_matches">現在、条件に一致するコンテンツはありません</string>
+    <string name="smart_collection_preview_matching">一致コンテンツをプレビュー</string>
+    <string name="smart_collection_reset_default">デフォルトのルールに戻す</string>
+    <string name="smart_collection_delete_rule">ルールを削除</string>
+    <string name="smart_collection_cancel">キャンセル</string>
+    <string name="smart_collection_save">保存</string>
+    <string name="smart_collection_discard_changes_title">未保存の変更を破棄しますか？</string>
+    <string name="smart_collection_discard_changes_body">未保存の変更があります。このまま離れると変更は失われます。</string>
+    <string name="smart_collection_discard_confirm">変更を破棄</string>
+    <string name="smart_collection_continue_editing">編集を続ける</string>
+    <string name="smart_collection_delete_confirm_title">ルールを削除しますか？</string>
+    <string name="smart_collection_delete_confirm_body">ルールを削除しても投稿は削除されません。</string>
+    <string name="smart_collection_delete_confirm">削除する</string>
+    <string name="smart_collection_reset_confirm_title">デフォルトのルールに戻しますか？</string>
+    <string name="smart_collection_reset_confirm_body">「%1$s」のデフォルト条件に戻します。</string>
+    <string name="smart_collection_reset_confirm">デフォルトに戻す</string>
+    <string name="smart_collection_delete_condition_desc">条件を削除</string>
+    <string name="smart_collection_field_group_content">コンテンツ</string>
+    <string name="smart_collection_field_group_status">状態</string>
+    <string name="smart_collection_field_group_interaction">エンゲージメント</string>
+    <string name="smart_collection_field_group_time">時間</string>
+    <string name="smart_collection_field_group_smart">スマート仕分け</string>
+    <string name="smart_collection_default_read_status_unread">未読</string>
+    <string name="smart_collection_hint_min_value">最小値</string>
+    <string name="smart_collection_hint_max_value">最大値</string>
+    <string name="smart_collection_example_likes">例：100</string>
+    <string name="smart_collection_example_replies">例：20</string>
+    <string name="smart_collection_example_reposts">例：10</string>
+    <string name="smart_collection_example_shares">例：5</string>
+    <string name="smart_collection_example_author">例：@user またはニックネーム</string>
+    <string name="smart_collection_example_tag">例：AI</string>
+    <string name="smart_collection_example_content">例：Midjourney または Prompt</string>
+    <string name="smart_collection_example_comment">例：チュートリアル 資料</string>
+    <string name="smart_collection_example_ai_summary">例：ハイライト 要点</string>
+    <string name="smart_collection_example_manual_note">例：必見</string>
+    <string name="smart_collection_favorite_true_label">お気に入り済み</string>
+    <string name="smart_collection_favorite_false_label">未お気に入り</string>
+    <string name="smart_collection_read_status_unread_label">未読</string>
+    <string name="smart_collection_read_status_read_label">既読</string>
+    <string name="smart_collection_has_media_true_label">はい</string>
+    <string name="smart_collection_has_media_false_label">いいえ</string>
+    <string name="smart_collection_has_image_true_label">はい</string>
+    <string name="smart_collection_has_image_false_label">いいえ</string>
+    <string name="smart_collection_has_video_true_label">はい</string>
+    <string name="smart_collection_has_video_false_label">いいえ</string>
+    <string name="smart_collection_days_label">日数</string>
+    <string name="smart_collection_days_suffix">日</string>
+    <string name="smart_collection_days_placeholder">例：30</string>
+    <string name="smart_collection_select_category_hint">カテゴリを選択</string>
+    <string name="smart_collection_current_category">指定カテゴリ：%1$s</string>
+    <string name="smart_collection_match_source_label">比較対象：</string>
+    <string name="smart_collection_source_title">タイトル</string>
+    <string name="smart_collection_source_body">本文</string>
+    <string name="smart_collection_source_comments">コメント</string>
+    <string name="smart_collection_source_manual_note">ノート</string>
+    <string name="smart_collection_preview_title">一致コンテンツのプレビュー（全 %1$d 件）</string>
+    <string name="smart_collection_preview_empty">現在、条件に一致する投稿はありません</string>
+    <string name="smart_collection_preview_close">プレビューを閉じる</string>
+    <string name="smart_collection_preview_matched_label">一致した条件：</string>
+    <string name="smart_collection_icon_title">ルール専用アイコンを選択</string>
+    <string name="smart_collection_icon_smart_rule">スマートルール専用アイコン</string>
+    <string name="smart_collection_icon_other">その他の利用可能なアイコン</string>
+
+    <!-- Threads Stats Row -->
+    <string name="threads_stats_like">いいね</string>
+    <string name="threads_stats_reply">返信</string>
+    <string name="threads_stats_repost">リポスト</string>
+    <string name="threads_stats_share">シェア</string>
+
+    <!-- Reater Dropdown -->
+    <string name="dropdown_collapse_menu">メニューを折りたたむ</string>
+    <string name="dropdown_expand_menu">メニューを展開</string>
+    <string name="dropdown_apply">適用</string>
+
+    <!-- Pro Category Filter Row -->
+    <string name="filter_all">すべて</string>
+    <string name="filter_uncategorized">未分類</string>
+
+    <!-- Copyable Text Block -->
+    <string name="copyable_toast_copied">本文をコピーしました</string>
+    <string name="copyable_accessibility_copy">本文をコピー</string>
+    <string name="copyable_expand">全文を表示</string>
+    <string name="copyable_collapse">折りたたむ</string>
+
+    <!-- Time Format -->
+    <string name="time_unknown">時刻不明</string>
+    <string name="time_saved_on">%1$s に保存</string>
+
+    <!-- Media Download Worker -->
+    <string name="worker_download_failed">%1$d 件のメディアのダウンロードに失敗しました%2$s</string>
+    <string name="worker_download_skipped">（%1$d 件のストリームをスキップ）</string>
+
+    <!-- AI Analysis Worker -->
+    <string name="worker_ai_not_authorized">AI 送信設定がまだ許可されていません</string>
+    <string name="worker_ai_no_api_key">API Key がまだ設定されていません</string>
+    <string name="worker_ai_user_note_prefix">ユーザーの手動ノート：\n%1$s</string>
+
+    <!-- Reater Glance Widget -->
+    <string name="widget_empty_no_posts">未読の投稿はありません。Threads からどんどん共有しよう！</string>
+    <string name="widget_label_unread">未読</string>
+    <string name="widget_label_note">ノート：%1$s</string>
+
+    <!-- Fetch Progress (ThreadsGraphQLClient / XClient / InstagramClient) -->
+    <string name="fetch_progress_body_parsed">投稿本文を取得しました</string>
+    <string name="fetch_progress_comments_done">重要コメントを取得しました（%1$d 件）</string>
+    <string name="fetch_progress_downloading_media">メディアをダウンロード中 (%1$d/%2$d)</string>
+    <string name="fetch_progress_media_done">オフラインメディアのダウンロードが完了しました</string>
+    <string name="fetch_progress_media_partial">一部完了（成功 %1$d、失敗 %2$d、残りはバックグラウンドで続行）</string>
+    <string name="fetch_error_invalid_x_url">無効な X 投稿リンクです</string>
+    <string name="fetch_error_x_failed">X 投稿の取得に失敗しました</string>
+    <string name="fetch_error_invalid_youtube_url">無効な YouTube URL です</string>
+    <string name="fetch_youtube_fallback_title">YouTube 動画</string>
+
+    <!-- AI Client Errors (OpenAiClient) -->
+    <string name="ai_error_generic">AI 分析に失敗しました。しばらくしてからもう一度お試しください</string>
+    <string name="ai_error_401">API キーが無効か未認証です。設定をご確認ください</string>
+    <string name="ai_error_403">アクセスが拒否されました。このキーにはこのモデルの呼び出し権限がありません</string>
+    <string name="ai_error_404">指定されたモデルまたは API の URL が見つかりません</string>
+    <string name="ai_error_429">リクエストが集中しているか、利用枠を使い切りました。しばらくしてからもう一度お試しください</string>
+    <string name="ai_error_5xx">AI サービスのサーバーに接続異常があります。しばらくしてから再試行してください</string>
+    <string name="ai_error_network">接続に失敗しました。しばらくしてからもう一度お試しください</string>
+    <string name="ai_error_timeout">AI サーバーの応答がタイムアウトしました。ネットワーク接続を確認してから再試行してください</string>
+    <string name="ai_error_unreachable">AI サーバーに接続できません。ネットワークまたは URL 設定をご確認ください</string>
+
+    <!-- Backup Manager Progress / Errors -->
+    <string name="backup_eta_seconds">残り約 %1$d 秒</string>
+    <string name="backup_eta_minutes">残り約 %1$d 分</string>
+    <string name="backup_eta_min_sec">残り約 %1$d 分 %2$d 秒</string>
+    <string name="backup_progress_preparing">バックアップデータを準備中…</string>
+    <string name="backup_progress_packing">バックアップデータをパック中 (%1$d/%2$d)</string>
+    <string name="backup_progress_refetching_media">欠落メディアを再取得中 (%1$d/%2$d)</string>
+    <string name="backup_progress_packaging">.reater バックアップファイルを作成中…</string>
+    <string name="backup_progress_packaging_detail">全 %1$d 件のメディアリソース</string>
+    <string name="backup_error_empty_file">バックアップファイルの生成に失敗しました（ファイルサイズ 0）</string>
+    <string name="backup_progress_reading">バックアップファイルを読み込み中…</string>
+    <string name="backup_error_file_empty">バックアップファイルが空です。選び直してください</string>
+    <string name="backup_progress_extracting">.reater バックアップリソースを展開中…</string>
+    <string name="backup_error_missing_manifest_file">有効なバックアップファイルではありません</string>
+    <string name="backup_error_content_empty">バックアップファイルの内容が空です</string>
+    <string name="backup_error_parse_failed">バックアップ形式エラー：%1$s</string>
+    <string name="backup_warning_missing_assets">%1$d 件のメディアが欠落しているため、リンクで復元します</string>
+    <string name="backup_error_illegal_format">有効な .reater バックアップファイルではありません</string>
+    <string name="backup_error_too_many_items">バックアップの項目が多すぎます（上限超過）</string>
+    <string name="backup_error_missing_url">インポートデータに有効な URL がありません</string>
+    <string name="backup_progress_restoring_articles">投稿を展開・復元中 (%1$d/%2$d)</string>
+    <string name="backup_progress_writing_db">ローカルデータベースに書き込み中…</string>
+    <string name="backup_progress_writing_db_detail">ローカルデータベースに書き込み中 (%1$d/%2$d)</string>
+
+    <!-- Billing (PlayBillingManager) -->
+    <string name="billing_connecting">Google Play に接続中です。しばらくしてからもう一度お試しください。</string>
+    <string name="billing_processing">お支払いを処理中です。完了後、Pro は自動的に有効になります。</string>
+    <string name="billing_purchase_done_verify_fail">購入は完了しましたが、ライセンスの確認中に問題が発生しました。次回起動時に再試行します。</string>
+    <string name="billing_unavailable">現在、Google Play で Pro を提供できません。</string>
+    <string name="billing_pro_activated">Reater Pro が有効になりました。</string>
+
+    <!-- Avatar Errors (SettingsRepository) -->
+    <string name="avatar_error_copy_failed">アイコンをアプリのストレージにコピーできません</string>
+    <string name="avatar_error_read_failed">アイコン画像を読み込めません</string>
+    <string name="avatar_error_save_failed">アイコン画像を保存できません</string>
+
+    <!-- Repository -->
+    <string name="repo_manual_note_author">手動ノート</string>
+
+    <!-- Notifications (NotifyCenter extra) -->
+    <string name="notify_ai_done_title">AI 分析完了</string>
+    <string name="notify_ai_done_title_with_name">AI 分析完了：%1$s</string>
+    <string name="notify_ai_failed_title">AI 分析が未完了です</string>
+    <string name="notify_ai_failed_title_with_name">AI 分析が未完了です：%1$s</string>
+    <string name="notify_download_done_with_failures">%1$s（ほかに %2$d 件失敗）</string>
+
+    <!-- MainActivity: AI / Backup / Pro -->
+    <string name="main_error_ai_not_authorized">まず設定で AI 分析を許可してください</string>
+    <string name="main_error_no_api_key">まず設定で API Key を設定してください</string>
+    <string name="main_export_preparing">バックアップデータのエクスポートを準備中…</string>
+    <string name="main_error_open_export_file">指定されたエクスポートファイルを開けません</string>
+    <string name="main_export_done">.reater バックアップファイルをエクスポートしました</string>
+    <string name="main_export_failed">エクスポートに失敗しました：%1$s</string>
+    <string name="main_import_reading">バックアップファイルを読み込んで展開中…</string>
+    <string name="main_error_invalid_file_type">.reater バックアップファイルのみサポートしています</string>
+    <string name="main_error_open_backup_file">選択されたバックアップファイルを開けません</string>
+    <string name="main_restore_done">バックアップを復元しました（全 %1$d 件の投稿）</string>
+    <string name="main_restore_failed">復元に失敗しました：%1$s</string>
+    <string name="main_pro_unlock_success">Reater Pro の解放に成功しました！</string>
+    <string name="main_pro_deeplink_failed">有効化に失敗しました。キーを入力済みです。「確認して有効化」をもう一度押してください</string>
+
+    <!-- MainActivity: Notification Permission Dialog -->
+    <string name="main_notif_permission_dialog_message">予定した時刻にリマインダーを受け取るには、通知権限の許可が必要です。</string>
+    <string name="main_button_go_settings">設定を開く</string>
+    <string name="main_button_later">後で</string>
+
+    <!-- MainActivity: Trash -->
+    <string name="main_trash_move_dialog_message">ゴミ箱に移動し、30 日間保持します。この間はいつでも復元できます。</string>
+    <string name="main_trash_moved_with_retention">ゴミ箱に移動しました（30 日間保持）</string>
+    <string name="main_trash_clear_title">ゴミ箱を空にしますか？</string>
+    <string name="main_trash_clear_message">すべての記録を完全に削除しますか？この操作は元に戻せません。</string>
+    <string name="main_trash_cleared">ゴミ箱を空にしました</string>
+    <string name="main_moved_to_trash">ゴミ箱に移動しました</string>
+    <string name="main_trash_empty_hint">ゴミ箱は空です\n削除された項目は 30 日間ここに保持されます</string>
+    <string name="main_trash_count_title">ゴミ箱の記録 (%1$d)</string>
+    <string name="main_trash_clear_button">ゴミ箱を空にする</string>
+    <string name="main_trash_remaining_days">残り %1$d 日で完全に削除されます</string>
+    <string name="main_delete_permanently">完全に削除</string>
+
+    <!-- MainActivity: Feed / Search / Status -->
+    <string name="main_avatar_changed">個人アイコンを変更しました</string>
+    <string name="main_category_deleted">カテゴリを削除しました。投稿は未分類になります</string>
+    <string name="main_copied_filter_with_count">現在のフィルタの URL と要約 %1$d 件をコピーしました</string>
+    <string name="main_no_posts_in_filter">現在のフィルタに投稿はありません</string>
+    <string name="main_accessibility_copy_filter">現在のフィルタのすべての URL と要約をコピー</string>
+    <string name="main_accessibility_clear_search">検索をクリア</string>
+    <string name="main_search_no_match">「%1$s」に一致するコンテンツが見つかりません</string>
+    <string name="main_empty_all_hint">まだコンテンツがありません\nThreads や Instagram で「共有」するだけで保存できます！</string>
+    <string name="main_marked_read">既読にしました（未読には表示されません）</string>
+    <string name="main_marked_unread">未読にしました</string>
+    <string name="main_favorited">お気に入りに追加しました</string>
+    <string name="main_unfavorited">お気に入りを解除しました</string>
+    <string name="main_search_no_match_unread">未読に「%1$s」に一致するコンテンツが見つかりません</string>
+    <string name="main_all_read_congrats">すばらしい！すべての投稿を読み終えました</string>
+    <string name="main_search_no_match_favorite">お気に入りに「%1$s」に一致するコンテンツが見つかりません</string>
+    <string name="main_empty_favorite_hint">お気に入りはまだありません\n投稿カードのしおりをタップしてお気に入りに追加！</string>
+    <string name="main_deleted_permanently">完全に削除しました</string>
+    <string name="main_smart_rule_applied">スマート仕分けで %1$d 件の投稿を更新しました！</string>
+    <string name="main_restore_success">復元に成功しました！</string>
+
+    <!-- MainActivity: Category Management -->
+    <string name="main_category_management">カテゴリ管理</string>
+    <string name="main_category_count_summary">全 %1$d カテゴリ。自由に並べ替えできます</string>
+    <string name="main_category_free_limit_summary">無料 %1$d/%2$d · アップグレードでカテゴリ無制限</string>
+    <string name="main_category_add_new">＋ カテゴリを追加</string>
+    <string name="main_category_edit">カテゴリを編集</string>
+    <string name="main_smart_rules_desc">保存時に適切なカテゴリへ自動仕分け</string>
+    <string name="main_smart_rule_keyword_title">本文のキーワードで自動仕分け</string>
+    <string name="main_smart_rule_keyword_desc">本文とタイトルのキーワードに基づき自動仕分け</string>
+    <string name="main_smart_rule_author_title">投稿者名で自動仕分け</string>
+    <string name="main_smart_rule_author_desc">投稿者の過去の傾向に基づき自動仕分け</string>
+    <string name="main_smart_rule_custom_title">特定の文字で自動仕分け</string>
+    <string name="main_smart_rule_custom_priority">最優先</string>
+    <string name="main_smart_rule_custom_desc">特定の文字を含む投稿を、指定カテゴリに優先的に仕分けします</string>
+    <string name="main_smart_rule_custom_empty">ルールはまだありません。「比較ルールを追加」から設定しましょう。</string>
+    <string name="main_smart_rule_add_rule">比較ルールを追加</string>
+    <string name="main_smart_rule_reapply_hint">すべての投稿に再適用</string>
+
+    <!-- Splash Ad Tags -->
+    <string name="splash_tag_thread_context">#スレッド文脈</string>
+    <string name="splash_tag_offline">#オフライン整理</string>
+
+    <!-- Avatar Crop Dialog -->
+    <string name="avatar_crop_title">アイコンの位置を編集</string>
+    <string name="avatar_crop_close_desc">編集を閉じる</string>
+    <string name="avatar_crop_hint">ドラッグで移動・ピンチで拡大縮小。円の中がアイコンになります</string>
+    <string name="avatar_crop_image_desc">トリミングする画像</string>
+    <string name="avatar_crop_rotate">90° 回転</string>
+    <string name="avatar_crop_apply">適用</string>
+
+    <!-- Category Drag Handle -->
+    <string name="category_drag_move_up">カテゴリを上へ移動</string>
+    <string name="category_drag_move_down">カテゴリを下へ移動</string>
+    <string name="category_drag_reorder_desc">ドラッグで並べ替え</string>
+
+    <!-- Category Dropdown -->
+    <string name="category_dropdown_search_or_new">検索または新しいカテゴリを入力…</string>
+    <string name="category_dropdown_clear_desc">カテゴリをクリア</string>
+    <string name="category_dropdown_no_match">一致するカテゴリが見つかりません</string>
+    <string name="category_dropdown_has_match">一致するカテゴリがあります</string>
+    <string name="category_dropdown_add_new">＋「%1$s」を追加</string>
+
+    <!-- Category Filter Bar -->
+    <string name="category_filter_all_categories">すべてのカテゴリ</string>
+    <string name="category_filter_search_hint">カテゴリを検索</string>
+    <string name="category_filter_clear_desc">クリア</string>
+    <string name="category_filter_item_count">%1$d 件</string>
+    <string name="category_filter_platform_desc">プラットフォーム：%1$s（%2$d 件）</string>
+
+    <!-- Category Manage Dialogs -->
+    <string name="category_new_title">カテゴリを新規作成</string>
+    <string name="category_edit_title">カテゴリを編集</string>
+    <string name="category_name_placeholder">カテゴリ名（例：技術、生活、読書）</string>
+    <string name="category_name_label">カテゴリ名</string>
+    <string name="category_select_icon">アイコンを選択</string>
+    <string name="category_pro_badge_desc">Pro 専用</string>
+    <string name="category_create">作成</string>
+    <string name="category_discard_title">未作成のカテゴリを破棄しますか？</string>
+    <string name="category_discard_message">「%1$s」を入力済みですが未作成です。戻ると下書きは破棄されます。</string>
+    <string name="category_discard_confirm">破棄</string>
+    <string name="category_continue_editing">編集を続ける</string>
+    <string name="category_builtin_no_delete">内蔵カテゴリは削除できません。名前の変更とアイコンの変更はできます</string>
+    <string name="category_delete_confirm_title">「%1$s」を削除しますか？</string>
+    <string name="category_delete_confirm_message">このカテゴリの投稿は「未分類」になります。</string>
+
+    <!-- Category Badge -->
+    <string name="category_badge_fallback">未分類</string>
+
+    <!-- Icon Gallery -->
+    <string name="icon_gallery_in_use">使用中</string>
+
+    <!-- Passcode / Pro -->
+    <string name="passcode_email_subject">Reater Pro のライセンス申請</string>
+    <string name="passcode_manual_email_hint">手動で jimmy910824@gmail.com までメールしてください</string>
+    <string name="passcode_unlock_success">Reater Pro の解放に成功しました！</string>
+    <string name="pro_smart_curation_badge">Pro 専用スマートキュレーション</string>
+
+    <!-- Smart Collection Rule Dialog (extra) -->
+    <string name="smart_collection_add_condition">＋ 条件を追加</string>
+    <string name="smart_collection_matching_live">リアルタイムで比較中</string>
+    <string name="smart_collection_hint_contains_any">キーワードは空白で区切ります。いずれか 1 つでも一致すれば OK</string>
+    <string name="smart_collection_hint_contains_all">キーワードは空白で区切ります。すべて一致する必要があります</string>
+    <string name="smart_collection_preview_more">… ほかに %1$d 件が一致</string>
+    <string name="smart_desc_ai_summary">AI 要約に「%1$s」を含む</string>
+    <string name="smart_summary_ai_summary">AI 要約に「%1$s」を含む</string>
+    <string name="smart_op_label_equals">等しい</string>
+    <string name="smart_op_label_not_equals">等しくない</string>
+    <string name="smart_op_label_contains_any_keywords">いずれかのキーワードを含む</string>
+    <string name="smart_op_label_contains_all_keywords">すべてのキーワードを含む</string>
+    <string name="smart_op_label_gte">以上</string>
+    <string name="smart_op_label_lte">以下</string>
+
+    <!-- Detail Dialog (extra) -->
+    <string name="detail_ai_started_background">AI 分析をバックグラウンドで開始しました。完了したら通知します</string>
+    <string name="detail_ai_summary_section">AI スマート要約</string>
+
+    <!-- Inline Video Player -->
+    <string name="video_poster_desc">音声のカバー</string>
+    <string name="video_play_failed">動画を再生できません</string>
+    <string name="video_retry">再試行</string>
+    <string name="video_pause_desc">一時停止</string>
+    <string name="video_play_desc">再生</string>
+    <string name="video_unmute_desc">ミュート解除</string>
+    <string name="video_mute_desc">ミュート</string>
+    <string name="video_fullscreen_desc">フルスクリーンで再生</string>
+    <string name="video_fullscreen_close_desc">フルスクリーンを閉じる</string>
+    <string name="video_rotate_desc">画面の向きを切り替え</string>
+    <string name="video_rotate_button">切り替え</string>
+    <string name="video_rewind_10_desc">10 秒巻き戻し</string>
+    <string name="video_forward_10_desc">10 秒早送り</string>
+    <string name="video_download_desc">動画をダウンロード</string>
+    <string name="video_download_button">ダウンロード</string>
+    <string name="video_speed_title">再生速度</string>
+    <string name="video_speed_normal">1.0x（通常）</string>
+    <string name="video_speed_selected_desc">選択済み</string>
+    <string name="video_export_format_title">ダウンロード形式を選択</string>
+    <string name="video_export_format_message">これは音声（音楽）の投稿です。保存するバージョンを選択してください：</string>
+    <string name="video_export_music">音楽版</string>
+    <string name="video_export_video">動画版</string>
+    <string name="video_export_music_title">音楽版（.m4a）</string>
+    <string name="video_export_music_desc">カバーと歌詞を含む音声ファイル。「Music/Reater」に保存します。</string>
+    <string name="video_export_video_title">動画版（.mp4）</string>
+    <string name="video_export_video_desc">カバー付きの動画ファイル。アルバムの「Movies/Reater」に保存します。</string>
+    <string name="video_export_music_progress">音楽ファイルを書き込み中（カバー/歌詞つき）…</string>
+    <string name="video_export_video_progress">動画を合成中（カバーフレームつき）…</string>
+    <string name="video_exporting_title">エクスポート中</string>
+    <string name="video_music_desc">音楽版</string>
+    <string name="video_movie_desc">動画版</string>
+
+    <!-- SafeBarModifiers (download/save feedback) -->
+    <string name="save_error_no_media">保存できる有効なメディアがありません</string>
+    <string name="save_done_music">音楽に保存しました</string>
+    <string name="save_done_gallery">アルバムに保存しました</string>
+    <string name="save_error_network">ダウンロードまたは保存に失敗しました。ネットワーク接続を確認してください</string>
+    <string name="save_error_audio_unavailable">音声ファイルを利用できません。先に再生画面で開いてください</string>
+    <string name="save_done_music_with_meta">音楽に保存しました（曲名/カバー/歌詞つき）</string>
+    <string name="save_error_audio_check">保存に失敗しました。ネットワークと音声ファイルを確認してください</string>
+    <string name="save_done_gallery_with_cover">アルバムに保存しました（カバー付き動画）</string>
+    <string name="save_error_compose_failed">合成に失敗しました（カバーの取得またはエンコードに失敗）</string>
+
+    <!-- Settings Dialog (extra) -->
+    <string name="settings_reader_preview_tagline">Reater リーダープレビュー：良質な投稿を探索・保存</string>
+    <string name="settings_backup_format_label">.reater 専用バックアップ形式</string>
+
+    <!-- Share Save (extra) -->
+    <string name="share_fetching_comments_auto">重要コメントを自動取得中…</string>
+    <string name="share_eta_prefix"> · 残り約 %1$s</string>
+
+    <!-- Widget -->
+    <string name="widget_title_later_reading">Reater あとで読む</string>
+
+    <!-- AdMob Config (non-translatable) -->
+    <string name="admob_app_id" translatable="false">ca-app-pub-2415998114933157~8828014028</string>
+    <string name="admob_unit_splash" translatable="false">ca-app-pub-2415998114933157/2889592955</string>
+
+    <string name="tab_pro_categories">PROカテゴリ</string>
+    <string name="tab_trash">ゴミ箱（30日）</string>
+    <string name="tab_analytics">分析</string>
+    <string name="smart_summary_separator_or"> または </string>
+    <string name="parser_instagram_share">IGシェア</string>
+    <string name="pro_lock_desc_unlocked_features">Proにアップグレード：カテゴリ無制限、専用アイコン、スマート仕分け。\n無料版の機能は変わりません。</string>
+    <string name="passcode_play_billing_button">Google Playで購入</string>
+    <string name="icon_gallery_tab_icons">アイコン</string>
+    <string name="icon_gallery_tab_custom_avatar">カスタムアイコン</string>
+    <string name="icon_gallery_unlock_pro">PROを解錠</string>
+    <string name="backup_progress_items_detail">全%1$d投稿</string>
+    <string name="main_notif_permission_dialog_title">通知権限を有効にする</string>
+    <string name="main_notif_permission_dialog_body">読書リマインダーが有効ですが、通知権限がオフです。\n\n時間どおりに受け取るには通知を許可してください。</string>
+    <string name="main_trash_move_dialog_title">ゴミ箱に移しますか？</string>
+    <string name="main_trash_restore_button">復元</string>
+    <string name="main_smart_rules_title">スマート仕分けルール</string>
+    <string name="main_smart_rule_target_category_fallback">指定カテゴリ</string>
+    <string name="smart_op_label_gt">より大きい</string>
+    <string name="smart_op_label_lt">より小さい</string>
+    <string name="smart_op_label_within_days">直近N日</string>
+    <string name="smart_op_label_older_than_days">N日前より前</string>
+    <string name="smart_op_label_newer_than_days">N日以内</string>
+    <string name="detail_ai_summary">AI要約</string>
+    <string name="post_card_ai_summary_prefix">✨ AI要約: %1$s</string>
+    <string name="media_viewer_image">画像</string>
+    <string name="analytics_pro_full">PROフル</string>
+    <string name="analytics_count_suffix">%1$d件</string>
+    <string name="analytics_slot_count_percent">%1$d件 (%2$d%%)</string>
+    <string name="detail_avatar_desc">@%1$sのアイコン</string>
+    <string name="settings_daily_preset_morning">08:00 朝読書</string>
+    <string name="settings_daily_preset_noon">12:00 昼</string>
+    <string name="settings_daily_preset_evening">18:00 仕事後</string>
+    <string name="settings_daily_preset_night">21:00 夜</string>
+    <string name="settings_daily_preset_bedtime">23:00 就寝前</string>
+    <string name="settings_ai_service_title">AIサービス (BYOK)</string>
+    <string name="settings_ai_key_saved_placeholder">••••••••••••••••（保存済み）</string>
+    <string name="notify_unread_count_title">未読%1$d件</string>
+    <string name="notify_eta_remaining"> · 残り%1$02d:%2$02d</string>
+    <string name="share_badge_video">▶ 動画</string>
+    <string name="share_badge_audio">♪ 音声</string>
+    <string name="passcode_price_loading">読み込み中…</string>
+    <string name="save_type_audio">音声</string>
+    <string name="save_type_video">動画</string>
+    <string name="save_type_image">画像</string>
+    <string name="save_downloading_what">%1$sをダウンロード中…</string>
+    <string name="smart_collection_preview_no_body">（本文なし）</string>
+</resources>

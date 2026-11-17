@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,28 +70,28 @@ fun ThreadsStatsRow(
     ) {
         ThreadsStatItem(
             drawableRes = R.drawable.ic_threads_heart,
-            contentDescription = "讚",
+            contentDescription = stringResource(R.string.threads_stats_like),
             countText = likeStr,
             iconSize = iconSize,
             tint = tint
         )
         ThreadsStatItem(
             drawableRes = R.drawable.ic_threads_comment,
-            contentDescription = "回覆",
+            contentDescription = stringResource(R.string.threads_stats_reply),
             countText = replyStr,
             iconSize = iconSize,
             tint = tint
         )
         ThreadsStatItem(
             drawableRes = R.drawable.ic_threads_repost,
-            contentDescription = "轉發",
+            contentDescription = stringResource(R.string.threads_stats_repost),
             countText = repostStr,
             iconSize = iconSize,
             tint = tint
         )
         ThreadsStatItem(
             drawableRes = R.drawable.ic_threads_share,
-            contentDescription = "分享",
+            contentDescription = stringResource(R.string.threads_stats_share),
             countText = shareStr,
             iconSize = iconSize,
             tint = tint

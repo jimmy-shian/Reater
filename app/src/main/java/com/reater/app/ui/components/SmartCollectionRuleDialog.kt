@@ -1,5 +1,6 @@
 package com.reater.app.ui.components
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +38,7 @@ import com.reater.app.data.local.entity.ItemDetail
 import com.reater.app.data.local.entity.KeywordEntity
 import com.reater.app.data.local.entity.SavedCollectionEntity
 import com.reater.app.domain.*
+import com.reater.app.R
 import com.reater.app.ui.AvatarIcons
 
 /**
@@ -150,12 +154,12 @@ fun SmartCollectionRuleDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "編輯智慧分類規則",
+                            text = stringResource(R.string.smart_collection_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         IconButton(onClick = { requestDismiss() }) {
-                            Icon(Icons.Default.Close, contentDescription = "關閉")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.smart_collection_close))
                         }
                     }
 
@@ -173,7 +177,7 @@ fun SmartCollectionRuleDialog(
                     ) {
                         // 1. 【基本設定】
                         Text(
-                            text = "基本設定",
+                            text = stringResource(R.string.smart_collection_basic_settings),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
@@ -195,7 +199,7 @@ fun SmartCollectionRuleDialog(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         painter = painterResource(AvatarIcons.getDrawableRes(iconName)),
-                                        contentDescription = "更換圖示",
+                                        contentDescription = stringResource(R.string.smart_collection_change_icon_desc),
                                         modifier = Modifier.size(24.dp),
                                         tint = Color.Unspecified
                                     )
@@ -206,7 +210,7 @@ fun SmartCollectionRuleDialog(
                             OutlinedTextField(
                                 value = name,
                                 onValueChange = { name = it },
-                                label = { Text("規則名稱") },
+                                label = { Text(stringResource(R.string.smart_collection_rule_name_label)) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
@@ -227,13 +231,13 @@ fun SmartCollectionRuleDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "啟用此智慧規則",
+                                        text = stringResource(R.string.smart_collection_enabled),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Spacer(Modifier.height(2.dp))
                                     Text(
-                                        text = "符合條件時，自動出現在此智慧分類檢視中",
+                                        text = stringResource(R.string.smart_collection_enabled_desc),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -247,7 +251,7 @@ fun SmartCollectionRuleDialog(
                         // 2. 【條件模式】
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "條件模式",
+                                text = stringResource(R.string.smart_collection_condition_mode),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -261,9 +265,9 @@ fun SmartCollectionRuleDialog(
                                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
                                     val modeLabel = if (matchMode.equals("OR", ignoreCase = true)) {
-                                        "任一條件符合（OR）"
+                                        stringResource(R.string.smart_collection_mode_or)
                                     } else {
-                                        "所有條件皆符合（AND）"
+                                        stringResource(R.string.smart_collection_mode_and)
                                     }
                                     Text(
                                         text = modeLabel,
@@ -279,7 +283,7 @@ fun SmartCollectionRuleDialog(
                                     onDismissRequest = { matchModeMenuOpen = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("所有條件皆符合（AND）", style = MaterialTheme.typography.bodyMedium) },
+                                        text = { Text(stringResource(R.string.smart_collection_mode_and), style = MaterialTheme.typography.bodyMedium) },
                                         trailingIcon = {
                                             if (!matchMode.equals("OR", ignoreCase = true)) {
                                                 Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -291,7 +295,7 @@ fun SmartCollectionRuleDialog(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("任一條件符合（OR）", style = MaterialTheme.typography.bodyMedium) },
+                                        text = { Text(stringResource(R.string.smart_collection_mode_or), style = MaterialTheme.typography.bodyMedium) },
                                         trailingIcon = {
                                             if (matchMode.equals("OR", ignoreCase = true)) {
                                                 Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -311,7 +315,7 @@ fun SmartCollectionRuleDialog(
                         // 3. 【符合條件】
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                text = "符合條件",
+                                text = stringResource(R.string.smart_collection_conditions_label),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -344,7 +348,7 @@ fun SmartCollectionRuleDialog(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("＋ 新增條件", style = MaterialTheme.typography.labelLarge)
+                                Text(stringResource(R.string.smart_collection_add_condition), style = MaterialTheme.typography.labelLarge)
                             }
                         }
 
@@ -369,13 +373,13 @@ fun SmartCollectionRuleDialog(
                                         .padding(end = 12.dp)
                                 ) {
                                     Text(
-                                        text = "符合內容：${matchedItems.size} 篇",
+                                        text = stringResource(R.string.smart_collection_matched_count, matchedItems.size),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                     Text(
-                                        text = if (matchedItems.isEmpty()) "目前無符合條件內容" else "即時比對中",
+                                        text = if (matchedItems.isEmpty()) stringResource(R.string.smart_collection_no_matches) else stringResource(R.string.smart_collection_matching_live),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -385,7 +389,7 @@ fun SmartCollectionRuleDialog(
                                     enabled = matchedItems.isNotEmpty(),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text("預覽符合內容", maxLines = 1, softWrap = false)
+                                    Text(stringResource(R.string.smart_collection_preview_matching), maxLines = 1, softWrap = false)
                                 }
                             }
                         }
@@ -414,7 +418,7 @@ fun SmartCollectionRuleDialog(
                                         contentColor = MaterialTheme.colorScheme.outline
                                     )
                                 ) {
-                                    Text("恢復預設規則", style = MaterialTheme.typography.bodyMedium)
+                                    Text(stringResource(R.string.smart_collection_reset_default), style = MaterialTheme.typography.bodyMedium)
                                 }
                             } else if (onDelete != null) {
                                 TextButton(
@@ -423,7 +427,7 @@ fun SmartCollectionRuleDialog(
                                         contentColor = MaterialTheme.colorScheme.error
                                     )
                                 ) {
-                                    Text("刪除規則", style = MaterialTheme.typography.bodyMedium)
+                                    Text(stringResource(R.string.smart_collection_delete_rule), style = MaterialTheme.typography.bodyMedium)
                                 }
                             } else {
                                 Spacer(Modifier.width(1.dp))
@@ -434,7 +438,7 @@ fun SmartCollectionRuleDialog(
                                     onClick = { requestDismiss() },
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text("取消")
+                                    Text(stringResource(R.string.smart_collection_cancel))
                                 }
                                 Button(
                                     onClick = {
@@ -445,7 +449,7 @@ fun SmartCollectionRuleDialog(
                                     enabled = isPro,
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text("儲存")
+                                    Text(stringResource(R.string.smart_collection_save))
                                 }
                             }
                         }
@@ -482,19 +486,19 @@ fun SmartCollectionRuleDialog(
     if (showDiscardConfirm) {
         AlertDialog(
             onDismissRequest = { showDiscardConfirm = false },
-            title = { Text("放棄未儲存的修改？") },
-            text = { Text("你有尚未儲存的修改，離開後這些修改將會遺失。") },
+            title = { Text(stringResource(R.string.smart_collection_discard_changes_title)) },
+            text = { Text(stringResource(R.string.smart_collection_discard_changes_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDiscardConfirm = false
                     onDismiss()
                 }) {
-                    Text("放棄修改", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.smart_collection_discard_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDiscardConfirm = false }) {
-                    Text("繼續編輯")
+                    Text(stringResource(R.string.smart_collection_continue_editing))
                 }
             }
         )
@@ -504,19 +508,19 @@ fun SmartCollectionRuleDialog(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("確定刪除規則？") },
-            text = { Text("刪除此規則將移除該智慧分類，但原始貼文仍會完整保留。") },
+            title = { Text(stringResource(R.string.smart_collection_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.smart_collection_delete_confirm_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete?.invoke()
                     onDismiss()
                 }) {
-                    Text("確定刪除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.smart_collection_delete_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.smart_collection_cancel)) }
             }
         )
     }
@@ -525,8 +529,8 @@ fun SmartCollectionRuleDialog(
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text("恢復預設規則？") },
-            text = { Text("將會把條件還原為「${collection.name}」的系統初始條件。") },
+            title = { Text(stringResource(R.string.smart_collection_reset_confirm_title)) },
+            text = { Text(stringResource(R.string.smart_collection_reset_confirm_body, collection.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     showResetConfirm = false
@@ -538,14 +542,61 @@ fun SmartCollectionRuleDialog(
                     criteria.addAll(def.normalizedCriteria())
                     onResetToDefault?.invoke()
                 }) {
-                    Text("恢復預設")
+                    Text(stringResource(R.string.smart_collection_reset_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showResetConfirm = false }) { Text(stringResource(R.string.smart_collection_cancel)) }
             }
         )
     }
+}
+
+/**
+ * 規則欄位顯示名稱 → 字串資源（顯示用；domain 之 label 僅供內部預設，不再直接顯示）。
+ */
+@StringRes
+private fun fieldLabelRes(field: RuleField): Int = when (field) {
+    RuleField.AUTHOR -> R.string.smart_field_author
+    RuleField.TAG -> R.string.smart_field_tag
+    RuleField.CATEGORY -> R.string.smart_field_category
+    RuleField.CONTENT -> R.string.smart_field_content
+    RuleField.COMMENT_TEXT -> R.string.smart_field_comment_text
+    RuleField.AI_SUMMARY -> R.string.smart_field_ai_summary
+    RuleField.MANUAL_NOTE -> R.string.smart_field_manual_note
+    RuleField.FAVORITE -> R.string.smart_field_favorite
+    RuleField.READ_STATUS -> R.string.smart_field_read_status
+    RuleField.HAS_MEDIA -> R.string.smart_field_has_media
+    RuleField.HAS_IMAGE -> R.string.smart_field_has_image
+    RuleField.HAS_VIDEO -> R.string.smart_field_has_video
+    RuleField.LIKES -> R.string.smart_field_likes
+    RuleField.REPLIES -> R.string.smart_field_replies
+    RuleField.REPOSTS -> R.string.smart_field_reposts
+    RuleField.SHARES -> R.string.smart_field_shares
+    RuleField.SAVED_DATE -> R.string.smart_field_saved_date
+    RuleField.CONTENT_MATCH_CATEGORY_KEYWORDS -> R.string.smart_field_content_match_keywords
+    RuleField.COMMENT_MATCH_CATEGORY_KEYWORDS -> R.string.smart_field_comment_match_keywords
+}
+
+/**
+ * 比較運算子顯示符號/短標籤 → 字串資源（顯示用）。
+ */
+@StringRes
+private fun operatorSymbolRes(op: ComparisonOperator): Int = when (op) {
+    ComparisonOperator.EQUALS -> R.string.smart_op_equals
+    ComparisonOperator.NOT_EQUALS -> R.string.smart_op_not_equals
+    ComparisonOperator.CONTAINS -> R.string.smart_op_contains
+    ComparisonOperator.NOT_CONTAINS -> R.string.smart_op_not_contains
+    ComparisonOperator.CONTAINS_ANY -> R.string.smart_op_contains_any
+    ComparisonOperator.CONTAINS_ALL -> R.string.smart_op_contains_all
+    ComparisonOperator.GREATER_EQUAL -> R.string.smart_op_gte
+    ComparisonOperator.GREATER_THAN -> R.string.smart_op_gt
+    ComparisonOperator.LESS_EQUAL -> R.string.smart_op_lte
+    ComparisonOperator.LESS_THAN -> R.string.smart_op_lt
+    ComparisonOperator.BETWEEN -> R.string.smart_op_between
+    ComparisonOperator.WITHIN_DAYS -> R.string.smart_op_within_days
+    ComparisonOperator.OLDER_THAN_DAYS -> R.string.smart_op_older_than_days
+    ComparisonOperator.NEWER_THAN_DAYS -> R.string.smart_op_newer_than_days
 }
 
 /**
@@ -589,7 +640,7 @@ private fun ConditionCard(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = criterion.field.label,
+                            text = stringResource(fieldLabelRes(criterion.field)),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall,
@@ -626,7 +677,7 @@ private fun ConditionCard(
                         enabled = showOpSelector
                     ) {
                         Text(
-                            text = criterion.operator.symbol,
+                            text = stringResource(operatorSymbolRes(criterion.operator)),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall
@@ -644,7 +695,7 @@ private fun ConditionCard(
                         ) {
                             availableOps.forEach { op ->
                                 DropdownMenuItem(
-                                     text = { Text(op.symbol, style = MaterialTheme.typography.bodySmall) },
+                                     text = { Text(stringResource(operatorSymbolRes(op)), style = MaterialTheme.typography.bodySmall) },
                                     trailingIcon = {
                                         if (criterion.operator == op) {
                                             Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
@@ -668,7 +719,7 @@ private fun ConditionCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "刪除條件",
+                            contentDescription = stringResource(R.string.smart_collection_delete_condition_desc),
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -702,7 +753,7 @@ private fun FieldDropdownMenu(
             .heightIn(max = 360.dp)
     ) {
         val groups = listOf(
-            "內容" to listOf(
+            stringResource(R.string.smart_collection_field_group_content) to listOf(
                 RuleField.AUTHOR,
                 RuleField.TAG,
                 RuleField.CATEGORY,
@@ -711,23 +762,23 @@ private fun FieldDropdownMenu(
                 RuleField.AI_SUMMARY,
                 RuleField.MANUAL_NOTE
             ),
-            "狀態" to listOf(
+            stringResource(R.string.smart_collection_field_group_status) to listOf(
                 RuleField.FAVORITE,
                 RuleField.READ_STATUS,
                 RuleField.HAS_MEDIA,
                 RuleField.HAS_IMAGE,
                 RuleField.HAS_VIDEO
             ),
-            "互動數據" to listOf(
+            stringResource(R.string.smart_collection_field_group_interaction) to listOf(
                 RuleField.LIKES,
                 RuleField.REPLIES,
                 RuleField.REPOSTS,
                 RuleField.SHARES
             ),
-            "時間" to listOf(
+            stringResource(R.string.smart_collection_field_group_time) to listOf(
                 RuleField.SAVED_DATE
             ),
-            "智慧分類" to listOf(
+            stringResource(R.string.smart_collection_field_group_smart) to listOf(
                 RuleField.CONTENT_MATCH_CATEGORY_KEYWORDS,
                 RuleField.COMMENT_MATCH_CATEGORY_KEYWORDS
             )
@@ -753,7 +804,7 @@ private fun FieldDropdownMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = field.label,
+                            text = stringResource(fieldLabelRes(field)),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     },
@@ -893,7 +944,7 @@ private fun ConditionValueEditor(
                                 onUpdate(criterion.copy(value = "$minStr..$maxStr"))
                             }
                         },
-                        label = { Text("最小值") },
+                        label = { Text(stringResource(R.string.smart_collection_hint_min_value)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
@@ -907,7 +958,7 @@ private fun ConditionValueEditor(
                                 onUpdate(criterion.copy(value = "$minStr..$maxStr"))
                             }
                         },
-                        label = { Text("最大值") },
+                        label = { Text(stringResource(R.string.smart_collection_hint_max_value)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
@@ -921,14 +972,14 @@ private fun ConditionValueEditor(
                             onUpdate(criterion.copy(value = newVal))
                         }
                     },
-                    label = { Text("${criterion.field.label}數值") },
+                    label = { Text(stringResource(fieldLabelRes(criterion.field))) },
                     placeholder = {
                         Text(
                             when (criterion.field) {
-                                RuleField.LIKES -> "例如 100"
-                                RuleField.REPLIES -> "例如 20"
-                                RuleField.REPOSTS -> "例如 10"
-                                RuleField.SHARES -> "例如 5"
+                                RuleField.LIKES -> stringResource(R.string.smart_collection_example_likes)
+                                RuleField.REPLIES -> stringResource(R.string.smart_collection_example_replies)
+                                RuleField.REPOSTS -> stringResource(R.string.smart_collection_example_reposts)
+                                RuleField.SHARES -> stringResource(R.string.smart_collection_example_shares)
                             }
                         )
                     },
@@ -945,25 +996,25 @@ private fun ConditionValueEditor(
         RuleField.AUTHOR, RuleField.TAG, RuleField.CONTENT, RuleField.COMMENT_TEXT,
         RuleField.AI_SUMMARY, RuleField.MANUAL_NOTE -> {
             val hint = when (criterion.operator) {
-                ComparisonOperator.CONTAINS_ANY -> "多個關鍵字以空白分開，命中任一即可"
-                ComparisonOperator.CONTAINS_ALL -> "多個關鍵字以空白分開，需全數命中"
+                ComparisonOperator.CONTAINS_ANY -> stringResource(R.string.smart_collection_hint_contains_any)
+                ComparisonOperator.CONTAINS_ALL -> stringResource(R.string.smart_collection_hint_contains_all)
                 else -> null
             }
 
             OutlinedTextField(
                 value = criterion.value,
                 onValueChange = { onUpdate(criterion.copy(value = it)) },
-                label = { Text(criterion.field.label) },
+                label = { Text(stringResource(fieldLabelRes(criterion.field))) },
                 supportingText = hint?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
                 placeholder = {
                     Text(
                         when (criterion.field) {
-                            RuleField.AUTHOR -> "例如 @user 或 暱稱"
-                            RuleField.TAG -> "例如 AI"
-                            RuleField.CONTENT -> "例如 Midjourney 或 Prompt"
-                            RuleField.COMMENT_TEXT -> "例如 教學 資源"
-                            RuleField.AI_SUMMARY -> "例如 精華 重點"
-                            RuleField.MANUAL_NOTE -> "例如 必看"
+                            RuleField.AUTHOR -> stringResource(R.string.smart_collection_example_author)
+                            RuleField.TAG -> stringResource(R.string.smart_collection_example_tag)
+                            RuleField.CONTENT -> stringResource(R.string.smart_collection_example_content)
+                            RuleField.COMMENT_TEXT -> stringResource(R.string.smart_collection_example_comment)
+                            RuleField.AI_SUMMARY -> stringResource(R.string.smart_collection_example_ai_summary)
+                            RuleField.MANUAL_NOTE -> stringResource(R.string.smart_collection_example_manual_note)
                         }
                     )
                 },
@@ -980,12 +1031,12 @@ private fun ConditionValueEditor(
                 FilterChip(
                     selected = criterion.value.equals("true", ignoreCase = true) || criterion.value == "已收藏",
                     onClick = { onUpdate(criterion.copy(value = "true")) },
-                    label = { Text("已收藏") }
+                    label = { Text(stringResource(R.string.smart_collection_favorite_true_label)) }
                 )
                 FilterChip(
                     selected = criterion.value.equals("false", ignoreCase = true) || criterion.value == "未收藏",
                     onClick = { onUpdate(criterion.copy(value = "false")) },
-                    label = { Text("未收藏") }
+                    label = { Text(stringResource(R.string.smart_collection_favorite_false_label)) }
                 )
             }
         }
@@ -994,12 +1045,12 @@ private fun ConditionValueEditor(
                 FilterChip(
                     selected = criterion.value.contains("未讀"),
                     onClick = { onUpdate(criterion.copy(value = "未讀")) },
-                    label = { Text("未讀") }
+                    label = { Text(stringResource(R.string.smart_collection_read_status_unread_label)) }
                 )
                 FilterChip(
                     selected = criterion.value.contains("已讀"),
                     onClick = { onUpdate(criterion.copy(value = "已讀")) },
-                    label = { Text("已讀") }
+                    label = { Text(stringResource(R.string.smart_collection_read_status_read_label)) }
                 )
             }
         }
@@ -1012,12 +1063,12 @@ private fun ConditionValueEditor(
                 FilterChip(
                     selected = criterion.value.equals("true", ignoreCase = true) || criterion.value == "是",
                     onClick = { onUpdate(criterion.copy(value = "true")) },
-                    label = { Text("是") }
+                    label = { Text(stringResource(R.string.smart_collection_has_media_true_label)) }
                 )
                 FilterChip(
                     selected = criterion.value.equals("false", ignoreCase = true) || criterion.value == "否",
                     onClick = { onUpdate(criterion.copy(value = "false")) },
-                    label = { Text("否") }
+                    label = { Text(stringResource(R.string.smart_collection_has_media_false_label)) }
                 )
             }
         }
@@ -1031,9 +1082,9 @@ private fun ConditionValueEditor(
                 onValueChange = { newVal ->
                     if (newVal.all { it.isDigit() }) onUpdate(criterion.copy(value = newVal))
                 },
-                label = { Text("天數") },
-                suffix = { Text("天") },
-                placeholder = { Text("例如 30") },
+                label = { Text(stringResource(R.string.smart_collection_days_label)) },
+                suffix = { Text(stringResource(R.string.smart_collection_days_suffix)) },
+                placeholder = { Text(stringResource(R.string.smart_collection_days_placeholder)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -1045,7 +1096,7 @@ private fun ConditionValueEditor(
         // ----------------------------------------------------
         RuleField.CATEGORY -> {
             val selectedCatName = categories.firstOrNull { it.id.toString() == criterion.value }?.name
-                ?: categories.firstOrNull()?.name ?: "選擇分類"
+                ?: categories.firstOrNull()?.name ?: stringResource(R.string.smart_collection_select_category_hint)
 
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
@@ -1100,7 +1151,7 @@ private fun ConditionValueEditor(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("指定分類：$currentCatName", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.smart_collection_current_category, currentCatName), style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.weight(1f))
                         Icon(Icons.Default.KeyboardArrowDown, null)
                     }
@@ -1138,7 +1189,7 @@ private fun ConditionValueEditor(
                 // 針對「內容命中分類關鍵字」，提供來源選擇
                 if (criterion.field == RuleField.CONTENT_MATCH_CATEGORY_KEYWORDS) {
                     Text(
-                        text = "比對來源：",
+                        text = stringResource(R.string.smart_collection_match_source_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1152,35 +1203,35 @@ private fun ConditionValueEditor(
                             onClick = {
                                 onUpdate(criterion.copy(config = config.copy(includeTitle = !config.includeTitle)))
                             },
-                            label = { Text("標題") }
+                            label = { Text(stringResource(R.string.smart_collection_source_title)) }
                         )
                         FilterChip(
                             selected = config.includeBody,
                             onClick = {
                                 onUpdate(criterion.copy(config = config.copy(includeBody = !config.includeBody)))
                             },
-                            label = { Text("內文") }
+                            label = { Text(stringResource(R.string.smart_collection_source_body)) }
                         )
                         FilterChip(
                             selected = config.includeComments,
                             onClick = {
                                 onUpdate(criterion.copy(config = config.copy(includeComments = !config.includeComments)))
                             },
-                            label = { Text("留言") }
+                            label = { Text(stringResource(R.string.smart_collection_source_comments)) }
                         )
                         FilterChip(
                             selected = config.includeAiSummary,
                             onClick = {
                                 onUpdate(criterion.copy(config = config.copy(includeAiSummary = !config.includeAiSummary)))
                             },
-                            label = { Text("AI 摘要") }
+                            label = { Text(stringResource(R.string.smart_field_ai_summary)) }
                         )
                         FilterChip(
                             selected = config.includeManualNote,
                             onClick = {
                                 onUpdate(criterion.copy(config = config.copy(includeManualNote = !config.includeManualNote)))
                             },
-                            label = { Text("筆記") }
+                            label = { Text(stringResource(R.string.smart_collection_source_manual_note)) }
                         )
                     }
                 }
@@ -1217,12 +1268,12 @@ private fun MatchedPostsPreviewDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "符合條件內容預覽（共 ${posts.size} 篇）",
+                        text = stringResource(R.string.smart_collection_preview_title, posts.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "關閉")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.smart_collection_close))
                     }
                 }
 
@@ -1236,7 +1287,7 @@ private fun MatchedPostsPreviewDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "目前無符合條件的貼文",
+                            text = stringResource(R.string.smart_collection_preview_empty),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -1250,8 +1301,9 @@ private fun MatchedPostsPreviewDialog(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(previewList, key = { it.item.id }) { post ->
+                            val context = LocalContext.current
                             val reasons = remember(post, rule, categories, keywords) {
-                                SmartCollectionEngine.getMatchReasons(rule, post, categories, keywords)
+                                SmartCollectionEngine.getMatchReasons(context, rule, post, categories, keywords)
                             }
 
                             Surface(
@@ -1280,7 +1332,7 @@ private fun MatchedPostsPreviewDialog(
 
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = post.displayBody.ifBlank { "(無內文)" },
+                                        text = post.displayBody.ifBlank { stringResource(R.string.smart_collection_preview_no_body) },
                                         style = MaterialTheme.typography.bodySmall,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
@@ -1295,7 +1347,7 @@ private fun MatchedPostsPreviewDialog(
                                         ) {
                                             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                                                 Text(
-                                                    text = "命中條件：",
+                                                    text = stringResource(R.string.smart_collection_preview_matched_label),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.primary,
                                                     fontWeight = FontWeight.Bold
@@ -1321,7 +1373,7 @@ private fun MatchedPostsPreviewDialog(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "… 另有 ${posts.size - 5} 篇符合",
+                                        text = stringResource(R.string.smart_collection_preview_more, posts.size - 5),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.outline
                                     )
@@ -1337,7 +1389,7 @@ private fun MatchedPostsPreviewDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("關閉預覽")
+                    Text(stringResource(R.string.smart_collection_preview_close))
                 }
             }
         }
@@ -1363,7 +1415,7 @@ private fun IconPickerDialog(
         ) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(
-                    text = "選擇規則專屬圖示",
+                    text = stringResource(R.string.smart_collection_icon_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -1371,7 +1423,7 @@ private fun IconPickerDialog(
 
                 // 優先展示 5 個專門給規則使用的向量圖示
                 Text(
-                    text = "智慧規則專用圖示",
+                    text = stringResource(R.string.smart_collection_icon_smart_rule),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
@@ -1395,7 +1447,7 @@ private fun IconPickerDialog(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     painter = painterResource(iconItem.resId),
-                                    contentDescription = iconItem.name,
+                                    contentDescription = stringResource(iconItem.name),
                                     modifier = Modifier.size(24.dp),
                                     tint = Color.Unspecified
                                 )
@@ -1406,7 +1458,7 @@ private fun IconPickerDialog(
 
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "其他可用圖示",
+                    text = stringResource(R.string.smart_collection_icon_other),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1429,7 +1481,7 @@ private fun IconPickerDialog(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     painter = painterResource(iconItem.resId),
-                                    contentDescription = iconItem.name,
+                                    contentDescription = stringResource(iconItem.name),
                                     modifier = Modifier.size(24.dp),
                                     tint = Color.Unspecified
                                 )
@@ -1440,7 +1492,7 @@ private fun IconPickerDialog(
 
                 Spacer(Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.smart_collection_cancel)) }
                 }
             }
         }

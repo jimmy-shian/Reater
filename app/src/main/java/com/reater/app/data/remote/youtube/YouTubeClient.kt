@@ -1,11 +1,14 @@
 package com.reater.app.data.remote.youtube
 
+import android.content.Context
+import com.reater.app.R
 import com.reater.app.data.remote.DownloadProgress
 import com.reater.app.data.remote.FetchedMedia
 import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.MediaDownloader
 import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.UrlParser
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -17,7 +20,8 @@ import javax.inject.Singleton
 
 @Singleton
 class YouTubeClient @Inject constructor(
-    private val mediaDownloader: MediaDownloader
+    private val mediaDownloader: MediaDownloader,
+    @ApplicationContext private val context: Context
 ) {
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -37,7 +41,7 @@ class YouTubeClient @Inject constructor(
                 val parsed = UrlParser.parseYouTubeUrl(url)
                 val videoId = parsed?.videoId?.ifBlank { fallbackVideoId } ?: fallbackVideoId
                 if (videoId.isBlank()) {
-                    return@withContext Result.failure(IllegalArgumentException("無效的 YouTube 網址"))
+                    return@withContext Result.failure(IllegalArgumentException(context.getString(R.string.fetch_error_invalid_youtube_url)))
                 }
 
                 // 1. YouTube 官方免 Token oEmbed API 取得公開資訊
@@ -93,7 +97,7 @@ class YouTubeClient @Inject constructor(
                     }
                 }
 
-                val body = title.ifBlank { parsed?.kindLabel ?: "YouTube 影片" }
+                val body = title.ifBlank { parsed?.kindLabel ?: context.getString(R.string.fetch_youtube_fallback_title) }
                 val canonical = parsed?.canonicalUrl ?: "https://www.youtube.com/watch?v=$videoId"
 
                 Result.success(

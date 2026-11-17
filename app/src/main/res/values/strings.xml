@@ -1,27 +1,972 @@
 <resources>
+    <!-- App Identity -->
     <string name="app_name">Reater</string>
-    <string name="share_save_title">儲存到 Reater</string>
+
+    <!-- General / Common -->
     <string name="save">儲存</string>
     <string name="cancel">取消</string>
+    <string name="confirm">確認</string>
+    <string name="delete">刪除</string>
+    <string name="close">關閉</string>
+    <string name="ok">我知道了</string>
+    <string name="loading">載入中…</string>
+    <string name="processing">處理中…</string>
+    <string name="retry">重新載入</string>
+    <string name="error_unknown">未知錯誤</string>
+    <string name="error_save_failed">儲存失敗</string>
+    <string name="error_load_failed">載入失敗</string>
+    <string name="copied">已複製</string>
+    <string name="copied_to_clipboard">已複製到剪貼簿</string>
+
+    <!-- Share / Save Flow -->
+    <string name="share_save_title">儲存到 Reater</string>
     <string name="paste_from_clipboard">從剪貼簿貼入</string>
-    <string name="body_placeholder">貼文內文...</string>
-    <string name="comments_placeholder">重要留言 / 討論筆記...</string>
-    <string name="note_placeholder">我的個人筆記...</string>
-    <string name="summary_placeholder">重點摘要...</string>
-    <string name="fetching_status">正在解析 Threads 內容...</string>
+    <string name="body_placeholder">貼文內文…</string>
+    <string name="comments_placeholder">重要留言 / 討論筆記…</string>
+    <string name="note_placeholder">我的個人筆記…</string>
+    <string name="summary_placeholder">重點摘要…</string>
+    <string name="fetching_status">正在解析 Threads 內容…</string>
     <string name="fetch_failed_tip">無法自動擷取內容，請由下方手動貼入</string>
     <string name="comments_partial_tip">已擷取部分公開留言 (可手動補齊)</string>
-    <string name="search_hint">搜尋內文、留言、筆記或標籤...</string>
+    <string name="search_hint">搜尋內文、留言、筆記或標籤…</string>
+    <string name="fetching_post">正在讀取貼文資料…</string>
+    <string name="save_error">儲存失敗</string>
+    <string name="notification_permission_missing">未開啟通知權限，下載仍會繼續，但不會顯示進度</string>
+    <string name="saved_downloading_media">已儲存，媒體背景下載中（進度見通知欄）</string>
+    <string name="saved_success">已儲存至 Reater！</string>
+    <string name="share_text_too_long">分享文字過長，超過部分已截除。</string>
+    <string name="conflict_title_in_trash">這篇文章在垃圾桶中</string>
+    <string name="conflict_title_exists">這篇文章已經儲存</string>
+    <string name="conflict_message_in_trash">要還原更新，還是另存新篇？</string>
+    <string name="conflict_message_exists">要覆蓋更新，還是另存新篇？</string>
+    <string name="conflict_action_restore">還原更新</string>
+    <string name="conflict_action_overwrite">覆蓋更新</string>
+    <string name="conflict_action_cancel">取消</string>
+    <string name="conflict_action_new">新建</string>
+    <string name="conflict_action_save_as">另存新的</string>
+    <string name="save_error_with_reason">儲存失敗：%1$s</string>
+    <string name="free_category_limit_remaining">還可新增 %1$d 個分類（已用 %2$d/%3$d）</string>
+    <string name="free_category_limit_full">自訂分類已滿（%1$d/%2$d），升級 Pro 可無限新增</string>
+    <string name="pro_icon_locked">此為 Pro 專屬圖示，請先升級解鎖</string>
+    <string name="accessibility_favorited">已珍藏</string>
+    <string name="accessibility_add_to_favorites">加入珍藏</string>
+    <string name="accessibility_close">關閉</string>
+    <string name="label_select_category">選擇分類</string>
+    <string name="smart_source_smart">已依內文關鍵字與智慧關聯推薦分類</string>
+    <string name="smart_source_topic">已依過往同主題紀錄預選分類</string>
+    <string name="smart_source_author">已依過往同作者紀錄預選分類</string>
+    <string name="status_web_resolving">正在解析分享連結…</string>
+    <string name="status_downloading_media">正在下載媒體 (%1$d/%2$d)%5$s%6$s</string>
+    <string name="status_analyzing_instagram">正在自動分析 Instagram 內容與下載離線媒體…</string>
+    <string name="status_analyzing_x">正在自動分析 X 貼文內容與下載離線媒體…</string>
+    <string name="status_analyzing_facebook">正在自動分析 Facebook 內容與下載離線媒體…</string>
+    <string name="status_analyzing_youtube">正在自動分析 YouTube 內容與下載離線媒體…</string>
+    <string name="status_analyzing_threads">正在自動分析 Threads 內容與下載離線媒體…</string>
+    <string name="status_background_download">背景下載</string>
+    <string name="label_post_body">貼文內文</string>
+    <string name="label_loading">載入中…</string>
+    <string name="button_paste_body">貼上內文</string>
+    <string name="fetching_instagram">正在自動擷取 Instagram 內容中…</string>
+    <string name="fetching_x">正在自動擷取 X 貼文內容中…</string>
+    <string name="fetching_facebook">正在自動擷取 Facebook 內容中…</string>
+    <string name="fetching_youtube">正在自動擷取 YouTube 內容中…</string>
+    <string name="fetching_threads">正在自動擷取 Threads 內容中…</string>
+    <string name="label_comments">精華留言</string>
+    <string name="label_loading_comments">載入中…</string>
+    <string name="button_paste_comments">貼上留言</string>
+    <string name="notice_comment_chain">這是留言：上方為原文，下方為留言內容。要存整串請分享原貼文。</string>
+    <string name="media_progress">媒體 %1$d/%2$d · 未下載的將於背景續傳</string>
+    <string name="media_downloaded_count">已下載媒體 (%1$d)</string>
+    <string name="media_no_urls">此貼文含媒體但解析失敗，請點右上開啟 Threads 查看。</string>
+    <string name="label_personal_note">個人筆記</string>
+    <string name="button_create_category">新建</string>
+    <string name="button_analyze_and_save">分析並儲存</string>
+
+    <!-- Tab / Navigation -->
     <string name="tab_all">全部</string>
     <string name="tab_unread">未讀</string>
     <string name="tab_favorite">收藏</string>
+    <string name="tab_pro_categories">PRO 分類</string>
+    <string name="tab_trash">垃圾桶 (30天)</string>
+    <string name="tab_analytics">分析</string>
     <string name="category_uncategorized">未分類</string>
+
+    <!-- Settings -->
     <string name="settings">設定</string>
     <string name="export_data">匯出資料</string>
     <string name="import_data">匯入資料</string>
     <string name="openai_api_key">OpenAI API Key (BYOK)</string>
     <string name="model_selection">AI 模型選擇</string>
-    <string name="admob_app_id">ca-app-pub-2415998114933157~8828014028</string>
-    <string name="admob_unit_splash">ca-app-pub-2415998114933157/2889592955</string>
-    <string name="ad_bypass_reset_token" translatable="false"></string>
+    <string name="settings_title">系統設定</string>
+    <string name="settings_section_appearance">外觀與閱讀</string>
+    <string name="settings_theme_title">亮暗模式</string>
+    <string name="settings_theme_system">跟隨系統</string>
+    <string name="settings_theme_light">淺色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_font_size_title">字體大小</string>
+    <string name="settings_section_avatar">個人大頭像與圖示庫 (PRO 專屬)</string>
+    <string name="settings_avatar_custom_photo">自訂相片頭貼</string>
+    <string name="settings_avatar_imported">已從本機相簿匯入自訂個人照片</string>
+    <string name="settings_avatar_gallery">圖示展覽室</string>
+    <string name="settings_avatar_custom">自訂頭像</string>
+    <string name="settings_avatar_reset">重設</string>
+    <string name="settings_pro_unlock_avatar">升級 Pro 解鎖自訂大頭像</string>
+    <string name="settings_pro_unlock_icons">解鎖尊爵圖示與自訂相片頭貼</string>
+    <string name="settings_pro_unlock_button">解鎖</string>
+    <string name="settings_section_notifications">通知與推播提醒</string>
+    <string name="settings_notification_permission_granted">推播權限：已授權</string>
+    <string name="settings_notification_permission_denied">推播權限：未授權</string>
+    <string name="settings_notification_button_grant">授權</string>
+    <string name="settings_notification_unread_title">未讀提醒</string>
+    <string name="settings_notification_unread_desc">儲存後若仍未讀，延遲自動發送推播提醒</string>
+    <string name="settings_notification_delay_title">延遲時間</string>
+    <string name="settings_notification_delay_custom_label">自訂分鐘數</string>
+    <string name="settings_notification_delay_suffix">分鐘</string>
+    <string name="settings_notification_delay_hint">可輸入 1～120</string>
+    <string name="settings_notification_daily_title">每日回顧</string>
+    <string name="settings_notification_daily_desc">每天固定時間點推播彙整未讀數</string>
+    <string name="settings_notification_daily_period_morning">晨間</string>
+    <string name="settings_notification_daily_period_noon">午間</string>
+    <string name="settings_notification_daily_period_afternoon">下午</string>
+    <string name="settings_notification_daily_period_evening">晚間</string>
+    <string name="settings_notification_daily_period_late_night">深夜</string>
+    <string name="settings_notification_daily_push_time_title">推送時間</string>
+    <string name="settings_notification_daily_custom_hour_label">自訂小時</string>
+    <string name="settings_notification_daily_custom_hour_suffix">時</string>
+    <string name="settings_notification_daily_custom_hour_hint">可輸入 0～23</string>
+    <string name="settings_section_backup">資料備份與還原</string>
+    <string name="settings_backup_export">匯出備份</string>
+    <string name="settings_backup_import">匯入備份</string>
+    <string name="settings_section_uninstall">解除安裝與資料保留</string>
+    <string name="settings_uninstall_retain_data">保留可還原的 Reater 資料</string>
+    <string name="settings_uninstall_retain_desc">重新安裝後可再次匯入。</string>
+    <string name="settings_ai_expand_desc">收合 AI 設定</string>
+    <string name="settings_ai_collapse_desc">展開 AI 設定</string>
+    <string name="settings_ai_provider_openai">OpenAI</string>
+    <string name="settings_ai_provider_custom">自訂端點</string>
+    <string name="settings_ai_model_not_specified">尚未指定模型</string>
+    <string name="settings_ai_key_configured">API Key 已設定</string>
+    <string name="settings_ai_key_not_configured">尚未設定</string>
+    <string name="settings_ai_model_id_hint">從 API 取得的 Model ID</string>
+    <string name="settings_ai_fetch_models">展開可用模型清單</string>
+    <string name="settings_ai_no_models">尚未取得可用模型清單</string>
+    <string name="settings_ai_no_matching_models">沒有符合「%1$s」的模型</string>
+    <string name="settings_ai_allow_transfer">允許傳送貼文與留言至 AI 服務</string>
+    <string name="settings_ai_auto_analyze_on_save">儲存後自動 AI 分析</string>
+    <string name="settings_ai_auto_analyze_desc">儲存貼文時在背景產生摘要並發送通知</string>
+
+    <!-- Smart Collection / Classification -->
+    <string name="smart_field_author">作者</string>
+    <string name="smart_field_tag">標籤</string>
+    <string name="smart_field_category">分類</string>
+    <string name="smart_field_content">內文 / 標題</string>
+    <string name="smart_field_comment_text">留言內容</string>
+    <string name="smart_field_ai_summary">AI 摘要</string>
+    <string name="smart_field_manual_note">筆記</string>
+    <string name="smart_field_favorite">收藏狀態</string>
+    <string name="smart_field_read_status">閱讀狀態</string>
+    <string name="smart_field_has_media">包含媒體</string>
+    <string name="smart_field_has_image">包含圖片</string>
+    <string name="smart_field_has_video">包含影片</string>
+    <string name="smart_field_likes">按讚數</string>
+    <string name="smart_field_replies">留言數</string>
+    <string name="smart_field_reposts">轉發數</string>
+    <string name="smart_field_shares">分享數</string>
+    <string name="smart_field_saved_date">收藏時間</string>
+    <string name="smart_field_content_match_keywords">內容命中分類關鍵字</string>
+    <string name="smart_field_comment_match_keywords">留言命中分類關鍵字</string>
+
+    <string name="smart_op_equals">=</string>
+    <string name="smart_op_not_equals">≠</string>
+    <string name="smart_op_contains">包含</string>
+    <string name="smart_op_not_contains">不包含</string>
+    <string name="smart_op_contains_any">包含任一</string>
+    <string name="smart_op_contains_all">包含所有</string>
+    <string name="smart_op_gte">≥</string>
+    <string name="smart_op_gt">&gt;</string>
+    <string name="smart_op_lte">≤</string>
+    <string name="smart_op_lt">&lt;</string>
+    <string name="smart_op_between">介於</string>
+    <string name="smart_op_within_days">最近</string>
+    <string name="smart_op_older_than_days">早於</string>
+    <string name="smart_op_newer_than_days">晚於</string>
+
+    <string name="smart_value_read">已讀</string>
+    <string name="smart_value_unread">未讀</string>
+    <string name="smart_value_true">是</string>
+    <string name="smart_value_false">否</string>
+    <string name="smart_value_favorited">已收藏</string>
+    <string name="smart_value_unfavorited">未收藏</string>
+
+    <string name="smart_preset_hot_name">高讚熱門</string>
+    <string name="smart_preset_study_name">長期必讀</string>
+    <string name="smart_preset_sparkles_name">靈感庫</string>
+
+    <string name="smart_category_keywords_inspiration">靈感,點子,想法,構思,idea,brainstorm,創意</string>
+    <string name="smart_category_keywords_job">找工作,求職,履歷,面試,徵才,工作機會,104,LinkedIn,職缺,獵頭</string>
+    <string name="smart_category_keywords_ai_art">GPT畫圖,AI畫圖,Prompt,Midjourney,Stable Diffusion,SDXL,圖像生成,生圖,DALL-E,ComfyUI</string>
+
+    <string name="smart_desc_likes">按讚數 %1$d %2$s %3$s</string>
+    <string name="smart_desc_replies">留言數 %1$d %2$s %3$s</string>
+    <string name="smart_desc_reposts">轉發數 %1$d %2$s %3$s</string>
+    <string name="smart_desc_shares">分享數符合條件</string>
+    <string name="smart_desc_author">作者符合「%1$s」</string>
+    <string name="smart_desc_tag">標籤包含「%1$s」</string>
+    <string name="smart_desc_content">內文/標題包含「%1$s」</string>
+    <string name="smart_desc_comment">留言包含「%1$s」</string>
+    <string name="smart_desc_manual_note">筆記包含「%1$s」</string>
+    <string name="smart_desc_category">目前分類為「%1$s」</string>
+    <string name="smart_desc_favorite_true">狀態為已收藏</string>
+    <string name="smart_desc_favorite_false">狀態為未收藏</string>
+    <string name="smart_desc_read_status_read">閱讀狀態為已讀</string>
+    <string name="smart_desc_read_status_unread">閱讀狀態為未讀</string>
+    <string name="smart_desc_has_media">含有多媒體附件</string>
+    <string name="smart_desc_has_image">含有圖片內容</string>
+    <string name="smart_desc_has_video">含有影片內容</string>
+    <string name="smart_desc_saved_date">收藏時間符合（%1$s %2$s 天）</string>
+    <string name="smart_desc_content_keywords">內容命中分類關鍵字「%1$s」</string>
+    <string name="smart_desc_comment_keywords">留言命中分類關鍵字「%1$s」</string>
+
+    <string name="smart_summary_likes">按讚數 %1$s %2$s</string>
+    <string name="smart_summary_replies">留言數 %1$s %2$s</string>
+    <string name="smart_summary_reposts">轉發數 %1$s %2$s</string>
+    <string name="smart_summary_shares">分享數 %1$s %2$s</string>
+    <string name="smart_summary_author">作者「%1$s」</string>
+    <string name="smart_summary_tag">標籤「%1$s」</string>
+    <string name="smart_summary_content">內文含「%1$s」</string>
+    <string name="smart_summary_comment">留言含「%1$s」</string>
+    <string name="smart_summary_manual_note">筆記含「%1$s」</string>
+    <string name="smart_summary_category">分類「%1$s」</string>
+    <string name="smart_summary_favorite_true">已收藏</string>
+    <string name="smart_summary_favorite_false">未收藏</string>
+    <string name="smart_summary_read_status_read">已讀</string>
+    <string name="smart_summary_read_status_unread">未讀</string>
+    <string name="smart_summary_has_media_true">含媒體</string>
+    <string name="smart_summary_has_media_false">無媒體</string>
+    <string name="smart_summary_has_image_true">含圖片</string>
+    <string name="smart_summary_has_image_false">無圖片</string>
+    <string name="smart_summary_has_video_true">含影片</string>
+    <string name="smart_summary_has_video_false">無影片</string>
+    <string name="smart_summary_saved_date">最近 %1$s 天</string>
+    <string name="smart_summary_content_keywords">內容命中「%1$s」</string>
+    <string name="smart_summary_comment_keywords">留言命中「%1$s」</string>
+    <string name="smart_summary_separator_or">" 或 "</string>
+
+    <string name="smart_error_no_conditions">尚未設定條件</string>
+
+    <!-- Avatar Icons -->
+    <string name="avatar_category_tech">科技</string>
+    <string name="avatar_category_reading">閱讀</string>
+    <string name="avatar_category_finance">財經</string>
+    <string name="avatar_category_travel">旅行</string>
+    <string name="avatar_category_creative">創意</string>
+    <string name="avatar_category_life">生活</string>
+
+    <string name="avatar_item_life_name">生活日常</string>
+    <string name="avatar_item_life_desc">生活隨筆、日常雜記與生活日常</string>
+    <string name="avatar_item_tech_name">科技開發</string>
+    <string name="avatar_item_tech_desc">技術架構、程式開發與前沿資訊</string>
+    <string name="avatar_item_study_name">讀書學習</string>
+    <string name="avatar_item_study_desc">好書推薦、深度閱讀與知識筆記</string>
+    <string name="avatar_item_finance_name">財經投資</string>
+    <string name="avatar_item_finance_desc">市場動態、理財觀念與經濟商業</string>
+    <string name="avatar_item_travel_name">休閒旅行</string>
+    <string name="avatar_item_travel_desc">美食探索、旅行足跡與在地生活</string>
+
+    <string name="avatar_item_crown_name">至尊皇冠</string>
+    <string name="avatar_item_crown_desc">王者決策、頂級智慧與精選策展</string>
+    <string name="avatar_item_diamond_name">璀璨鑽石</string>
+    <string name="avatar_item_diamond_desc">永恆珍藏、純粹高價值知識結晶</string>
+    <string name="avatar_item_rocket_name">極速推進</string>
+    <string name="avatar_item_rocket_desc">高效成長、生產力爆發與開拓實踐</string>
+    <string name="avatar_item_sparkles_name">智慧星芒</string>
+    <string name="avatar_item_sparkles_desc">AI 賦能、創意靈感與思維碰撞</string>
+    <string name="avatar_item_shield_name">隱私金庫</string>
+    <string name="avatar_item_shield_desc">安全護航、個人金庫與核心機密</string>
+    <string name="avatar_item_compass_name">探索羅盤</string>
+    <string name="avatar_item_compass_desc">視野引航、長遠眼界與策略指南</string>
+    <string name="avatar_item_fire_name">熱門火種</string>
+    <string name="avatar_item_fire_desc">爆紅話題、社群熱議與流行脈動</string>
+    <string name="avatar_item_palette_name">創意思潮</string>
+    <string name="avatar_item_palette_desc">設計美學、文化藝術與創意展演</string>
+    <string name="avatar_item_globe_name">世界格局</string>
+    <string name="avatar_item_globe_desc">全球洞察、宏觀視野與國際脈動</string>
+    <string name="avatar_item_trophy_name">卓越榮耀</string>
+    <string name="avatar_item_trophy_desc">成就里程碑、菁英典藏與榮譽徽記</string>
+
+    <string name="avatar_item_smart_hot_name">高讚熱門</string>
+    <string name="avatar_item_smart_hot_desc">按讚互動、熱門推薦規則專用圖示</string>
+    <string name="avatar_item_smart_study_name">長期必讀</string>
+    <string name="avatar_item_smart_study_desc">收藏未讀、深度必讀規則專用圖示</string>
+    <string name="avatar_item_smart_sparkles_name">靈感庫</string>
+    <string name="avatar_item_smart_sparkles_desc">想法靈感、思維碰撞規則專用圖示</string>
+    <string name="avatar_item_smart_filter_name">智慧過濾</string>
+    <string name="avatar_item_smart_filter_desc">自訂條件、智慧分類過濾專用圖示</string>
+    <string name="avatar_item_smart_trending_name">趨勢熱點</string>
+    <string name="avatar_item_smart_trending_desc">指標數據、趨勢動向規則專用圖示</string>
+
+    <!-- Media Viewer -->
+    <string name="media_viewer_close">關閉</string>
+    <string name="media_viewer_download">下載圖片</string>
+    <string name="media_viewer_content_desc">圖片 %1$d / %2$d</string>
+    <string name="media_viewer_load_failed">載入失敗</string>
+
+    <!-- Post Card / Feed -->
+    <string name="post_card_status_unread">未讀</string>
+    <string name="post_card_status_read">已讀</string>
+    <string name="post_card_action_mark_unread">標示為未讀</string>
+    <string name="post_card_action_mark_read">標示為已讀</string>
+    <string name="post_card_action_copy_url_summary">複製分享網址與摘要</string>
+    <string name="post_card_toast_copied_url_summary">已複製網址與摘要</string>
+    <string name="post_card_toast_copied_post">已複製貼文網址與摘要</string>
+    <string name="post_card_accessibility_copy_share">複製分享</string>
+    <string name="post_card_accessibility_open_external">外部開啟</string>
+    <string name="post_card_accessibility_favorite">收藏</string>
+    <string name="post_card_accessibility_trash">移至垃圾桶</string>
+    <string name="post_card_empty_body">無內文</string>
+    <string name="post_card_label_text_attachment">文字附件</string>
+    <string name="post_card_button_detail">詳情</string>
+    <string name="post_card_label_note">筆記：%1$s</string>
+    <string name="post_card_label_comments">包含 %1$d 則精華留言</string>
+
+    <!-- Detail Dialog -->
+    <string name="detail_block_root_post">母文</string>
+    <string name="detail_block_share">分享</string>
+    <string name="detail_ai_consent_title">允許 AI 分析？</string>
+    <string name="detail_ai_consent_message">貼文內容與留言將傳送至你設定的 AI 服務進行分析，可隨時在設定中關閉。</string>
+    <string name="detail_ai_consent_cancel">取消</string>
+    <string name="detail_ai_consent_confirm">同意並分析</string>
+    <string name="detail_accessibility_more">更多操作</string>
+    <string name="detail_action_copy_url_summary">複製分享網址與摘要</string>
+    <string name="detail_toast_copied">已複製貼文網址與摘要</string>
+    <string name="detail_action_change_category">改分類標籤</string>
+    <string name="detail_ai_button">產生摘要・分類建議・標籤</string>
+    <string name="detail_toast_category_updated">分類已更新</string>
+    <string name="detail_toast_set_uncategorized">已改為未分類</string>
+    <string name="detail_accessibility_open_in_browser">在 Threads / 瀏覽器開啟</string>
+    <string name="detail_accessibility_copy_share">複製分享</string>
+    <string name="detail_accessibility_close">關閉</string>
+    <string name="detail_free_category_limit_remaining">還可新增 %1$d 個分類（已用 %2$d/%3$d）</string>
+    <string name="detail_free_category_limit_full">自訂分類已滿（%1$d/%2$d），升級 Pro 可無限新增</string>
+    <string name="detail_toast_pro_icon">此為 Pro 專屬圖示，請先升級解鎖</string>
+    <string name="detail_notice_comment_chain">舊版留言存檔，圖片已自動歸位，重新儲存可修正。</string>
+    <string name="detail_label_share">分享</string>
+    <string name="detail_empty_body">無內文</string>
+    <string name="detail_label_text_attachment">文字附件</string>
+    <string name="detail_media_not_downloaded">媒體未能自動下載，可點上方按鈕查看原貼文。</string>
+    <string name="detail_section_note">筆記</string>
+    <string name="detail_note_placeholder">寫下你的想法…</string>
+    <string name="detail_section_comments">精華留言 (%1$d)</string>
+    <string name="detail_action_move_to_trash">移至垃圾桶</string>
+    <string name="detail_button_processing">處理中…</string>
+    <string name="detail_accessibility_lyrics">歌詞</string>
+    <string name="detail_lyrics_title">歌詞</string>
+    <string name="detail_button_expand">展開</string>
+    <string name="detail_button_collapse">收合</string>
+
+    <!-- Analytics Screen -->
+    <string name="analytics_title_today_saved">今日儲存</string>
+    <string name="analytics_title_today_opened">今日打開</string>
+    <string name="analytics_title_total_review">累計回顧</string>
+    <string name="analytics_saved_trend_pro">儲存趨勢分析（近 30 天）</string>
+    <string name="analytics_saved_trend_free">儲存趨勢分析（本週）</string>
+    <string name="analytics_chart_hint">點擊長條可查看當日明細</string>
+    <string name="analytics_empty">期間內尚無儲存記錄</string>
+    <string name="analytics_bar_percent">佔期間總儲存 %1$d%%</string>
+    <string name="analytics_articles">則文章</string>
+    <string name="analytics_label_total">期間總量</string>
+    <string name="analytics_label_daily_max">單日最高</string>
+    <string name="analytics_label_daily_avg">每日平均</string>
+    <string name="analytics_unlock_pro">解鎖 Pro・開啟近 30 天與無期限趨勢</string>
+    <string name="analytics_y_axis_count">次數 (則)</string>
+    <string name="analytics_selected_data">選取：%1$s (%2$d 則)</string>
+    <string name="analytics_timeslot_morning">晨間時段</string>
+    <string name="analytics_timeslot_afternoon">午後時段</string>
+    <string name="analytics_timeslot_evening">晚間黃金</string>
+    <string name="analytics_timeslot_night">深夜寧靜</string>
+    <string name="analytics_timeslot_title">時段與儲存頻率分佈</string>
+    <string name="analytics_timeslot_desc">您最常閱讀與收藏的時段</string>
+    <string name="analytics_peak_slot">高峰：%1$s</string>
+
+    <!-- Splash Ad Overlay -->
+    <string name="splash_ad_tagline">串文導讀引擎 · 離線快取</string>
+    <string name="splash_ad_countdown">0%1$ds</string>
+    <string name="splash_ad_enter">進入</string>
+    <string name="splash_ad_sponsored">贊助</string>
+    <string name="splash_ad_feature_title">高效消化長文與跨串論點</string>
+    <string name="splash_ad_feature_desc">自動整理 Threads 引言與回覆，離線閱讀全文。</string>
+    <string name="splash_ad_label">贊助內容 · 廣告載位</string>
+    <string name="splash_ad_privacy">本機離線運作 · 無追蹤碼</string>
+    <string name="splash_ad_google_ads">由 Google 贊助託播</string>
+    <string name="splash_ad_badge">廣告</string>
+    <string name="splash_ad_cta_default">瞭解更多</string>
+
+    <!-- Notifications -->
+    <string name="notify_channel_reading_reminder">閱讀提醒</string>
+    <string name="notify_channel_reading_reminder_desc">未讀回顧與每日回顧通知</string>
+    <string name="notify_channel_offline_download">離線媒體下載</string>
+    <string name="notify_channel_offline_download_desc">背景下載圖片與影片時的即時進度</string>
+    <string name="notify_content_unread_title">還有未讀文章</string>
+    <string name="notify_content_unread_text_default">你儲存的文章還沒看，點我回顧</string>
+    <string name="notify_content_unread_text_with_title">「%1$s」還沒看，點我回顧</string>
+    <string name="notify_content_unread_title_with_author">精選文章（%1$s）：\n%2$s</string>
+    <string name="notify_content_unread_text_no_author">精選文章：\n%1$s</string>
+    <string name="notify_content_unread_summary">還有 %1$d 篇未讀，點擊開啟回顧</string>
+    <string name="notify_content_unread_summary_total">共 %1$d 篇未讀</string>
+    <string name="notify_content_analysis_done">已完成文章分析並儲存摘要</string>
+    <string name="notify_content_downloading_preparing">正在準備下載…</string>
+    <string name="notify_content_downloading_multi">下載中 (%1$d/%2$d) · %3$d%%%4$s</string>
+    <string name="notify_content_downloading_single">下載中 %1$d%%%2$s</string>
+    <string name="notify_content_downloading_title">正在下載離線媒體</string>
+    <string name="notify_content_downloading_title_with_name">正在下載媒體：%1$s</string>
+    <string name="notify_content_download_done_default">已完成 %1$d 個媒體下載</string>
+    <string name="notify_content_download_done_with_title">「%1$s」已完成 %2$d 個媒體下載</string>
+    <string name="notify_content_download_done_title">離線媒體下載完成</string>
+    <string name="notify_content_download_failed_reason">部分媒體下載失敗</string>
+    <string name="notify_content_download_failed_title">離線媒體下載未完成</string>
+
+    <!-- Backup / Archive -->
+    <string name="backup_error_size_limit">備份超過大小上限</string>
+    <string name="backup_error_file_count">備份檔案數量過多</string>
+    <string name="backup_error_total_size">備份總量超過大小上限</string>
+    <string name="backup_error_invalid_name">無效的備份檔名：%1$s</string>
+    <string name="backup_error_missing_manifest">備份檔可能已損壞</string>
+    <string name="backup_progress_almost_done">即將完成</string>
+    <string name="backup_error_unsupported_format">不支援的備份格式或版本</string>
+    <string name="backup_error_duplicate_assets">備份資源重複</string>
+    <string name="backup_error_invalid_avatar_name">頭像備份檔名無效</string>
+    <string name="backup_error_invalid_avatar_format">頭像備份格式無效</string>
+    <string name="backup_error_invalid_avatar_crop">頭像裁切資料無效</string>
+    <string name="backup_error_duplicate_avatar_names">頭像備份檔名重複</string>
+    <string name="backup_progress_restore_done">還原完成，共 %1$d 篇文章</string>
+
+    <!-- On-Device Classifier -->
+    <string name="classifier_uncategorized">未分類</string>
+    <string name="classifier_time_unknown">時間未知</string>
+    <string name="classifier_saved_on">儲存於 %1$s</string>
+
+    <!-- URL Parser -->
+    <string name="parser_kind_post">串文</string>
+    <string name="parser_kind_short">短鏈</string>
+    <string name="parser_kind_share_link">留言 / 分享</string>
+    <string name="parser_instagram_reel">Reels</string>
+    <string name="parser_instagram_post">貼文</string>
+    <string name="parser_instagram_share">IG 分享</string>
+
+    <!-- Pro Copy / Upgrade -->
+    <string name="pro_copy_body">升級 Pro：自訂分類無上限、專屬圖示、智慧策展。\n免費版功能不受影響。</string>
+    <string name="pro_lock_cta">解鎖 Pro</string>
+    <string name="pro_lock_desc_unlocked_features">升級 Pro：自訂分類無上限、專屬圖示、智慧策展。\n免費版功能不受影響。</string>
+    <string name="pro_share_limit_title">免費版提示</string>
+    <string name="pro_share_limit_body">免費版最多 %1$d 個自訂分類，升級 Pro 即可無限新增。</string>
+    <string name="pro_upsell_body">升級 Pro 解鎖：無上限自訂分類、專屬圖示、智慧策展。</string>
+
+    <!-- Passcode / Unlock Dialog -->
+    <string name="passcode_title">開通 Reater Pro</string>
+    <string name="passcode_link_mode_hint">貼上一鍵開通連結</string>
+    <string name="passcode_manual_mode_hint">序號 / Email 開通</string>
+    <string name="passcode_switch_mode_desc">切換輸入模式</string>
+    <string name="passcode_link_placeholder">貼上 reater:... 或 http://... 一行文字</string>
+    <string name="passcode_parsed_email_code">已識別信箱：%1$s ｜ 序號：%2$s</string>
+    <string name="passcode_code_placeholder">輸入開通序號 (PRO-XXXX-XXXX-XXXX)</string>
+    <string name="passcode_email_placeholder">輸入註冊 Email（必填）</string>
+    <string name="passcode_email_intent_text">您好，我想申請 Reater Pro 授權憑證 / 密碼。\nEmail: %1$s</string>
+    <string name="passcode_contact_author">聯繫作者信箱</string>
+    <string name="passcode_link_parse_error">無法解析連結，請改用手動輸入</string>
+    <string name="passcode_verify_failed">授權碼不正確，請重試或聯繫作者。</string>
+    <string name="passcode_verifying">驗證中…</string>
+    <string name="passcode_verify_and_unlock">驗證並開通</string>
+    <string name="passcode_play_billing_title">透過 Google Play 一次性購買</string>
+    <string name="passcode_play_billing_price">價格：%1$s</string>
+    <string name="passcode_play_billing_restore">恢復已購項目</string>
+    <string name="passcode_play_billing_error">無法啟動 Google Play 購買流程</string>
+    <string name="passcode_play_billing_button">Google Play 購買</string>
+
+    <!-- Icon Gallery Dialog -->
+    <string name="icon_gallery_filter_all">全部</string>
+    <string name="icon_gallery_filter_free">基礎免費</string>
+    <string name="icon_gallery_filter_pro">PRO</string>
+    <string name="icon_gallery_cannot_read_avatar">無法讀取頭像原圖</string>
+    <string name="icon_gallery_import_failed">圖片匯入失敗，請重新選擇</string>
+    <string name="icon_gallery_cannot_read_image">無法讀取圖片，請重新選擇</string>
+    <string name="icon_gallery_save_failed">頭像儲存失敗，請重試</string>
+    <string name="icon_gallery_delete_current_title">刪除目前頭像？</string>
+    <string name="icon_gallery_delete_history_title">刪除歷史頭像？</string>
+    <string name="icon_gallery_delete_current_body">將回復為內建圖示。</string>
+    <string name="icon_gallery_delete_history_body">將刪除此頭像的原圖與編輯紀錄。</string>
+    <string name="icon_gallery_delete_button">刪除</string>
+    <string name="icon_gallery_cancel">取消</string>
+    <string name="icon_gallery_gallery_title">圖示展覽室</string>
+    <string name="icon_gallery_close">關閉</string>
+    <string name="icon_gallery_type_label">類型：%1$s</string>
+    <string name="icon_gallery_expand_type">展開類型</string>
+    <string name="icon_gallery_collapse_type">收合類型</string>
+    <string name="icon_gallery_go_pro">前往 PRO</string>
+    <string name="icon_gallery_apply_avatar">套用為個人頭像</string>
+    <string name="icon_gallery_custom_avatar_title">自訂個人頭像</string>
+    <string name="icon_gallery_custom_avatar_desc">使用自己的照片作為頭像（需 Pro）。</string>
+    <string name="icon_gallery_go_pro_button">前往 PRO</string>
+    <string name="icon_gallery_select_from_gallery">從相簿選擇</string>
+    <string name="icon_gallery_history_avatars">歷史頭像</string>
+    <string name="icon_gallery_no_history">尚無歷史頭像，從相簿選擇第一張圖片。</string>
+    <string name="icon_gallery_current_avatar">目前頭像</string>
+    <string name="icon_gallery_history_avatar">歷史頭像</string>
+    <string name="icon_gallery_current_custom_avatar">目前使用的自訂頭像</string>
+    <string name="icon_gallery_saved_custom_avatar">已儲存的自訂裁切頭像</string>
+    <string name="icon_gallery_set_as_avatar">設為使用</string>
+    <string name="icon_gallery_edit">編輯</string>
+    <string name="icon_gallery_delete_avatar">刪除頭像</string>
+    <string name="icon_gallery_save_edited_title">儲存編輯後的頭像</string>
+    <string name="icon_gallery_save_edited_body">要另存新檔，還是覆蓋這張頭像？</string>
+    <string name="icon_gallery_overwrite">覆蓋更新</string>
+    <string name="icon_gallery_save_as_new">另存新的</string>
+    <string name="icon_gallery_accessibility_custom_avatar">個人自訂頭貼</string>
+    <string name="icon_gallery_accessibility_avatar">個人頭貼</string>
+    <string name="icon_gallery_tab_icons">圖示</string>
+    <string name="icon_gallery_tab_custom_avatar">自訂頭像</string>
+    <string name="icon_gallery_unlock_pro">解鎖 PRO</string>
+
+    <!-- Smart Classification Dialog -->
+    <string name="smart_class_title_new">新增關鍵字規則</string>
+    <string name="smart_class_title_edit">編輯關鍵字規則</string>
+    <string name="smart_class_close">關閉</string>
+    <string name="smart_class_hint">貼文包含以下文字時，自動歸入指定分類。</string>
+    <string name="smart_class_match_text_label">比對文字（可多個關鍵字）</string>
+    <string name="smart_class_match_text_placeholder">輸入文字，例如：AI, 科技, ChatGPT</string>
+    <string name="smart_class_target_category_label">目標分類（APP 分類）</string>
+    <string name="smart_class_select_target_category">選擇目標分類</string>
+    <string name="smart_class_custom_tag_label">自訂標籤（選填）</string>
+    <string name="smart_class_custom_tag_placeholder">選填純文字，例如：筆記、重要</string>
+    <string name="smart_class_delete_rule">刪除規則</string>
+    <string name="smart_class_cancel">取消</string>
+    <string name="smart_class_save">儲存</string>
+
+    <!-- Smart Collection Rule Dialog -->
+    <string name="smart_collection_title">編輯智慧分類規則</string>
+    <string name="smart_collection_close">關閉</string>
+    <string name="smart_collection_basic_settings">基本設定</string>
+    <string name="smart_collection_change_icon_desc">更換圖示</string>
+    <string name="smart_collection_rule_name_label">規則名稱</string>
+    <string name="smart_collection_enabled">啟用此智慧規則</string>
+    <string name="smart_collection_enabled_desc">符合條件時，自動出現在此智慧分類檢視中</string>
+    <string name="smart_collection_condition_mode">條件模式</string>
+    <string name="smart_collection_mode_or">任一條件符合（OR）</string>
+    <string name="smart_collection_mode_and">所有條件皆符合（AND）</string>
+    <string name="smart_collection_conditions_label">符合條件</string>
+    <string name="smart_collection_matched_count">符合內容：%1$d 篇</string>
+    <string name="smart_collection_no_matches">目前無符合條件內容</string>
+    <string name="smart_collection_preview_matching">預覽符合內容</string>
+    <string name="smart_collection_reset_default">恢復預設規則</string>
+    <string name="smart_collection_delete_rule">刪除規則</string>
+    <string name="smart_collection_cancel">取消</string>
+    <string name="smart_collection_save">儲存</string>
+    <string name="smart_collection_discard_changes_title">放棄未儲存的修改？</string>
+    <string name="smart_collection_discard_changes_body">你有尚未儲存的修改，離開後這些修改將會遺失。</string>
+    <string name="smart_collection_discard_confirm">放棄修改</string>
+    <string name="smart_collection_continue_editing">繼續編輯</string>
+    <string name="smart_collection_delete_confirm_title">確定刪除規則？</string>
+    <string name="smart_collection_delete_confirm_body">刪除規則不會刪除貼文。</string>
+    <string name="smart_collection_delete_confirm">確定刪除</string>
+    <string name="smart_collection_reset_confirm_title">恢復預設規則？</string>
+    <string name="smart_collection_reset_confirm_body">將還原為「%1$s」的預設條件。</string>
+    <string name="smart_collection_reset_confirm">恢復預設</string>
+    <string name="smart_collection_delete_condition_desc">刪除條件</string>
+    <string name="smart_collection_field_group_content">內容</string>
+    <string name="smart_collection_field_group_status">狀態</string>
+    <string name="smart_collection_field_group_interaction">互動數據</string>
+    <string name="smart_collection_field_group_time">時間</string>
+    <string name="smart_collection_field_group_smart">智慧分類</string>
+    <string name="smart_collection_default_read_status_unread">未讀</string>
+    <string name="smart_collection_hint_min_value">最小值</string>
+    <string name="smart_collection_hint_max_value">最大值</string>
+    <string name="smart_collection_example_likes">例如 100</string>
+    <string name="smart_collection_example_replies">例如 20</string>
+    <string name="smart_collection_example_reposts">例如 10</string>
+    <string name="smart_collection_example_shares">例如 5</string>
+    <string name="smart_collection_example_author">例如 @user 或 暱稱</string>
+    <string name="smart_collection_example_tag">例如 AI</string>
+    <string name="smart_collection_example_content">例如 Midjourney 或 Prompt</string>
+    <string name="smart_collection_example_comment">例如 教學 資源</string>
+    <string name="smart_collection_example_ai_summary">例如 精華 重點</string>
+    <string name="smart_collection_example_manual_note">例如 必看</string>
+    <string name="smart_collection_favorite_true_label">已收藏</string>
+    <string name="smart_collection_favorite_false_label">未收藏</string>
+    <string name="smart_collection_read_status_unread_label">未讀</string>
+    <string name="smart_collection_read_status_read_label">已讀</string>
+    <string name="smart_collection_has_media_true_label">是</string>
+    <string name="smart_collection_has_media_false_label">否</string>
+    <string name="smart_collection_has_image_true_label">是</string>
+    <string name="smart_collection_has_image_false_label">否</string>
+    <string name="smart_collection_has_video_true_label">是</string>
+    <string name="smart_collection_has_video_false_label">否</string>
+    <string name="smart_collection_days_label">天數</string>
+    <string name="smart_collection_days_suffix">天</string>
+    <string name="smart_collection_days_placeholder">例如 30</string>
+    <string name="smart_collection_select_category_hint">選擇分類</string>
+    <string name="smart_collection_current_category">指定分類：%1$s</string>
+    <string name="smart_collection_match_source_label">比對來源：</string>
+    <string name="smart_collection_source_title">標題</string>
+    <string name="smart_collection_source_body">內文</string>
+    <string name="smart_collection_source_comments">留言</string>
+    <string name="smart_collection_source_manual_note">筆記</string>
+    <string name="smart_collection_preview_title">符合條件內容預覽（共 %1$d 篇）</string>
+    <string name="smart_collection_preview_empty">目前無符合條件的貼文</string>
+    <string name="smart_collection_preview_close">關閉預覽</string>
+    <string name="smart_collection_preview_matched_label">命中條件：</string>
+    <string name="smart_collection_icon_title">選擇規則專屬圖示</string>
+    <string name="smart_collection_icon_smart_rule">智慧規則專用圖示</string>
+    <string name="smart_collection_icon_other">其他可用圖示</string>
+
+    <!-- Threads Stats Row -->
+    <string name="threads_stats_like">讚</string>
+    <string name="threads_stats_reply">回覆</string>
+    <string name="threads_stats_repost">轉發</string>
+    <string name="threads_stats_share">分享</string>
+
+    <!-- Reater Dropdown -->
+    <string name="dropdown_collapse_menu">收合選單</string>
+    <string name="dropdown_expand_menu">展開選單</string>
+    <string name="dropdown_apply">套用</string>
+
+    <!-- Pro Category Filter Row -->
+    <string name="filter_all">全部</string>
+    <string name="filter_uncategorized">未分類</string>
+
+    <!-- Copyable Text Block -->
+    <string name="copyable_toast_copied">已複製內文</string>
+    <string name="copyable_accessibility_copy">複製內文</string>
+    <string name="copyable_expand">展開全文</string>
+    <string name="copyable_collapse">收起</string>
+
+    <!-- Time Format -->
+    <string name="time_unknown">時間未知</string>
+    <string name="time_saved_on">儲存於 %1$s</string>
+
+    <!-- Media Download Worker -->
+    <string name="worker_download_failed">有 %1$d 個媒體下載失敗%2$s</string>
+    <string name="worker_download_skipped">（%1$d 個串流略過）</string>
+
+    <!-- AI Analysis Worker -->
+    <string name="worker_ai_not_authorized">尚未授權 AI 傳輸設定</string>
+    <string name="worker_ai_no_api_key">尚未配置 API Key</string>
+    <string name="worker_ai_user_note_prefix">使用者人工筆記：\n%1$s</string>
+
+    <!-- Reater Glance Widget -->
+    <string name="widget_empty_no_posts">目前無待讀貼文，快去 Threads 分享吧！</string>
+    <string name="widget_label_unread">待讀</string>
+    <string name="widget_label_note">筆記：%1$s</string>
+
+    <!-- Fetch Progress (ThreadsGraphQLClient / XClient / InstagramClient) -->
+    <string name="fetch_progress_body_parsed">已取得貼文內文</string>
+    <string name="fetch_progress_comments_done">已擷取精華留言 (%1$d 則)</string>
+    <string name="fetch_progress_downloading_media">正在下載媒體 (%1$d/%2$d)</string>
+    <string name="fetch_progress_media_done">已完成下載離線媒體</string>
+    <string name="fetch_progress_media_partial">部分完成（成功 %1$d、失敗 %2$d，其餘背景續傳）</string>
+    <string name="fetch_error_invalid_x_url">無效的 X 貼文連結</string>
+    <string name="fetch_error_x_failed">X 貼文抓取失敗</string>
+    <string name="fetch_error_invalid_youtube_url">無效的 YouTube 網址</string>
+    <string name="fetch_youtube_fallback_title">YouTube 影片</string>
+
+    <!-- AI Client Errors (OpenAiClient) -->
+    <string name="ai_error_generic">AI 分析失敗，請稍後再試</string>
+    <string name="ai_error_401">API 金鑰無效或尚未授權，請至設定檢查</string>
+    <string name="ai_error_403">存取遭拒絕，此金鑰沒有該模型的呼叫權限</string>
+    <string name="ai_error_404">找不到指定的模型或 API 網址不存在</string>
+    <string name="ai_error_429">請求次數過於頻繁或額度已用盡，請稍後再試</string>
+    <string name="ai_error_5xx">AI 服務伺服器連線異常，請稍後重試</string>
+    <string name="ai_error_network">連線失敗，請稍後再試</string>
+    <string name="ai_error_timeout">AI 伺服器回應超時，請檢查網路連線後再試</string>
+    <string name="ai_error_unreachable">無法連線至 AI 伺服器，請檢查網路或網址設定</string>
+
+    <!-- Backup Manager Progress / Errors -->
+    <string name="backup_eta_seconds">預估剩餘約 %1$d 秒</string>
+    <string name="backup_eta_minutes">預估剩餘約 %1$d 分鐘</string>
+    <string name="backup_eta_min_sec">預估剩餘約 %1$d 分 %2$d 秒</string>
+    <string name="backup_progress_preparing">正在準備備份資料…</string>
+    <string name="backup_progress_packing">正在打包備份資料 (%1$d/%2$d)</string>
+    <string name="backup_progress_refetching_media">正在重新抓取缺失媒體 (%1$d/%2$d)</string>
+    <string name="backup_progress_packaging">正在封裝 .reater 備份檔…</string>
+    <string name="backup_progress_packaging_detail">共 %1$d 個媒體資源</string>
+    <string name="backup_progress_items_detail">共 %1$d 篇文章</string>
+    <string name="backup_error_empty_file">備份檔產生失敗（檔案大小為 0）</string>
+    <string name="backup_progress_reading">正在讀取備份檔案…</string>
+    <string name="backup_error_file_empty">備份檔是空的，請重新選擇</string>
+    <string name="backup_progress_extracting">正在解壓縮 .reater 備份資源…</string>
+    <string name="backup_error_missing_manifest_file">非有效的備份檔</string>
+    <string name="backup_error_content_empty">備份檔內容為空</string>
+    <string name="backup_error_parse_failed">備份格式錯誤：%1$s</string>
+    <string name="backup_warning_missing_assets">有 %1$d 個媒體缺失，將改用連結還原</string>
+    <string name="backup_error_illegal_format">非有效的 .reater 備份檔</string>
+    <string name="backup_error_too_many_items">備份檔項目過多（超過上限）</string>
+    <string name="backup_error_missing_url">匯入資料缺少有效 URL</string>
+    <string name="backup_progress_restoring_articles">正在解壓還原文章 (%1$d/%2$d)</string>
+    <string name="backup_progress_writing_db">正在寫入本機資料庫…</string>
+    <string name="backup_progress_writing_db_detail">正在寫入本機資料庫 (%1$d/%2$d)</string>
+
+    <!-- Billing (PlayBillingManager) -->
+    <string name="billing_connecting">正在連線至 Google Play，請稍後再試。</string>
+    <string name="billing_processing">付款處理中，完成後 Pro 會自動開通。</string>
+    <string name="billing_purchase_done_verify_fail">購買已完成，確認授權時發生問題；下次開啟會重試。</string>
+    <string name="billing_unavailable">Google Play 目前無法提供 Pro 商品。</string>
+    <string name="billing_pro_activated">Reater Pro 已開通。</string>
+
+    <!-- Avatar Errors (SettingsRepository) -->
+    <string name="avatar_error_copy_failed">無法將頭像複製至 App 儲存空間</string>
+    <string name="avatar_error_read_failed">無法讀取頭像圖片</string>
+    <string name="avatar_error_save_failed">無法儲存頭像圖片</string>
+
+    <!-- Repository -->
+    <string name="repo_manual_note_author">手動筆記</string>
+
+    <!-- Notifications (NotifyCenter extra) -->
+    <string name="notify_ai_done_title">AI 分析完成</string>
+    <string name="notify_ai_done_title_with_name">AI 分析完成：%1$s</string>
+    <string name="notify_ai_failed_title">AI 分析未完成</string>
+    <string name="notify_ai_failed_title_with_name">AI 分析未完成：%1$s</string>
+    <string name="notify_download_done_with_failures">%1$s（另有 %2$d 個失敗）</string>
+
+    <!-- MainActivity: AI / Backup / Pro -->
+    <string name="main_error_ai_not_authorized">請先於設定允許 AI 分析</string>
+    <string name="main_error_no_api_key">請先於設定配置 API Key</string>
+    <string name="main_export_preparing">正在準備匯出備份資料…</string>
+    <string name="main_error_open_export_file">無法開啟指定匯出檔案</string>
+    <string name="main_export_done">已匯出 .reater 備份檔</string>
+    <string name="main_export_failed">匯出失敗：%1$s</string>
+    <string name="main_import_reading">正在讀取並解壓備份檔…</string>
+    <string name="main_error_invalid_file_type">僅支援 .reater 備份檔</string>
+    <string name="main_error_open_backup_file">無法開啟所選備份檔案</string>
+    <string name="main_restore_done">已還原備份（共 %1$d 筆文章）</string>
+    <string name="main_restore_failed">還原失敗：%1$s</string>
+    <string name="main_pro_unlock_success">Reater Pro 已成功解鎖！</string>
+    <string name="main_pro_deeplink_failed">開通失敗，已帶入啟用碼，請按「驗證並開通」重試</string>
+
+    <!-- MainActivity: Notification Permission Dialog -->
+    <string name="main_notif_permission_dialog_title">開啟通知權限</string>
+    <string name="main_notif_permission_dialog_message">請允許通知權限，才能在預定時間收到閱讀提醒。</string>
+    <string name="main_notif_permission_dialog_body">您已開啟閱讀提醒通知，但目前系統尚未允許通知權限。\n\n請允許通知權限，才能在預定時間收到未讀文章推播提醒。</string>
+    <string name="main_button_go_settings">前往設定</string>
+    <string name="main_button_later">稍後再說</string>
+
+    <!-- MainActivity: Trash -->
+    <string name="main_trash_move_dialog_message">將移入垃圾桶保留 30 天，期間可隨時還原。</string>
+    <string name="main_trash_moved_with_retention">已移至垃圾桶 (保留 30 天)</string>
+    <string name="main_trash_clear_title">清空垃圾桶？</string>
+    <string name="main_trash_clear_message">確定要永久刪除所有記錄嗎？無法復原。</string>
+    <string name="main_trash_cleared">垃圾桶已清空</string>
+    <string name="main_trash_move_dialog_title">移至垃圾桶？</string>
+    <string name="main_moved_to_trash">已移至垃圾桶</string>
+    <string name="main_trash_empty_hint">垃圾桶目前是空的\n被移除的項目會在此保留 30 天</string>
+    <string name="main_trash_count_title">垃圾桶記錄 (%1$d)</string>
+    <string name="main_trash_clear_button">清空垃圾桶</string>
+    <string name="main_trash_remaining_days">剩餘 %1$d 天後永久清除</string>
+    <string name="main_delete_permanently">永久刪除</string>
+    <string name="main_trash_restore_button">還原</string>
+
+    <!-- MainActivity: Feed / Search / Status -->
+    <string name="main_avatar_changed">已成功更換個人頭貼</string>
+    <string name="main_category_deleted">分類已刪除，貼文改為未分類</string>
+    <string name="main_copied_filter_with_count">已複製目前篩選共 %1$d 則網址與摘要</string>
+    <string name="main_no_posts_in_filter">目前篩選無貼文</string>
+    <string name="main_accessibility_copy_filter">複製目前篩選的所有網址與摘要</string>
+    <string name="main_accessibility_clear_search">清除搜尋</string>
+    <string name="main_search_no_match">找不到符合「%1$s」的內容</string>
+    <string name="main_empty_all_hint">尚無內容\n到 Threads 或 Instagram 點「分享」即可保存！</string>
+    <string name="main_marked_read">已標為已讀（不再顯示於未讀）</string>
+    <string name="main_marked_unread">已標為未讀</string>
+    <string name="main_favorited">已加入收藏</string>
+    <string name="main_unfavorited">已取消收藏</string>
+    <string name="main_search_no_match_unread">未讀中找不到符合「%1$s」的內容</string>
+    <string name="main_all_read_congrats">太棒了！所有貼文皆已閱讀完畢</string>
+    <string name="main_search_no_match_favorite">收藏中找不到符合「%1$s」的內容</string>
+    <string name="main_empty_favorite_hint">尚無收藏\n在貼文卡片點書籤即可收藏！</string>
+    <string name="main_deleted_permanently">已永久刪除</string>
+    <string name="main_smart_rule_applied">智慧分類已更新 %1$d 篇貼文！</string>
+    <string name="main_restore_success">已成功還原！</string>
+
+    <!-- MainActivity: Category Management -->
+    <string name="main_category_management">分類管理</string>
+    <string name="main_category_count_summary">共 %1$d 個分類，可自由排序</string>
+    <string name="main_category_free_limit_summary">免費 %1$d/%2$d・升級後分類無上限</string>
+    <string name="main_category_add_new">＋ 新增分類</string>
+    <string name="main_category_edit">編輯分類</string>
+    <string name="main_smart_rules_title">智慧分類規則</string>
+    <string name="main_smart_rules_desc">儲存時自動歸入合適分類</string>
+    <string name="main_smart_rule_keyword_title">自動根據內文關鍵字去分類</string>
+    <string name="main_smart_rule_keyword_desc">依內文與標題關鍵字自動分類</string>
+    <string name="main_smart_rule_author_title">根據作者名稱去分類</string>
+    <string name="main_smart_rule_author_desc">依作者過往習慣自動分類</string>
+    <string name="main_smart_rule_custom_title">特定文字自動歸類</string>
+    <string name="main_smart_rule_custom_priority">最高優先度</string>
+    <string name="main_smart_rule_custom_desc">包含特定文字時，優先歸入指定分類</string>
+    <string name="main_smart_rule_target_category_fallback">指定分類</string>
+    <string name="main_smart_rule_custom_empty">尚無規則，點「新增比對規則」開始設定。</string>
+    <string name="main_smart_rule_add_rule">新增比對規則</string>
+    <string name="main_smart_rule_reapply_hint">重新套用至所有貼文</string>
+
+    <!-- Splash Ad Tags -->
+    <string name="splash_tag_thread_context">#串文脈絡</string>
+    <string name="splash_tag_offline">#離線整理</string>
+
+    <!-- Avatar Crop Dialog -->
+    <string name="avatar_crop_title">編輯頭像位置</string>
+    <string name="avatar_crop_close_desc">關閉編輯</string>
+    <string name="avatar_crop_hint">拖曳移動・雙指縮放，圓內即頭像</string>
+    <string name="avatar_crop_image_desc">待裁切圖片</string>
+    <string name="avatar_crop_rotate">旋轉 90°</string>
+    <string name="avatar_crop_apply">套用</string>
+
+    <!-- Category Drag Handle -->
+    <string name="category_drag_move_up">向上移動分類</string>
+    <string name="category_drag_move_down">向下移動分類</string>
+    <string name="category_drag_reorder_desc">拖曳排序</string>
+
+    <!-- Category Dropdown -->
+    <string name="category_dropdown_search_or_new">搜尋或輸入新分類…</string>
+    <string name="category_dropdown_clear_desc">清除分類</string>
+    <string name="category_dropdown_no_match">找不到相符分類</string>
+    <string name="category_dropdown_has_match">符合分類</string>
+    <string name="category_dropdown_add_new">＋ 新增「%1$s」</string>
+
+    <!-- Category Filter Bar -->
+    <string name="category_filter_all_categories">全部分類</string>
+    <string name="category_filter_search_hint">搜尋分類</string>
+    <string name="category_filter_clear_desc">清除</string>
+    <string name="category_filter_item_count">%1$d 筆</string>
+    <string name="category_filter_platform_desc">平台篩選：%1$s（%2$d 筆）</string>
+
+    <!-- Category Manage Dialogs -->
+    <string name="category_new_title">新建分類</string>
+    <string name="category_edit_title">編輯分類</string>
+    <string name="category_name_placeholder">分類名稱（如：技術、生活、閱讀）</string>
+    <string name="category_name_label">分類名稱</string>
+    <string name="category_select_icon">選擇圖示</string>
+    <string name="category_pro_badge_desc">Pro 專屬</string>
+    <string name="category_create">建立</string>
+    <string name="category_discard_title">捨棄尚未建立的分類？</string>
+    <string name="category_discard_message">已輸入「%1$s」尚未建立，返回會捨棄草稿。</string>
+    <string name="category_discard_confirm">捨棄</string>
+    <string name="category_continue_editing">繼續編輯</string>
+    <string name="category_builtin_no_delete">內建分類不可刪除，可重新命名與更換圖示</string>
+    <string name="category_delete_confirm_title">刪除「%1$s」？</string>
+    <string name="category_delete_confirm_message">分類下的貼文將改為「未分類」。</string>
+
+    <!-- Category Badge -->
+    <string name="category_badge_fallback">未分類</string>
+
+    <!-- Icon Gallery -->
+    <string name="icon_gallery_in_use">使用中</string>
+
+    <!-- Passcode / Pro -->
+    <string name="passcode_email_subject">Reater Pro 授權申請</string>
+    <string name="passcode_manual_email_hint">請手動寄信至 jimmy910824@gmail.com</string>
+    <string name="passcode_unlock_success">Reater Pro 已成功解鎖！</string>
+    <string name="pro_smart_curation_badge">Pro 專屬智慧策展</string>
+
+    <!-- Smart Collection Rule Dialog (extra) -->
+    <string name="smart_collection_add_condition">＋ 新增條件</string>
+    <string name="smart_collection_matching_live">即時比對中</string>
+    <string name="smart_collection_hint_contains_any">多個關鍵字以空白分開，命中任一即可</string>
+    <string name="smart_collection_hint_contains_all">多個關鍵字以空白分開，需全數命中</string>
+    <string name="smart_collection_preview_more">… 另有 %1$d 篇符合</string>
+    <string name="smart_desc_ai_summary">AI 摘要包含「%1$s」</string>
+    <string name="smart_summary_ai_summary">AI 摘要含「%1$s」</string>
+    <string name="smart_op_label_equals">等於</string>
+    <string name="smart_op_label_not_equals">不等於</string>
+    <string name="smart_op_label_contains_any_keywords">包含任一關鍵字</string>
+    <string name="smart_op_label_contains_all_keywords">包含所有關鍵字</string>
+    <string name="smart_op_label_gte">大於等於</string>
+    <string name="smart_op_label_lte">小於等於</string>
+    <string name="smart_op_label_gt">大於</string>
+    <string name="smart_op_label_lt">小於</string>
+    <string name="smart_op_label_within_days">最近 N 天</string>
+    <string name="smart_op_label_older_than_days">早於 N 天前</string>
+    <string name="smart_op_label_newer_than_days">晚於 N 天內</string>
+
+    <!-- Detail Dialog (extra) -->
+    <string name="detail_ai_started_background">AI 分析已在背景啟動，完成後將發送通知</string>
+    <string name="detail_ai_summary_section">AI 智慧摘要</string>
+
+    <!-- Inline Video Player -->
+    <string name="video_poster_desc">音訊封面</string>
+    <string name="video_play_failed">影片無法播放</string>
+    <string name="video_retry">重新嘗試</string>
+    <string name="video_pause_desc">暫停</string>
+    <string name="video_play_desc">播放</string>
+    <string name="video_unmute_desc">取消靜音</string>
+    <string name="video_mute_desc">靜音</string>
+    <string name="video_fullscreen_desc">放大全螢幕播放</string>
+    <string name="video_fullscreen_close_desc">關閉全螢幕</string>
+    <string name="video_rotate_desc">切換螢幕方向</string>
+    <string name="video_rotate_button">切換</string>
+    <string name="video_rewind_10_desc">倒退 10 秒</string>
+    <string name="video_forward_10_desc">快進 10 秒</string>
+    <string name="video_download_desc">下載影片</string>
+    <string name="video_download_button">下載</string>
+    <string name="video_speed_title">播放速度</string>
+    <string name="video_speed_normal">1.0x (正常)</string>
+    <string name="video_speed_selected_desc">已選擇</string>
+    <string name="video_export_format_title">選擇下載格式</string>
+    <string name="video_export_format_message">這是一則音訊（音樂）貼文，可選擇要儲存的版本：</string>
+    <string name="video_export_music">音樂版</string>
+    <string name="video_export_video">影片版</string>
+    <string name="video_export_music_title">音樂版（.m4a）</string>
+    <string name="video_export_music_desc">純音訊檔，含封面與歌詞，存到「音樂/Reater」。</string>
+    <string name="video_export_video_title">影片版（.mp4）</string>
+    <string name="video_export_video_desc">含封面的影片檔，存到相簿「Movies/Reater」。</string>
+    <string name="video_export_music_progress">正在寫入音樂檔（含封面/歌詞）…</string>
+    <string name="video_export_video_progress">正在合成影片（含封面畫面）…</string>
+    <string name="video_exporting_title">匯出中</string>
+    <string name="video_music_desc">音樂版</string>
+    <string name="video_movie_desc">影片版</string>
+
+    <!-- SafeBarModifiers (download/save feedback) -->
+    <string name="save_error_no_media">無有效媒體檔案可儲存</string>
+    <string name="save_done_music">已儲存到音樂</string>
+    <string name="save_done_gallery">已儲存到相簿</string>
+    <string name="save_error_network">下載或儲存失敗，請檢查網路連線</string>
+    <string name="save_error_audio_unavailable">音訊檔不可用，請先在播放中開啟</string>
+    <string name="save_done_music_with_meta">已儲存到音樂（含曲名/封面/歌詞）</string>
+    <string name="save_error_audio_check">儲存失敗，請確認網路與音訊檔可用</string>
+    <string name="save_done_gallery_with_cover">已儲存到相簿（影片含封面）</string>
+    <string name="save_error_compose_failed">合成失敗（封面取得或編碼失敗）</string>
+
+    <!-- Settings Dialog (extra) -->
+    <string name="settings_reader_preview_tagline">Reater 閱讀器預覽：探索與典藏優質貼文</string>
+    <string name="settings_backup_format_label">.reater 專屬備份格式</string>
+
+    <!-- Share Save (extra) -->
+    <string name="share_fetching_comments_auto">正在自動擷取精華留言中…</string>
+    <string name="share_eta_prefix"> · 預估剩餘 %1$s</string>
+
+    <!-- Widget -->
+    <string name="widget_title_later_reading">Reater 稍後閱讀</string>
+
+    <!-- AdMob Config (non-translatable) -->
+    <string name="admob_app_id" translatable="false">ca-app-pub-2415998114933157~8828014028</string>
+    <string name="admob_unit_splash" translatable="false">ca-app-pub-2415998114933157/2889592955</string>
+
+    <string name="detail_ai_summary">AI 摘要</string>
+    <string name="post_card_ai_summary_prefix">✨ AI 摘要：%1$s</string>
+    <string name="media_viewer_image">圖片</string>
+    <string name="analytics_pro_full">PRO 完整</string>
+    <string name="analytics_count_suffix">%1$d 則</string>
+    <string name="analytics_slot_count_percent">%1$d 則 (%2$d%%)</string>
+    <string name="detail_avatar_desc">@%1$s 頭像</string>
+    <string name="settings_daily_preset_morning">08:00 晨讀</string>
+    <string name="settings_daily_preset_noon">12:00 午間</string>
+    <string name="settings_daily_preset_evening">18:00 下班</string>
+    <string name="settings_daily_preset_night">21:00 晚間</string>
+    <string name="settings_daily_preset_bedtime">23:00 睡前</string>
+    <string name="settings_ai_service_title">AI 服務 (BYOK)</string>
+    <string name="settings_ai_key_saved_placeholder">•••••••••••••••• (已保存)</string>
+    <string name="notify_unread_count_title">未讀 %1$d 篇</string>
+    <string name="notify_eta_remaining"> · 剩餘 %1$02d:%2$02d</string>
+    <string name="share_badge_video">▶ 影片</string>
+    <string name="share_badge_audio">♪ 音訊</string>
+    <string name="passcode_price_loading">讀取中…</string>
+    <string name="save_type_audio">音訊</string>
+    <string name="save_type_video">影片</string>
+    <string name="save_type_image">圖片</string>
+    <string name="save_downloading_what">正在下載%1$s…</string>
+    <string name="smart_collection_preview_no_body">（無內文）</string>
 </resources>

@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -57,6 +58,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.verticalScroll
 import com.reater.app.data.local.entity.CategoryEntity
+import com.reater.app.R
 import com.reater.app.ui.AvatarIcons
 
 /**
@@ -138,7 +140,7 @@ fun CategoryCreateDialog(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     DialogHeader(
-                        title = "新建分類",
+                        title = stringResource(R.string.category_new_title),
                         onClose = { requestDismiss() },
                         modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                     )
@@ -166,7 +168,7 @@ fun CategoryCreateDialog(
                         OutlinedTextField(
                             value = catName,
                             onValueChange = { catName = it },
-                            placeholder = { Text("分類名稱（如：技術、生活、閱讀）") },
+                            placeholder = { Text(stringResource(R.string.category_name_placeholder)) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester),
@@ -176,7 +178,7 @@ fun CategoryCreateDialog(
                             keyboardActions = KeyboardActions(onDone = { submitIfValid() })
                         )
                         Spacer(modifier = Modifier.height(14.dp))
-                        Text(text = "選擇圖示", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(text = stringResource(R.string.category_select_icon), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
@@ -214,7 +216,7 @@ fun CategoryCreateDialog(
                                 ) {
                                     Icon(
                                         painter = painterResource(id = item.resId),
-                                        contentDescription = item.name,
+                                        contentDescription = stringResource(item.name),
                                         modifier = Modifier.size(24.dp),
                                         tint = Color.Unspecified
                                     )
@@ -227,7 +229,7 @@ fun CategoryCreateDialog(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Lock,
-                                                contentDescription = "Pro 專屬",
+                                                contentDescription = stringResource(R.string.category_pro_badge_desc),
                                                 tint = Color(0xFFFFB300),
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -250,14 +252,14 @@ fun CategoryCreateDialog(
                         horizontalArrangement = Arrangement.End
                     ) {
                         OutlinedButton(onClick = { requestDismiss() }) {
-                            Text("取消")
+                            Text(stringResource(R.string.cancel))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = { submitIfValid() },
                             enabled = catName.isNotBlank()
                         ) {
-                            Text("建立")
+                            Text(stringResource(R.string.category_create))
                         }
                     }
                 }
@@ -268,10 +270,10 @@ fun CategoryCreateDialog(
     if (showDiscardConfirm) {
         AlertDialog(
             onDismissRequest = { showDiscardConfirm = false },
-            title = { Text("捨棄尚未建立的分類？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.category_discard_title), fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "已輸入「${catName.trim()}」尚未建立，返回會捨棄草稿。",
+                    stringResource(R.string.category_discard_message, catName.trim()),
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -281,10 +283,10 @@ fun CategoryCreateDialog(
                     showDiscardConfirm = false
                     focusManager.clearFocus()
                     onDismiss()
-                }) { Text("捨棄") }
+                }) { Text(stringResource(R.string.category_discard_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) { Text("繼續編輯") }
+                TextButton(onClick = { showDiscardConfirm = false }) { Text(stringResource(R.string.category_continue_editing)) }
             }
         )
     }
@@ -341,7 +343,7 @@ fun CategoryEditDialog(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     DialogHeader(
-                        title = "編輯分類",
+                        title = stringResource(R.string.category_edit_title),
                         onClose = onDismiss,
                         modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)
                     )
@@ -358,7 +360,7 @@ fun CategoryEditDialog(
                     ) {
                         if (category.isDefault) {
                             Text(
-                                text = "內建分類不可刪除，可重新命名與更換圖示",
+                                text = stringResource(R.string.category_builtin_no_delete),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -367,7 +369,7 @@ fun CategoryEditDialog(
                         OutlinedTextField(
                             value = catName,
                             onValueChange = { catName = it },
-                            placeholder = { Text("分類名稱") },
+                            placeholder = { Text(stringResource(R.string.category_name_label)) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
                             singleLine = true,
@@ -375,7 +377,7 @@ fun CategoryEditDialog(
                             keyboardActions = KeyboardActions(onDone = { submitIfValid() })
                         )
                         Spacer(modifier = Modifier.height(14.dp))
-                        Text(text = "選擇圖示", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(text = stringResource(R.string.category_select_icon), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
@@ -410,7 +412,7 @@ fun CategoryEditDialog(
                                 ) {
                                     Icon(
                                         painter = painterResource(id = item.resId),
-                                        contentDescription = item.name,
+                                        contentDescription = stringResource(item.name),
                                         modifier = Modifier.size(24.dp),
                                         tint = Color.Unspecified
                                     )
@@ -423,7 +425,7 @@ fun CategoryEditDialog(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Lock,
-                                                contentDescription = "Pro 專屬",
+                                                contentDescription = stringResource(R.string.category_pro_badge_desc),
                                                 tint = Color(0xFFFFB300),
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -447,19 +449,19 @@ fun CategoryEditDialog(
                     ) {
                         if (!category.isDefault) {
                             TextButton(onClick = { showDeleteConfirm = true }) {
-                                Text("刪除", color = MaterialTheme.colorScheme.error)
+                                Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                             }
                         } else {
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                         Row(horizontalArrangement = Arrangement.End) {
-                            OutlinedButton(onClick = onDismiss) { Text("取消") }
+                            OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                             Spacer(modifier = Modifier.width(8.dp))
                             Button(
                                 onClick = { submitIfValid() },
                                 enabled = catName.isNotBlank() &&
                                     (catName.trim() != category.name || selectedAvatar != category.avatarIcon)
-                            ) { Text("儲存") }
+                            ) { Text(stringResource(R.string.save)) }
                         }
                     }
                 }
@@ -470,10 +472,10 @@ fun CategoryEditDialog(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("刪除「${category.name}」？", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.category_delete_confirm_title, category.name), fontSize = 16.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "該分類底下的貼文會改為「未分類」，不會刪除貼文本身。",
+                    stringResource(R.string.category_delete_confirm_message),
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -482,10 +484,10 @@ fun CategoryEditDialog(
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text("刪除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

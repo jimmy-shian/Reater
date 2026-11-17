@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.input.pointer.pointerInput
+import com.reater.app.R
 import com.reater.app.ui.AvatarStorage
 import kotlin.math.abs
 import kotlin.math.min
@@ -148,7 +150,7 @@ fun AvatarCropDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "編輯頭像位置",
+                        text = stringResource(R.string.avatar_crop_title),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -159,14 +161,14 @@ fun AvatarCropDialog(
                     IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "關閉編輯",
+                            contentDescription = stringResource(R.string.avatar_crop_close_desc),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "拖曳移動・雙指縮放，圓內即頭像",
+                    text = stringResource(R.string.avatar_crop_hint),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
@@ -240,7 +242,7 @@ fun AvatarCropDialog(
                     ) {
                         Image(
                             bitmap = remember(source) { source.asImageBitmap() },
-                            contentDescription = "待裁切圖片",
+                            contentDescription = stringResource(R.string.avatar_crop_image_desc),
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -273,7 +275,7 @@ fun AvatarCropDialog(
                 OutlinedButton(onClick = {
                     rotation = (rotation + 90f) % 360f
                     offset = clampOffset(userScale, offset)
-                }) { Text("旋轉 90°") }
+                }) { Text(stringResource(R.string.avatar_crop_rotate)) }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -285,7 +287,7 @@ fun AvatarCropDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            "取消",
+                            stringResource(R.string.cancel),
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -304,7 +306,7 @@ fun AvatarCropDialog(
                         enabled = displayPx > 0
                     ) {
                         Text(
-                            "套用",
+                            stringResource(R.string.avatar_crop_apply),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

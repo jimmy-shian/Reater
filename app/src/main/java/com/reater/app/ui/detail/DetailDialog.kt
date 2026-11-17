@@ -105,6 +105,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -210,6 +211,11 @@ private fun parseThreadChain(rawBody: String, defaultAuthor: String): List<Threa
     // 避免病態堆疊拖慢渲染
     return blocks.take(6)
 }
+
+/** 區塊標籤顯示：parseThreadChain 的內部標記（「母文」/「分享」）僅供 UI 顯示，此處轉為字串資源（null 視為「分享」） */
+@Composable
+private fun blockLabelText(label: String?): String =
+    stringResource(if (label == "母文") R.string.detail_block_root_post else R.string.detail_label_share)
 
 /**
  * 留言鏈各區塊媒體歸屬（對應圖3/圖4 錯亂修正）。
@@ -429,7 +435,7 @@ fun DetailDialog(
     var commentViewerIndex by remember { mutableStateOf(0) }
     fun runAiSummary() {
         viewModel.startBackgroundAiAnalysis(context, item, manualNote)
-        Toast.makeText(context, "AI 分析已在背景啟動，完成後將發送通知", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.detail_ai_started_background), Toast.LENGTH_SHORT).show()
     }
 
     if (showAiConsent) {
@@ -441,22 +447,22 @@ fun DetailDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("允許 AI 分析？", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(stringResource(R.string.detail_ai_consent_title), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         IconButton(onClick = { showAiConsent = false }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "關閉", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.detail_accessibility_close), modifier = Modifier.size(20.dp))
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("按下同意後，這篇貼文內文與已保存的留言會傳送到你設定的 AI 服務端點，用於分類與摘要。Reater 不代收 API Key 或代付 AI 費用。你可以在設定中撤回同意。")
+                    Text(stringResource(R.string.detail_ai_consent_message))
                     Spacer(Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(onClick = { showAiConsent = false }) { Text("取消") }
+                        OutlinedButton(onClick = { showAiConsent = false }) { Text(stringResource(R.string.detail_ai_consent_cancel)) }
                         Spacer(Modifier.width(8.dp))
                         Button(onClick = {
                             viewModel.setAiTransmissionConsent(true)
                             showAiConsent = false
                             runAiSummary()
-                        }) { Text("同意並分析") }
+                        }) { Text(stringResource(R.string.detail_ai_consent_confirm)) }
                     }
                 }
             }
@@ -517,7 +523,7 @@ fun DetailDialog(
                         ) {
                             Icon(
                                 Icons.Default.MoreVert,
-                                contentDescription = "更多操作",
+                                contentDescription = stringResource(R.string.detail_accessibility_more),
                                 tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(22.dp)
                             )
@@ -527,7 +533,7 @@ fun DetailDialog(
                             onDismissRequest = { showOverflow = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("複製分享網址與摘要") },
+                                text = { Text(stringResource(R.string.detail_action_copy_url_summary)) },
                                 leadingIcon = {
                                     Icon(Icons.Default.Share, contentDescription = null)
                                 },
@@ -536,11 +542,11 @@ fun DetailDialog(
                                     val shareText = formatPostShareText(item)
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("Reater Share", shareText))
-                                    Toast.makeText(context, "已複製貼文網址與摘要", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.detail_toast_copied), Toast.LENGTH_SHORT).show()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("改分類標籤") },
+                                text = { Text(stringResource(R.string.detail_action_change_category)) },
                                 leadingIcon = {
                                     Icon(Icons.Default.Edit, contentDescription = null)
                                 },
@@ -552,9 +558,9 @@ fun DetailDialog(
                             DropdownMenuItem(
                                 text = {
                                     Column {
-                                        Text("AI 智慧摘要")
+                                        Text(stringResource(R.string.detail_ai_summary_section))
                                         Text(
-                                            text = "產生摘要・分類建議・標籤",
+                                            text = stringResource(R.string.detail_ai_button),
                                             fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.outline
                                         )
@@ -600,7 +606,8 @@ fun DetailDialog(
                                             showCategoryEditor = false
                                             Toast.makeText(
                                                 context,
-                                                if (it == null) "已改為未分類" else "分類已更新",
+                                                if (it == null) context.getString(R.string.detail_toast_set_uncategorized)
+                                                else context.getString(R.string.detail_toast_category_updated),
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         },
@@ -621,7 +628,7 @@ fun DetailDialog(
                                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW,
                                     Uri.parse(com.reater.app.domain.UrlParser.stripTrackingParams(item.item.canonicalUrl)))) }
                             }, modifier = Modifier.size(40.dp)) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, "在 Threads / 瀏覽器開啟", modifier = Modifier.size(20.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.detail_accessibility_open_in_browser), modifier = Modifier.size(20.dp))
                             }
                         }
                         IconButton(
@@ -629,13 +636,13 @@ fun DetailDialog(
                                 val shareText = formatPostShareText(item)
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Reater Share", shareText))
-                                Toast.makeText(context, "已複製貼文網址與摘要", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.detail_toast_copied), Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 Icons.Default.Share,
-                                contentDescription = "複製分享",
+                                contentDescription = stringResource(R.string.detail_accessibility_copy_share),
                                 tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -643,7 +650,7 @@ fun DetailDialog(
                         IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "關閉",
+                                contentDescription = stringResource(R.string.detail_accessibility_close),
                                 tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -666,8 +673,8 @@ fun DetailDialog(
                     val customCount = categories.count { !it.isDefault }
                     val quotaText = if (!isPro) {
                         val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
-                        if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
-                        else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+                        if (remaining > 0) context.getString(R.string.detail_free_category_limit_remaining, remaining, customCount, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
+                        else context.getString(R.string.detail_free_category_limit_full, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
                     } else null
                     androidx.compose.runtime.key(detailCreatePrefill) {
                         com.reater.app.ui.components.CategoryCreateDialog(
@@ -675,7 +682,7 @@ fun DetailDialog(
                             quotaText = quotaText,
                             isPro = isPro,
                             onProIconLocked = {
-                                Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.detail_toast_pro_icon), Toast.LENGTH_SHORT).show()
                             },
                             onDismiss = {
                                 detailCreatePrefill = ""
@@ -686,7 +693,7 @@ fun DetailDialog(
                                 detailCreatePrefill = ""
                                 showDetailCreateDialog = false
                                 showCategoryEditor = false
-                                Toast.makeText(context, "分類已更新", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.detail_toast_category_updated), Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -741,7 +748,7 @@ fun DetailDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "此為留言鏈舊存檔，圖片已自動歸位到母文（原誤掛在留言下）。重新儲存可永久修正。",
+                            text = stringResource(R.string.detail_notice_comment_chain),
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -803,7 +810,7 @@ fun DetailDialog(
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Text(
-                                        text = ancestor.label ?: "分享",
+                                        text = blockLabelText(ancestor.label),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -813,7 +820,7 @@ fun DetailDialog(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             LinkifiedText(
-                                text = ancestor.body.ifBlank { "（無內文）" },
+                                text = ancestor.body.ifBlank { stringResource(R.string.detail_empty_body) },
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -898,7 +905,7 @@ fun DetailDialog(
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Text(
-                                        text = mainBlock.label,
+                                        text = blockLabelText(mainBlock.label),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -917,7 +924,7 @@ fun DetailDialog(
                             }
                         }
                         Text(
-                            text = formatSavedTime(item.item.sourceFetchedAt),
+                            text = formatSavedTime(LocalContext.current, item.item.sourceFetchedAt),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -931,7 +938,7 @@ fun DetailDialog(
                             (rawBody.contains("threads.com") || rawBody.contains("threads.net"))
                         if (isUrlOnly) {
                             Text(
-                                text = "無內文",
+                                text = stringResource(R.string.detail_empty_body),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                                 color = MaterialTheme.colorScheme.outline,
@@ -950,7 +957,7 @@ fun DetailDialog(
                             )
                         } else {
                             LinkifiedText(
-                                text = rawBody.ifBlank { "無內文" },
+                                text = rawBody.ifBlank { stringResource(R.string.detail_empty_body) },
                                 fontSize = 14.sp,
                                 lineHeight = 21.sp,
                                 softWrap = true,
@@ -963,7 +970,7 @@ fun DetailDialog(
                             Spacer(modifier = Modifier.height(8.dp))
                             CopyableTextBlock(
                                 text = textAttachment,
-                                label = "文字附件",
+                                label = stringResource(R.string.detail_label_text_attachment),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1003,7 +1010,7 @@ fun DetailDialog(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "圖片/影片未能自動下載，可點上方按鈕在 Threads 查看原貼文。",
+                                    text = stringResource(R.string.detail_media_not_downloaded),
                                     fontSize = 11.sp,
                                     lineHeight = 16.sp,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -1024,7 +1031,7 @@ fun DetailDialog(
 
                 // 人工筆記與 AI 輸出使用不同欄位，編輯即交由 ViewModel 持久化。
                 Spacer(Modifier.height(14.dp))
-                Text("筆記", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(stringResource(R.string.detail_section_note), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 val noteBringIntoView = remember { BringIntoViewRequester() }
                 var noteFocused by remember { mutableStateOf(false) }
                 // 筆記高度限制為精巧可見高度（上限 160.dp，約 5-6 行），超出版面在框內滑動捲動，不撐爆對話框
@@ -1039,7 +1046,7 @@ fun DetailDialog(
                         manualNote = it
                         viewModel.updateManualNote(item.item.id, it)
                     },
-                    placeholder = { Text("寫下你的想法…") },
+                    placeholder = { Text(stringResource(R.string.detail_note_placeholder)) },
                     singleLine = false,
                     minLines = 3,
                     keyboardOptions = KeyboardOptions(
@@ -1108,7 +1115,7 @@ fun DetailDialog(
                 if (item.comments.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "精華留言 (${item.comments.size})",
+                        text = stringResource(R.string.detail_section_comments, item.comments.size),
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface
@@ -1209,7 +1216,7 @@ fun DetailDialog(
                                     if (ownCommentText.isNotBlank()) Spacer(modifier = Modifier.height(6.dp))
                                     CopyableTextBlock(
                                         text = sharedCommentText,
-                                        label = "文字附件",
+                                        label = stringResource(R.string.detail_label_text_attachment),
                                         fontSize = 13.sp,
                                         lineHeight = 19.sp,
                                         modifier = Modifier.fillMaxWidth()
@@ -1268,7 +1275,7 @@ fun DetailDialog(
                     ) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("移至垃圾桶", fontSize = 13.sp, maxLines = 1, softWrap = false)
+                        Text(stringResource(R.string.detail_action_move_to_trash), fontSize = 13.sp, maxLines = 1, softWrap = false)
                     }
 
                     Button(
@@ -1287,7 +1294,7 @@ fun DetailDialog(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("處理中…", fontSize = 13.sp, maxLines = 1, softWrap = false)
+                            Text(stringResource(R.string.detail_button_processing), fontSize = 13.sp, maxLines = 1, softWrap = false)
                         } else {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1375,13 +1382,13 @@ private fun BlockAudioLyricsCard(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_music_note),
-                    contentDescription = "歌詞",
+                    contentDescription = stringResource(R.string.detail_accessibility_lyrics),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(
-                    text = meta.title.ifBlank { "歌詞" } +
+                    text = meta.title.ifBlank { stringResource(R.string.detail_lyrics_title) } +
                         meta.artist.takeIf { it.isNotBlank() }?.let { " — $it" }.orEmpty(),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -1394,7 +1401,7 @@ private fun BlockAudioLyricsCard(
                 if (!karaoke && meta.lyrics.size > 8) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (expanded) "收合" else "展開",
+                        text = if (expanded) stringResource(R.string.detail_button_collapse) else stringResource(R.string.detail_button_expand),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary
                     )

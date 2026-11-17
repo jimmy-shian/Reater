@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.reater.app.R
 import com.reater.app.ui.AvatarStorage
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
@@ -208,12 +209,12 @@ class SettingsRepository @Inject constructor(
             withContext(Dispatchers.IO) {
                 val ts = System.currentTimeMillis()
                 val original = AvatarStorage.saveOriginal(context, Uri.parse(uri), ts)
-                    ?: error("無法將頭像複製至 App 儲存空間")
-                val image = AvatarStorage.decodeFile(original) ?: error("無法讀取頭像圖片")
+                    ?: error(context.getString(R.string.avatar_error_copy_failed))
+                val image = AvatarStorage.decodeFile(original) ?: error(context.getString(R.string.avatar_error_read_failed))
                 try {
                     AvatarStorage.saveCroppedWithTs(context, image, ts)?.also {
                         AvatarStorage.saveCropTransform(context, ts, 1f, 0f, 0f)
-                    } ?: error("無法儲存頭像圖片")
+                    } ?: error(context.getString(R.string.avatar_error_save_failed))
                 } finally { image.recycle() }
             }
         } else uri

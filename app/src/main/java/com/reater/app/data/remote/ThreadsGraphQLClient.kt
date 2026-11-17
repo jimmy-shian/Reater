@@ -1,10 +1,13 @@
 package com.reater.app.data.remote
 
+import android.content.Context
+import com.reater.app.R
 import com.reater.app.data.remote.threads.ThreadsHtmlParser
 import com.reater.app.data.remote.threads.ThreadsOEmbedClient
 import com.reater.app.data.remote.threads.ThreadsPageFetcher
 import com.reater.app.data.remote.threads.ThreadsSjsParser
 import com.reater.app.data.remote.threads.TopicTags
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -109,7 +112,8 @@ data class FetchedPostResult(
  */
 @Singleton
 class ThreadsGraphQLClient @Inject constructor(
-    private val mediaDownloader: MediaDownloader
+    private val mediaDownloader: MediaDownloader,
+    @ApplicationContext private val context: Context
 ) {
     private val client: OkHttpClient = ThreadsPageFetcher.newClient()
 
@@ -195,11 +199,11 @@ class ThreadsGraphQLClient @Inject constructor(
             )
 
             // 階段 2：已取得貼文內文
-            onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+            onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = context.getString(R.string.fetch_progress_body_parsed)), currentResult)
 
             // 階段 3：若有留言則通知已取得精華留言
             if (commentsList.isNotEmpty()) {
-                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = "已擷取精華留言 (${commentsList.size} 則)"), currentResult)
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.FETCHING_COMMENTS, message = context.getString(R.string.fetch_progress_comments_done, commentsList.size)), currentResult)
             }
 
             // 5. 離線媒體下載（主貼 + 母文鏈 + 留言媒體）
@@ -214,7 +218,7 @@ class ThreadsGraphQLClient @Inject constructor(
                 // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
                 currentResult = currentResult.copy(media = dedupedMediaList)
                 onProgress?.invoke(
-                    FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                    FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = context.getString(R.string.fetch_progress_downloading_media, 0, totalMedia), mediaIndex = 0, mediaTotal = totalMedia),
                     currentResult
                 )
                 dedupedMediaList.forEachIndexed { index, m ->
@@ -226,7 +230,7 @@ class ThreadsGraphQLClient @Inject constructor(
                             onProgress?.invoke(
                                 FetchProgressInfo(
                                     stage = FetchStage.DOWNLOADING_MEDIA,
-                                    message = "正在下載媒體 (${downloadedMediaCount + 1}/$totalMedia)",
+                                    message = context.getString(R.string.fetch_progress_downloading_media, downloadedMediaCount + 1, totalMedia),
                                     mediaIndex = downloadedMediaCount + 1,
                                     mediaTotal = totalMedia,
                                     bytesRead = p.bytesRead,
@@ -250,7 +254,7 @@ class ThreadsGraphQLClient @Inject constructor(
                     onProgress?.invoke(
                         FetchProgressInfo(
                             stage = FetchStage.DOWNLOADING_MEDIA,
-                            message = "正在下載媒體 ($downloadedMediaCount/$totalMedia)",
+                            message = context.getString(R.string.fetch_progress_downloading_media, downloadedMediaCount, totalMedia),
                             mediaIndex = downloadedMediaCount,
                             mediaTotal = totalMedia
                         ),
@@ -274,7 +278,8 @@ class ThreadsGraphQLClient @Inject constructor(
             }
 
             val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
-            val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedMediaCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+            val finalMsg = if (failedMediaCount == 0) context.getString(R.string.fetch_progress_media_done)
+                else context.getString(R.string.fetch_progress_media_partial, downloadedMediaCount, failedMediaCount)
 
             currentResult = currentResult.copy(
                 status = finalStatus,

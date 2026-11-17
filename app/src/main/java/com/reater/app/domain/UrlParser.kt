@@ -1,5 +1,8 @@
 package com.reater.app.domain
 
+import android.content.Context
+import androidx.annotation.StringRes
+import com.reater.app.R
 import java.net.URI
 import java.security.MessageDigest
 
@@ -60,11 +63,11 @@ object UrlParser {
         val hadMediaSuffix: Boolean = false
     )
 
-    val ParsedThreadsUrl.shareKindLabel: String
-        get() = when (shareKind) {
-            ShareKind.POST -> "串文"
-            ShareKind.SHORT_T -> "短鏈"
-            ShareKind.SHARE_LINK -> "留言 / 分享"
+    fun ParsedThreadsUrl.shareKindLabel(context: Context): String =
+        when (shareKind) {
+            ShareKind.POST -> context.getString(R.string.parser_kind_post)
+            ShareKind.SHORT_T -> context.getString(R.string.parser_kind_short)
+            ShareKind.SHARE_LINK -> context.getString(R.string.parser_kind_share_link)
             ShareKind.UNKNOWN -> ""
         }
 
@@ -262,7 +265,8 @@ object UrlParser {
         val canonicalUrl: String,
         /** 實際拿去抓取的 URL（去 query 但保留 path 原樣） */
         val fetchUrl: String,
-        val kindLabel: String,
+        /** UI 顯示用（字串資源，呼叫端以 Context.getString 解析） */
+        @StringRes val kindLabel: Int,
         val isShareLink: Boolean,
         val shareToken: String = ""
     )
@@ -314,7 +318,7 @@ object UrlParser {
                     shortcode = "igshare_$token",
                     canonicalUrl = withoutQuery,
                     fetchUrl = withoutQuery,
-                    kindLabel = "IG 分享",
+                    kindLabel = R.string.parser_instagram_share,
                     isShareLink = true,
                     shareToken = token
                 )
@@ -328,7 +332,7 @@ object UrlParser {
                 shortcode = code,
                 canonicalUrl = "https://www.instagram.com/$canonicalType/$code/",
                 fetchUrl = "https://www.instagram.com/$canonicalType/$code/",
-                kindLabel = if (canonicalType == "reel") "Reels" else "貼文",
+                kindLabel = if (canonicalType == "reel") R.string.parser_instagram_reel else R.string.parser_instagram_post,
                 isShareLink = false
             )
         } catch (_: Exception) {

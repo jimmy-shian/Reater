@@ -12,6 +12,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.reater.app.R
 import com.reater.app.data.local.AppDatabase
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_10_11
 import com.reater.app.data.local.AppDatabase.Companion.MIGRATION_1_2
@@ -50,11 +51,11 @@ class AiAnalysisWorker(
         val selectedModel = settingsRepo.selectedModel.first()
 
         if (!consent) {
-            NotifyCenter.postAiAnalysisFailed(appContext, itemId, postTitle, "尚未授權 AI 傳輸設定")
+            NotifyCenter.postAiAnalysisFailed(appContext, itemId, postTitle, appContext.getString(R.string.worker_ai_not_authorized))
             return Result.success()
         }
         if (apiKey.isBlank()) {
-            NotifyCenter.postAiAnalysisFailed(appContext, itemId, postTitle, "尚未配置 API Key")
+            NotifyCenter.postAiAnalysisFailed(appContext, itemId, postTitle, appContext.getString(R.string.worker_ai_no_api_key))
             return Result.success()
         }
 
@@ -82,7 +83,7 @@ class AiAnalysisWorker(
         val noteToUse = manualNote.ifBlank { itemDetail.manualNote }
         val summaryInput = listOf(
             itemDetail.displayBody,
-            noteToUse.takeIf { it.isNotBlank() }?.let { "使用者人工筆記：\n$it" }
+            noteToUse.takeIf { it.isNotBlank() }?.let { appContext.getString(R.string.worker_ai_user_note_prefix, it) }
         ).filterNotNull().joinToString("\n\n")
 
         val client = OpenAiClient()
@@ -136,7 +137,7 @@ class AiAnalysisWorker(
             if (!isUserAuthOrQuota && runAttemptCount < 2) {
                 Result.retry()
             } else {
-                val userFriendlyMessage = OpenAiClient.formatAiError(error)
+                val userFriendlyMessage = OpenAiClient.formatAiError(appContext, error)
                 NotifyCenter.postAiAnalysisFailed(appContext, itemId, postTitle, userFriendlyMessage)
                 Result.success()
             }

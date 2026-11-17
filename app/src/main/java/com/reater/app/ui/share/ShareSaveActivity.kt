@@ -185,7 +185,7 @@ class ShareSaveActivity : ComponentActivity() {
                     if (!granted && !com.reater.app.notify.NotifyCenter.canNotify(this@ShareSaveActivity)) {
                         Toast.makeText(
                             this,
-                            "未開啟通知權限，背景下載仍會繼續，但通知欄不會顯示下載進度",
+                            getString(R.string.notification_permission_missing),
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -204,9 +204,9 @@ class ShareSaveActivity : ComponentActivity() {
                     onDismiss = { finish() },
                     onSaved = { hasPending ->
                         val msg = if (hasPending) {
-                            "已儲存貼文，正在背景下載媒體（可於通知欄查看進度）"
+                            getString(R.string.saved_downloading_media)
                         } else {
-                            "已儲存至 Reater！"
+                            getString(R.string.saved_success)
                         }
                         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                         finish()
@@ -238,7 +238,7 @@ class ShareSaveActivity : ComponentActivity() {
             bytes += charCount
         }
         if (value.toByteArray(Charsets.UTF_8).size > MAX_SHARED_TEXT_BYTES) {
-            Toast.makeText(this, "分享文字已超過 200 KB，上限外內容已截除。", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.share_text_too_long), Toast.LENGTH_LONG).show()
         }
         return result.toString()
     }
@@ -267,25 +267,25 @@ fun ShareSaveScreen(
     if (state.showSaveConflict) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = viewModel::dismissSaveConflict,
-            title = { Text(if (state.conflictIsInTrash) "這篇文章在垃圾桶中" else "這篇文章已經儲存") },
+            title = { Text(if (state.conflictIsInTrash) stringResource(R.string.conflict_title_in_trash) else stringResource(R.string.conflict_title_exists)) },
             text = { Text(if (state.conflictIsInTrash)
-                "要重新抓取並還原更新這篇文章，還是新建一篇獨立紀錄？"
-                else "要重新抓取並覆蓋更新既有文章，還是另存一篇獨立紀錄？") },
+                stringResource(R.string.conflict_message_in_trash)
+                else stringResource(R.string.conflict_message_exists)) },
             confirmButton = { TextButton(onClick = { viewModel.savePost(false) }) {
-                Text(if (state.conflictIsInTrash) "還原更新" else "覆蓋更新")
+                Text(if (state.conflictIsInTrash) stringResource(R.string.conflict_action_restore) else stringResource(R.string.conflict_action_overwrite))
             } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = viewModel::dismissSaveConflict) { Text("取消") }
+                    TextButton(onClick = viewModel::dismissSaveConflict) { Text(stringResource(R.string.conflict_action_cancel)) }
                     TextButton(onClick = { viewModel.savePost(true) }) {
-                        Text(if (state.conflictIsInTrash) "新建" else "另存新的")
+                        Text(if (state.conflictIsInTrash) stringResource(R.string.conflict_action_new) else stringResource(R.string.conflict_action_save_as))
                     }
                 }
             }
         )
     }
     LaunchedEffect(state.saveError) {
-        state.saveError?.let { Toast.makeText(context, "儲存失敗：$it", Toast.LENGTH_LONG).show() }
+        state.saveError?.let { Toast.makeText(context, context.getString(R.string.save_error_with_reason, it), Toast.LENGTH_LONG).show() }
     }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
@@ -319,12 +319,12 @@ fun ShareSaveScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     com.reater.app.ui.components.DialogHeader(
-                        title = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_TITLE,
+                        title = stringResource(R.string.pro_share_limit_title),
                         onClose = { viewModel.setShowProLimitNotice(false) }
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_DESC,
+                        text = stringResource(R.string.pro_share_limit_body, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT),
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -335,7 +335,7 @@ fun ShareSaveScreen(
                         horizontalArrangement = Arrangement.End
                     ) {
                         Button(onClick = { viewModel.setShowProLimitNotice(false) }) {
-                            Text("我知道了")
+                            Text(stringResource(R.string.ok))
                         }
                     }
                 }
@@ -349,8 +349,8 @@ fun ShareSaveScreen(
         val customCount = categories.count { !it.isDefault }
         val quotaText = if (!isPro) {
             val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
-            if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
-            else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+            if (remaining > 0) stringResource(R.string.free_category_limit_remaining, remaining, customCount, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
+            else stringResource(R.string.free_category_limit_full, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT)
         } else null
         androidx.compose.runtime.key(createPrefill) {
             com.reater.app.ui.components.CategoryCreateDialog(
@@ -358,7 +358,7 @@ fun ShareSaveScreen(
                 quotaText = quotaText,
                 isPro = isPro,
                 onProIconLocked = {
-                    Toast.makeText(context, "此為 Pro 專屬圖示，請先升級解鎖", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.pro_icon_locked), Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = {
                     createPrefill = ""
@@ -415,7 +415,7 @@ fun ShareSaveScreen(
                         ) {
                             Icon(
                                 imageVector = if (state.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = if (state.isFavorite) "已珍藏" else "加入珍藏",
+                                contentDescription = if (state.isFavorite) stringResource(R.string.accessibility_favorited) else stringResource(R.string.accessibility_add_to_favorites),
                                 tint = if (state.isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.outline
                             )
                         }
@@ -425,7 +425,7 @@ fun ShareSaveScreen(
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "關閉",
+                                contentDescription = stringResource(R.string.accessibility_close),
                                 tint = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -499,7 +499,7 @@ fun ShareSaveScreen(
 
                 // 固定置頂：選擇分類（位置恆定，抓取載入/媒體插入時絕不跳動！）
                 Text(
-                    text = "選擇分類",
+                    text = stringResource(R.string.label_select_category),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -523,9 +523,9 @@ fun ShareSaveScreen(
                 AnimatedVisibility(visible = state.suggestedBasis.isNotBlank()) {
                     Text(
                         text = when (state.suggestedBasis) {
-                            "smart" -> "已依內文關鍵字與智慧關聯推薦分類"
-                            "topic" -> "已依過往同主題紀錄預選分類"
-                            else -> "已依過往同作者紀錄預選分類"
+                            "smart" -> stringResource(R.string.smart_source_smart)
+                            "topic" -> stringResource(R.string.smart_source_topic)
+                            else -> stringResource(R.string.smart_source_author)
                         },
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.outline,
@@ -543,21 +543,21 @@ fun ShareSaveScreen(
                     val isComplete = stage == FetchStage.COMPLETED || stage == FetchStage.PARTIAL_SUCCESS
 
                     val bannerText = when {
-                        state.webResolving -> "正在以內建瀏覽器解析分享連結（含留言與媒體）..."
+                        state.webResolving -> stringResource(R.string.status_web_resolving)
                         state.fetchStatusMessage.isNotBlank() -> {
                             if (isDownloading && state.mediaBytesTotal > 0) {
-                                val etaText = if (state.mediaEtaSeconds > 0) " · 預估剩餘 ${formatMediaEta(state.mediaEtaSeconds)}" else ""
+                                val etaText = if (state.mediaEtaSeconds > 0) stringResource(R.string.share_eta_prefix, formatMediaEta(state.mediaEtaSeconds)) else ""
                                 val speedText = if (state.mediaSpeedBps > 0) " (${formatMediaSpeed(state.mediaSpeedBps)})" else ""
-                                "正在下載媒體 (${state.mediaDownloadedCount}/${state.mediaTotalCount} 個檔案，${formatMediaBytes(state.mediaBytesDownloaded)} / ${formatMediaBytes(state.mediaBytesTotal)})$etaText$speedText"
+                                stringResource(R.string.status_downloading_media, state.mediaDownloadedCount, state.mediaTotalCount, formatMediaBytes(state.mediaBytesDownloaded), formatMediaBytes(state.mediaBytesTotal), etaText, speedText)
                             } else {
                                 state.fetchStatusMessage
                             }
                         }
-                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM -> "正在自動分析 Instagram 內容與下載離線媒體..."
-                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_X -> "正在自動分析 X 貼文內容與下載離線媒體..."
-                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK -> "正在自動分析 Facebook 內容與下載離線媒體..."
-                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE -> "正在自動分析 YouTube 內容與下載離線媒體..."
-                        else -> "正在自動分析 Threads 內容與下載離線媒體..."
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM -> stringResource(R.string.status_analyzing_instagram)
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_X -> stringResource(R.string.status_analyzing_x)
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK -> stringResource(R.string.status_analyzing_facebook)
+                        state.platform == com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE -> stringResource(R.string.status_analyzing_youtube)
+                        else -> stringResource(R.string.status_analyzing_threads)
                     }
 
                     Column(
@@ -611,7 +611,7 @@ fun ShareSaveScreen(
                                     modifier = Modifier.height(28.dp)
                                 ) {
                                     Text(
-                                        text = "背景下載",
+                                        text = stringResource(R.string.status_background_download),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
@@ -683,7 +683,7 @@ fun ShareSaveScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "貼文內文",
+                            text = stringResource(R.string.label_post_body),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1
@@ -691,7 +691,7 @@ fun ShareSaveScreen(
                         if (state.isFetching || state.webResolving) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "載入中…",
+                                text = stringResource(R.string.label_loading),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
@@ -712,7 +712,7 @@ fun ShareSaveScreen(
                     ) {
                         Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("貼上內文", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                        Text(stringResource(R.string.button_paste_body), fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
@@ -734,11 +734,11 @@ fun ShareSaveScreen(
                         Text(
                             if (state.isFetching || state.webResolving) {
                                 when (state.platform) {
-                                    com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM -> "正在自動擷取 Instagram 內容中…"
-                                    com.reater.app.domain.UrlParser.PLATFORM_X -> "正在自動擷取 X 貼文內容中…"
-                                    com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK -> "正在自動擷取 Facebook 內容中…"
-                                    com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE -> "正在自動擷取 YouTube 內容中…"
-                                    else -> "正在自動擷取 Threads 內容中…"
+                                    com.reater.app.domain.UrlParser.PLATFORM_INSTAGRAM -> stringResource(R.string.fetching_instagram)
+                                    com.reater.app.domain.UrlParser.PLATFORM_X -> stringResource(R.string.fetching_x)
+                                    com.reater.app.domain.UrlParser.PLATFORM_FACEBOOK -> stringResource(R.string.fetching_facebook)
+                                    com.reater.app.domain.UrlParser.PLATFORM_YOUTUBE -> stringResource(R.string.fetching_youtube)
+                                    else -> stringResource(R.string.fetching_threads)
                                 }
                             }
                             else stringResource(R.string.body_placeholder)
@@ -760,7 +760,7 @@ fun ShareSaveScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "精華留言",
+                            text = stringResource(R.string.label_comments),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1
@@ -768,7 +768,7 @@ fun ShareSaveScreen(
                         if (state.isFetching || state.webResolving) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "載入中…",
+                                text = stringResource(R.string.label_loading),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
@@ -791,7 +791,7 @@ fun ShareSaveScreen(
                     ) {
                         Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("貼上留言", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                        Text(stringResource(R.string.button_paste_comments), fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
@@ -800,7 +800,7 @@ fun ShareSaveScreen(
                     onValueChange = { viewModel.onCommentsTextChanged(it) },
                     placeholder = {
                         Text(
-                            if (state.isFetching || state.webResolving) "正在自動擷取精華留言中…"
+                            if (state.isFetching || state.webResolving) stringResource(R.string.share_fetching_comments_auto)
                             else stringResource(R.string.comments_placeholder)
                         )
                     },
@@ -848,7 +848,7 @@ fun ShareSaveScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "你存的是留言鏈：上方【母文】為原貼（含原圖），下方為該則留言。要存主串請分享主貼文連結。",
+                            text = stringResource(R.string.notice_comment_chain),
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -875,9 +875,9 @@ fun ShareSaveScreen(
                 if (previewMedia.isNotEmpty()) {
                     Text(
                         text = if (pendingPreviewCount > 0) {
-                            "媒體 ${previewMedia.size - pendingPreviewCount}/${previewMedia.size} · 未下載的將於背景續傳"
+                            stringResource(R.string.media_progress, previewMedia.size - pendingPreviewCount, previewMedia.size)
                         } else {
-                            "已下載媒體 (${previewMedia.size})"
+                            stringResource(R.string.media_downloaded_count, previewMedia.size)
                         },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
@@ -923,7 +923,7 @@ fun ShareSaveScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "此貼文含圖片/影片，但這邊解析不到媒體網址（自動下載失敗），請點右上開啟 Threads 查看。",
+                            text = stringResource(R.string.media_no_urls),
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -934,7 +934,7 @@ fun ShareSaveScreen(
 
                 // Notes text field
                 Text(
-                    text = "個人筆記",
+                    text = stringResource(R.string.label_personal_note),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -972,8 +972,8 @@ fun ShareSaveScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     val saveButtonLabel = when {
-                        isNewCategory -> "新建"
-                        state.aiAnalyzeOnSave && state.hasApiKey -> "分析並儲存"
+                        isNewCategory -> stringResource(R.string.button_create_category)
+                        state.aiAnalyzeOnSave && state.hasApiKey -> stringResource(R.string.button_analyze_and_save)
                         else -> stringResource(R.string.save)
                     }
                     Button(

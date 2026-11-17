@@ -10,11 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
+import com.reater.app.R
 import com.reater.app.data.local.entity.MediaEntity
 import com.reater.app.ui.player.rememberMediaImageLoader
 import com.reater.app.ui.player.InlineVideoPlayer
@@ -79,14 +81,14 @@ internal fun DetailMediaPager(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(if (entry.localPath.isNotBlank() && File(entry.localPath).exists()) File(entry.localPath) else entry.remoteUrl)
                             .setParameter("retry", retry).build(),
-                        contentDescription = "圖片 ${index + 1} / ${media.size}",
+                        contentDescription = stringResource(R.string.media_viewer_content_desc, index + 1, media.size),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                         loading = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } },
                         error = {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("載入失敗")
-                                TextButton(onClick = { retry++ }) { Text("重新載入") }
+                                Text(stringResource(R.string.media_viewer_load_failed))
+                                TextButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
                             }
                         },
                         success = { SubcomposeAsyncImageContent() }

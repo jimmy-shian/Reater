@@ -1,0 +1,972 @@
+<resources>
+    <!-- App Identity -->
+    <string name="app_name">Reater</string>
+
+    <!-- General / Common -->
+    <string name="save">저장</string>
+    <string name="cancel">취소</string>
+    <string name="confirm">확인</string>
+    <string name="delete">삭제</string>
+    <string name="close">닫기</string>
+    <string name="ok">알겠어요</string>
+    <string name="loading">불러오는 중…</string>
+    <string name="processing">처리 중…</string>
+    <string name="retry">다시 불러오기</string>
+    <string name="error_unknown">알 수 없는 오류</string>
+    <string name="error_save_failed">저장 실패</string>
+    <string name="error_load_failed">불러오기 실패</string>
+    <string name="copied">복사했어요</string>
+    <string name="copied_to_clipboard">클립보드에 복사했어요</string>
+
+    <!-- Share / Save Flow -->
+    <string name="share_save_title">Reater에 저장</string>
+    <string name="paste_from_clipboard">클립보드에서 붙여넣기</string>
+    <string name="body_placeholder">게시물 본문…</string>
+    <string name="comments_placeholder">핵심 댓글 / 토론 메모…</string>
+    <string name="note_placeholder">내 개인 메모…</string>
+    <string name="summary_placeholder">핵심 요약…</string>
+    <string name="fetching_status">Threads 콘텐츠를 분석하는 중…</string>
+    <string name="fetch_failed_tip">자동으로 가져올 수 없어요. 아래에서 직접 붙여넣어 주세요</string>
+    <string name="comments_partial_tip">일부 공개 댓글을 가져왔어요 (직접 추가할 수 있어요)</string>
+    <string name="search_hint">본문, 댓글, 메모 또는 태그 검색…</string>
+    <string name="fetching_post">게시물 데이터를 읽어오는 중…</string>
+    <string name="save_error">저장 실패</string>
+    <string name="notification_permission_missing">알림 권한이 꺼져 있어요. 다운로드는 계속되지만 진행률이 표시되지 않아요</string>
+    <string name="saved_downloading_media">저장했어요. 미디어를 백그라운드에서 다운로드하는 중이에요 (알림에서 진행률 확인)</string>
+    <string name="saved_success">Reater에 저장했어요!</string>
+    <string name="share_text_too_long">공유 텍스트가 너무 길어 초과된 부분은 잘렸어요.</string>
+    <string name="conflict_title_in_trash">이 게시물은 휴지통에 있어요</string>
+    <string name="conflict_title_exists">이 게시물은 이미 저장되어 있어요</string>
+    <string name="conflict_message_in_trash">복원해서 업데이트할까요, 아니면 새로 저장할까요?</string>
+    <string name="conflict_message_exists">덮어쓸까요, 아니면 새로 저장할까요?</string>
+    <string name="conflict_action_restore">복원 후 업데이트</string>
+    <string name="conflict_action_overwrite">덮어쓰기</string>
+    <string name="conflict_action_cancel">취소</string>
+    <string name="conflict_action_new">새로 만들기</string>
+    <string name="conflict_action_save_as">새 이름으로 저장</string>
+    <string name="save_error_with_reason">저장 실패: %1$s</string>
+    <string name="free_category_limit_remaining">카테고리를 %1$d개 더 추가할 수 있어요 (사용 %2$d/%3$d)</string>
+    <string name="free_category_limit_full">사용자 지정 카테고리가 가득 찼어요 (%1$d/%2$d). Pro로 업그레이드하면 무제한</string>
+    <string name="pro_icon_locked">Pro 전용 아이콘이에요. 먼저 업그레이드해서 잠금을 해제하세요</string>
+    <string name="accessibility_favorited">즐겨찾기에 추가됨</string>
+    <string name="accessibility_add_to_favorites">즐겨찾기에 추가</string>
+    <string name="accessibility_close">닫기</string>
+    <string name="label_select_category">카테고리 선택</string>
+    <string name="smart_source_smart">본문 키워드와 스마트 연관성으로 카테고리를 추천했어요</string>
+    <string name="smart_source_topic">과거 같은 주제 기록을 바탕으로 카테고리를 미리 선택했어요</string>
+    <string name="smart_source_author">과거 같은 작성자 기록을 바탕으로 카테고리를 미리 선택했어요</string>
+    <string name="status_web_resolving">공유 링크를 분석하는 중…</string>
+    <string name="status_downloading_media">미디어 다운로드 중 (%1$d/%2$d)%5$s%6$s</string>
+    <string name="status_analyzing_instagram">Instagram 콘텐츠를 분석하고 오프라인 미디어를 다운로드하는 중…</string>
+    <string name="status_analyzing_x">X 게시물을 분석하고 오프라인 미디어를 다운로드하는 중…</string>
+    <string name="status_analyzing_facebook">Facebook 콘텐츠를 분석하고 오프라인 미디어를 다운로드하는 중…</string>
+    <string name="status_analyzing_youtube">YouTube 콘텐츠를 분석하고 오프라인 미디어를 다운로드하는 중…</string>
+    <string name="status_analyzing_threads">Threads 콘텐츠를 분석하고 오프라인 미디어를 다운로드하는 중…</string>
+    <string name="status_background_download">백그라운드 다운로드</string>
+    <string name="label_post_body">게시물 본문</string>
+    <string name="label_loading">불러오는 중…</string>
+    <string name="button_paste_body">본문 붙여넣기</string>
+    <string name="fetching_instagram">Instagram 콘텐츠를 자동으로 가져오는 중…</string>
+    <string name="fetching_x">X 게시물 내용을 자동으로 가져오는 중…</string>
+    <string name="fetching_facebook">Facebook 콘텐츠를 자동으로 가져오는 중…</string>
+    <string name="fetching_youtube">YouTube 콘텐츠를 자동으로 가져오는 중…</string>
+    <string name="fetching_threads">Threads 콘텐츠를 자동으로 가져오는 중…</string>
+    <string name="label_comments">핵심 댓글</string>
+    <string name="label_loading_comments">불러오는 중…</string>
+    <string name="button_paste_comments">댓글 붙여넣기</string>
+    <string name="notice_comment_chain">댓글이에요: 위는 원본 게시물, 아래는 댓글 내용이에요. 전체를 저장하려면 원본 게시물을 공유하세요.</string>
+    <string name="media_progress">미디어 %1$d/%2$d · 다운로드하지 않은 항목은 백그라운드에서 계속돼요</string>
+    <string name="media_downloaded_count">미디어 다운로드 완료 (%1$d)</string>
+    <string name="media_no_urls">이 게시물에는 미디어가 있지만 분석에 실패했어요. 오른쪽 위에서 Threads를 열어 확인하세요.</string>
+    <string name="label_personal_note">개인 메모</string>
+    <string name="button_create_category">새로 만들기</string>
+    <string name="button_analyze_and_save">분석 후 저장</string>
+
+    <!-- Tab / Navigation -->
+    <string name="tab_all">전체</string>
+    <string name="tab_unread">읽지 않음</string>
+    <string name="tab_favorite">즐겨찾기</string>
+    <string name="category_uncategorized">미분류</string>
+
+    <!-- Settings -->
+    <string name="settings">설정</string>
+    <string name="export_data">데이터 내보내기</string>
+    <string name="import_data">데이터 가져오기</string>
+    <string name="openai_api_key">OpenAI API Key (BYOK)</string>
+    <string name="model_selection">AI 모델 선택</string>
+    <string name="settings_title">시스템 설정</string>
+    <string name="settings_section_appearance">화면 모드와 읽기</string>
+    <string name="settings_theme_title">테마</string>
+    <string name="settings_theme_system">시스템 따르기</string>
+    <string name="settings_theme_light">라이트</string>
+    <string name="settings_theme_dark">다크</string>
+    <string name="settings_font_size_title">글자 크기</string>
+    <string name="settings_section_avatar">개인 아바타 및 아이콘 갤러리 (PRO 전용)</string>
+    <string name="settings_avatar_custom_photo">커스텀 사진 아바타</string>
+    <string name="settings_avatar_imported">기기 앨범에서 커스텀 개인 사진을 가져왔어요</string>
+    <string name="settings_avatar_gallery">아이콘 갤러리</string>
+    <string name="settings_avatar_custom">커스텀 아바타</string>
+    <string name="settings_avatar_reset">초기화</string>
+    <string name="settings_pro_unlock_avatar">Pro로 업그레이드해서 커스텀 아바타 잠금 해제</string>
+    <string name="settings_pro_unlock_icons">프리미엄 아이콘과 커스텀 사진 아바타 잠금 해제</string>
+    <string name="settings_pro_unlock_button">잠금 해제</string>
+    <string name="settings_section_notifications">알림 및 푸시 리마인더</string>
+    <string name="settings_notification_permission_granted">푸시 권한: 허용됨</string>
+    <string name="settings_notification_permission_denied">푸시 권한: 허용 안 됨</string>
+    <string name="settings_notification_button_grant">허용</string>
+    <string name="settings_notification_unread_title">읽지 않은 글 알림</string>
+    <string name="settings_notification_unread_desc">저장 후에도 읽지 않으면 나중에 푸시 알림을 보내드려요</string>
+    <string name="settings_notification_delay_title">지연 시간</string>
+    <string name="settings_notification_delay_custom_label">분 직접 입력</string>
+    <string name="settings_notification_delay_suffix">분</string>
+    <string name="settings_notification_delay_hint">1~120 입력 가능</string>
+    <string name="settings_notification_daily_title">매일 돌아보기</string>
+    <string name="settings_notification_daily_desc">매일 정해진 시간에 읽지 않은 글 수를 모아 푸시로 알려드려요</string>
+    <string name="settings_notification_daily_period_morning">아침</string>
+    <string name="settings_notification_daily_period_noon">정오</string>
+    <string name="settings_notification_daily_period_afternoon">오후</string>
+    <string name="settings_notification_daily_period_evening">저녁</string>
+    <string name="settings_notification_daily_period_late_night">새벽</string>
+    <string name="settings_notification_daily_push_time_title">푸시 시간</string>
+    <string name="settings_notification_daily_custom_hour_label">시 직접 입력</string>
+    <string name="settings_notification_daily_custom_hour_suffix">시</string>
+    <string name="settings_notification_daily_custom_hour_hint">0~23 입력 가능</string>
+    <string name="settings_section_backup">데이터 백업 및 복원</string>
+    <string name="settings_backup_export">백업 내보내기</string>
+    <string name="settings_backup_import">백업 가져오기</string>
+    <string name="settings_section_uninstall">앱 제거 및 데이터 유지</string>
+    <string name="settings_uninstall_retain_data">복원 가능한 Reater 데이터 유지</string>
+    <string name="settings_uninstall_retain_desc">다시 설치한 후에도 가져올 수 있어요.</string>
+    <string name="settings_ai_expand_desc">AI 설정 접기</string>
+    <string name="settings_ai_collapse_desc">AI 설정 펼치기</string>
+    <string name="settings_ai_provider_openai">OpenAI</string>
+    <string name="settings_ai_provider_custom">커스텀 엔드포인트</string>
+    <string name="settings_ai_model_not_specified">모델이 아직 지정되지 않았어요</string>
+    <string name="settings_ai_key_configured">API Key 설정됨</string>
+    <string name="settings_ai_key_not_configured">아직 설정되지 않았어요</string>
+    <string name="settings_ai_model_id_hint">API에서 받은 Model ID</string>
+    <string name="settings_ai_fetch_models">사용 가능한 모델 목록 펼치기</string>
+    <string name="settings_ai_no_models">아직 모델 목록을 가져오지 못했어요</string>
+    <string name="settings_ai_no_matching_models">\"%1$s\"에 일치하는 모델이 없어요</string>
+    <string name="settings_ai_allow_transfer">게시물과 댓글을 AI 서비스로 전송 허용</string>
+    <string name="settings_ai_auto_analyze_on_save">저장 후 자동 AI 분석</string>
+    <string name="settings_ai_auto_analyze_desc">게시물을 저장할 때 백그라운드에서 요약을 만들고 알림을 보내드려요</string>
+
+    <!-- Smart Collection / Classification -->
+    <string name="smart_field_author">작성자</string>
+    <string name="smart_field_tag">태그</string>
+    <string name="smart_field_category">카테고리</string>
+    <string name="smart_field_content">본문 / 제목</string>
+    <string name="smart_field_comment_text">댓글 내용</string>
+    <string name="smart_field_ai_summary">AI 요약</string>
+    <string name="smart_field_manual_note">메모</string>
+    <string name="smart_field_favorite">즐겨찾기 상태</string>
+    <string name="smart_field_read_status">읽음 상태</string>
+    <string name="smart_field_has_media">미디어 포함</string>
+    <string name="smart_field_has_image">이미지 포함</string>
+    <string name="smart_field_has_video">동영상 포함</string>
+    <string name="smart_field_likes">좋아요 수</string>
+    <string name="smart_field_replies">댓글 수</string>
+    <string name="smart_field_reposts">리포스트 수</string>
+    <string name="smart_field_shares">공유 수</string>
+    <string name="smart_field_saved_date">저장 시간</string>
+    <string name="smart_field_content_match_keywords">본문이 카테고리 키워드에 일치</string>
+    <string name="smart_field_comment_match_keywords">댓글이 카테고리 키워드에 일치</string>
+
+    <string name="smart_op_equals">=</string>
+    <string name="smart_op_not_equals">≠</string>
+    <string name="smart_op_contains">포함</string>
+    <string name="smart_op_not_contains">포함하지 않음</string>
+    <string name="smart_op_contains_any">하나라도 포함</string>
+    <string name="smart_op_contains_all">모두 포함</string>
+    <string name="smart_op_gte">≥</string>
+    <string name="smart_op_gt">&gt;</string>
+    <string name="smart_op_lte">≤</string>
+    <string name="smart_op_lt">&lt;</string>
+    <string name="smart_op_between">사이</string>
+    <string name="smart_op_within_days">최근</string>
+    <string name="smart_op_older_than_days">이전</string>
+    <string name="smart_op_newer_than_days">이후</string>
+
+    <string name="smart_value_read">읽음</string>
+    <string name="smart_value_unread">읽지 않음</string>
+    <string name="smart_value_true">예</string>
+    <string name="smart_value_false">아니요</string>
+    <string name="smart_value_favorited">즐겨찾기함</string>
+    <string name="smart_value_unfavorited">즐겨찾기 안 함</string>
+
+    <string name="smart_preset_hot_name">인기 글</string>
+    <string name="smart_preset_study_name">필독</string>
+    <string name="smart_preset_sparkles_name">아이디어</string>
+
+    <string name="smart_category_keywords_inspiration">靈感,點子,想法,構思,idea,brainstorm,創意</string>
+    <string name="smart_category_keywords_job">找工作,求職,履歷,面試,徵才,工作機會,104,LinkedIn,職缺,獵頭</string>
+    <string name="smart_category_keywords_ai_art">GPT畫圖,AI畫圖,Prompt,Midjourney,Stable Diffusion,SDXL,圖像生成,生圖,DALL-E,ComfyUI</string>
+
+    <string name="smart_desc_likes">좋아요 수 %1$d %2$s %3$s</string>
+    <string name="smart_desc_replies">댓글 수 %1$d %2$s %3$s</string>
+    <string name="smart_desc_reposts">리포스트 수 %1$d %2$s %3$s</string>
+    <string name="smart_desc_shares">공유 수 조건 일치</string>
+    <string name="smart_desc_author">작성자가 \"%1$s\"에 일치</string>
+    <string name="smart_desc_tag">태그에 \"%1$s\" 포함</string>
+    <string name="smart_desc_content">본문/제목에 \"%1$s\" 포함</string>
+    <string name="smart_desc_comment">댓글에 \"%1$s\" 포함</string>
+    <string name="smart_desc_manual_note">메모에 \"%1$s\" 포함</string>
+    <string name="smart_desc_category">현재 카테고리가 \"%1$s\"</string>
+    <string name="smart_desc_favorite_true">즐겨찾기한 상태</string>
+    <string name="smart_desc_favorite_false">즐겨찾기하지 않은 상태</string>
+    <string name="smart_desc_read_status_read">읽음 상태</string>
+    <string name="smart_desc_read_status_unread">읽지 않은 상태</string>
+    <string name="smart_desc_has_media">미디어 첨부 있음</string>
+    <string name="smart_desc_has_image">이미지 내용 있음</string>
+    <string name="smart_desc_has_video">동영상 내용 있음</string>
+    <string name="smart_desc_saved_date">저장 시간 일치 (%1$s %2$s일)</string>
+    <string name="smart_desc_content_keywords">본문이 카테고리 키워드 \"%1$s\"에 일치</string>
+    <string name="smart_desc_comment_keywords">댓글이 카테고리 키워드 \"%1$s\"에 일치</string>
+
+    <string name="smart_summary_likes">좋아요 수 %1$s %2$s</string>
+    <string name="smart_summary_replies">댓글 수 %1$s %2$s</string>
+    <string name="smart_summary_reposts">리포스트 수 %1$s %2$s</string>
+    <string name="smart_summary_shares">공유 수 %1$s %2$s</string>
+    <string name="smart_summary_author">작성자 \"%1$s\"</string>
+    <string name="smart_summary_tag">태그 \"%1$s\"</string>
+    <string name="smart_summary_content">본문에 \"%1$s\" 포함</string>
+    <string name="smart_summary_comment">댓글에 \"%1$s\" 포함</string>
+    <string name="smart_summary_manual_note">메모에 \"%1$s\" 포함</string>
+    <string name="smart_summary_category">카테고리 \"%1$s\"</string>
+    <string name="smart_summary_favorite_true">즐겨찾기함</string>
+    <string name="smart_summary_favorite_false">즐겨찾기 안 함</string>
+    <string name="smart_summary_read_status_read">읽음</string>
+    <string name="smart_summary_read_status_unread">읽지 않음</string>
+    <string name="smart_summary_has_media_true">미디어 있음</string>
+    <string name="smart_summary_has_media_false">미디어 없음</string>
+    <string name="smart_summary_has_image_true">이미지 있음</string>
+    <string name="smart_summary_has_image_false">이미지 없음</string>
+    <string name="smart_summary_has_video_true">동영상 있음</string>
+    <string name="smart_summary_has_video_false">동영상 없음</string>
+    <string name="smart_summary_saved_date">최근 %1$s일</string>
+    <string name="smart_summary_content_keywords">본문이 \"%1$s\"에 일치</string>
+    <string name="smart_summary_comment_keywords">댓글이 \"%1$s\"에 일치</string>
+
+    <string name="smart_error_no_conditions">조건이 아직 설정되지 않았어요</string>
+
+    <!-- Avatar Icons -->
+    <string name="avatar_category_tech">테크</string>
+    <string name="avatar_category_reading">독서</string>
+    <string name="avatar_category_finance">재테크</string>
+    <string name="avatar_category_travel">여행</string>
+    <string name="avatar_category_creative">크리에이티브</string>
+    <string name="avatar_category_life">라이프</string>
+
+    <string name="avatar_item_life_name">일상</string>
+    <string name="avatar_item_life_desc">일상 기록, 생활 메모와 일상 이야기</string>
+    <string name="avatar_item_tech_name">테크 개발</string>
+    <string name="avatar_item_tech_desc">기술 아키텍처, 프로그래밍과 최신 정보</string>
+    <string name="avatar_item_study_name">독서 학습</string>
+    <string name="avatar_item_study_desc">책 추천, 깊이 읽기와 지식 노트</string>
+    <string name="avatar_item_finance_name">재테크 투자</string>
+    <string name="avatar_item_finance_desc">시장 동향, 재테크 관념과 경제 비즈니스</string>
+    <string name="avatar_item_travel_name">여행</string>
+    <string name="avatar_item_travel_desc">맛집 탐방, 여행 기록과 현지 생활</string>
+
+    <string name="avatar_item_crown_name">왕관</string>
+    <string name="avatar_item_crown_desc">최고의 결정, 프리미엄 지혜와 엄선한 큐레이션</string>
+    <string name="avatar_item_diamond_name">다이아몬드</string>
+    <string name="avatar_item_diamond_desc">영원한 소장 가치, 순수한 고가치 지식 결정</string>
+    <string name="avatar_item_rocket_name">로켓</string>
+    <string name="avatar_item_rocket_desc">빠른 성장, 생산성 폭발과 개척 실천</string>
+    <string name="avatar_item_sparkles_name">반짝임</string>
+    <string name="avatar_item_sparkles_desc">AI 지원, 창의적 영감과 아이디어 교차</string>
+    <string name="avatar_item_shield_name">프라이버시 금고</string>
+    <string name="avatar_item_shield_desc">안전 보호, 개인 금고와 핵심 기밀</string>
+    <string name="avatar_item_compass_name">탐색 나침반</string>
+    <string name="avatar_item_compass_desc">시야 안내, 장기적 안목과 전략 가이드</string>
+    <string name="avatar_item_fire_name">인기 불꽃</string>
+    <string name="avatar_item_fire_desc">화제의 주제, 커뮤니티 열띤 토론과 트렌드</string>
+    <string name="avatar_item_palette_name">창의 물결</string>
+    <string name="avatar_item_palette_desc">디자인 미학, 문화 예술과 창의 전시</string>
+    <string name="avatar_item_globe_name">글로벌</string>
+    <string name="avatar_item_globe_desc">글로벌 통찰, 거시적 시야와 국제 동향</string>
+    <string name="avatar_item_trophy_name">트로피</string>
+    <string name="avatar_item_trophy_desc">성취 이정표, 엘리트 컬렉션과 영예의 표지</string>
+
+    <string name="avatar_item_smart_hot_name">인기 글</string>
+    <string name="avatar_item_smart_hot_desc">좋아요 인기 추천 규칙 전용 아이콘</string>
+    <string name="avatar_item_smart_study_name">필독</string>
+    <string name="avatar_item_smart_study_desc">즐겨찾기 미읽음 필독 규칙 전용 아이콘</string>
+    <string name="avatar_item_smart_sparkles_name">아이디어</string>
+    <string name="avatar_item_smart_sparkles_desc">아이디어 영감 규칙 전용 아이콘</string>
+    <string name="avatar_item_smart_filter_name">스마트 필터</string>
+    <string name="avatar_item_smart_filter_desc">커스텀 조건 스마트 분류 필터 전용 아이콘</string>
+    <string name="avatar_item_smart_trending_name">트렌드</string>
+    <string name="avatar_item_smart_trending_desc">지표 데이터 트렌드 규칙 전용 아이콘</string>
+
+    <!-- Media Viewer -->
+    <string name="media_viewer_close">닫기</string>
+    <string name="media_viewer_download">이미지 다운로드</string>
+    <string name="media_viewer_content_desc">이미지 %1$d / %2$d</string>
+    <string name="media_viewer_load_failed">불러오기 실패</string>
+
+    <!-- Post Card / Feed -->
+    <string name="post_card_status_unread">읽지 않음</string>
+    <string name="post_card_status_read">읽음</string>
+    <string name="post_card_action_mark_unread">읽지 않음으로 표시</string>
+    <string name="post_card_action_mark_read">읽음으로 표시</string>
+    <string name="post_card_action_copy_url_summary">공유 링크와 요약 복사</string>
+    <string name="post_card_toast_copied_url_summary">링크와 요약을 복사했어요</string>
+    <string name="post_card_toast_copied_post">게시물 링크와 요약을 복사했어요</string>
+    <string name="post_card_accessibility_copy_share">복사해서 공유</string>
+    <string name="post_card_accessibility_open_external">외부에서 열기</string>
+    <string name="post_card_accessibility_favorite">즐겨찾기</string>
+    <string name="post_card_accessibility_trash">휴지통으로 이동</string>
+    <string name="post_card_empty_body">본문 없음</string>
+    <string name="post_card_label_text_attachment">텍스트 첨부</string>
+    <string name="post_card_button_detail">상세</string>
+    <string name="post_card_label_note">메모: %1$s</string>
+    <string name="post_card_label_comments">핵심 댓글 %1$d개 포함</string>
+
+    <!-- Detail Dialog -->
+    <string name="detail_block_root_post">원본</string>
+    <string name="detail_block_share">공유됨</string>
+    <string name="detail_ai_consent_title">AI 분석을 허용할까요?</string>
+    <string name="detail_ai_consent_message">게시물 내용과 댓글이 설정한 AI 서비스로 전송되어 분석돼요. 설정에서 언제든 끌 수 있어요.</string>
+    <string name="detail_ai_consent_cancel">취소</string>
+    <string name="detail_ai_consent_confirm">동의 후 분석</string>
+    <string name="detail_accessibility_more">더보기</string>
+    <string name="detail_action_copy_url_summary">공유 링크와 요약 복사</string>
+    <string name="detail_toast_copied">게시물 링크와 요약을 복사했어요</string>
+    <string name="detail_action_change_category">카테고리 변경</string>
+    <string name="detail_ai_button">요약 생성 · 카테고리 추천 · 태그</string>
+    <string name="detail_toast_category_updated">카테고리가 변경되었어요</string>
+    <string name="detail_toast_set_uncategorized">미분류로 변경했어요</string>
+    <string name="detail_accessibility_open_in_browser">Threads / 브라우저에서 열기</string>
+    <string name="detail_accessibility_copy_share">복사해서 공유</string>
+    <string name="detail_accessibility_close">닫기</string>
+    <string name="detail_free_category_limit_remaining">카테고리를 %1$d개 더 추가할 수 있어요 (사용 %2$d/%3$d)</string>
+    <string name="detail_free_category_limit_full">사용자 지정 카테고리가 가득 찼어요 (%1$d/%2$d). Pro로 업그레이드하면 무제한</string>
+    <string name="detail_toast_pro_icon">Pro 전용 아이콘이에요. 먼저 업그레이드해서 잠금을 해제하세요</string>
+    <string name="detail_notice_comment_chain">구버전 댓글 저장본이에요. 이미지는 자동으로 원래 자리에 배치되었어요. 다시 저장하면 수정돼요.</string>
+    <string name="detail_label_share">공유됨</string>
+    <string name="detail_empty_body">본문 없음</string>
+    <string name="detail_label_text_attachment">텍스트 첨부</string>
+    <string name="detail_media_not_downloaded">미디어를 자동으로 다운로드하지 못했어요. 위의 버튼을 눌러 원본 게시물을 확인할 수 있어요.</string>
+    <string name="detail_section_note">메모</string>
+    <string name="detail_note_placeholder">생각을 적어보세요…</string>
+    <string name="detail_section_comments">핵심 댓글 (%1$d)</string>
+    <string name="detail_action_move_to_trash">휴지통으로 이동</string>
+    <string name="detail_button_processing">처리 중…</string>
+    <string name="detail_accessibility_lyrics">가사</string>
+    <string name="detail_lyrics_title">가사</string>
+    <string name="detail_button_expand">펼치기</string>
+    <string name="detail_button_collapse">접기</string>
+
+    <!-- Analytics Screen -->
+    <string name="analytics_title_today_saved">오늘 저장</string>
+    <string name="analytics_title_today_opened">오늘 열람</string>
+    <string name="analytics_title_total_review">누적 돌아보기</string>
+    <string name="analytics_saved_trend_pro">저장 추세 분석 (최근 30일)</string>
+    <string name="analytics_saved_trend_free">저장 추세 분석 (이번 주)</string>
+    <string name="analytics_chart_hint">막대를 탭하면 해당 날짜의 상세 내역을 볼 수 있어요</string>
+    <string name="analytics_empty">이 기간에는 저장 기록이 없어요</string>
+    <string name="analytics_bar_percent">기간 전체 저장의 %1$d%%</string>
+    <string name="analytics_articles">편</string>
+    <string name="analytics_label_total">기간 합계</string>
+    <string name="analytics_label_daily_max">일일 최고</string>
+    <string name="analytics_label_daily_avg">일일 평균</string>
+    <string name="analytics_unlock_pro">Pro 잠금 해제 · 최근 30일 및 무기한 추세 열기</string>
+    <string name="analytics_y_axis_count">횟수 (편)</string>
+    <string name="analytics_selected_data">선택: %1$s (%2$d편)</string>
+    <string name="analytics_timeslot_morning">아침 시간대</string>
+    <string name="analytics_timeslot_afternoon">오후 시간대</string>
+    <string name="analytics_timeslot_evening">저녁 프라임</string>
+    <string name="analytics_timeslot_night">고요한 심야</string>
+    <string name="analytics_timeslot_title">시간대별 저장 빈도 분포</string>
+    <string name="analytics_timeslot_desc">가장 자주 읽고 즐겨찾기하는 시간대</string>
+    <string name="analytics_peak_slot">피크: %1$s</string>
+
+    <!-- Splash Ad Overlay -->
+    <string name="splash_ad_tagline">스레드 리딩 엔진 · 오프라인 캐시</string>
+    <string name="splash_ad_countdown">0%1$ds</string>
+    <string name="splash_ad_enter">시작하기</string>
+    <string name="splash_ad_sponsored">스폰서</string>
+    <string name="splash_ad_feature_title">긴 글과 스레드 논점을 효율적으로 소화</string>
+    <string name="splash_ad_feature_desc">Threads 인용과 답글을 자동으로 정리해 오프라인에서 전문을 읽어요.</string>
+    <string name="splash_ad_label">스폰서 콘텐츠 · 광고 슬롯</string>
+    <string name="splash_ad_privacy">기기에서 오프라인 동작 · 추적 코드 없음</string>
+    <string name="splash_ad_google_ads">Google 스폰서 제공</string>
+    <string name="splash_ad_badge">광고</string>
+    <string name="splash_ad_cta_default">자세히 보기</string>
+
+    <!-- Notifications -->
+    <string name="notify_channel_reading_reminder">읽기 알림</string>
+    <string name="notify_channel_reading_reminder_desc">읽지 않은 글 및 매일 돌아보기 알림</string>
+    <string name="notify_channel_offline_download">오프라인 미디어 다운로드</string>
+    <string name="notify_channel_offline_download_desc">백그라운드 이미지·동영상 다운로드의 실시간 진행률</string>
+    <string name="notify_content_unread_title">읽지 않은 글이 있어요</string>
+    <string name="notify_content_unread_text_default">저장한 글을 아직 안 읽었어요. 눌러서 돌아보기</string>
+    <string name="notify_content_unread_text_with_title">\"%1$s\"를 아직 안 읽었어요. 눌러서 돌아보기</string>
+    <string name="notify_content_unread_title_with_author">엄선한 글 (%1$s):\n%2$s</string>
+    <string name="notify_content_unread_text_no_author">엄선한 글:\n%1$s</string>
+    <string name="notify_content_unread_summary">읽지 않은 글 %1$d편, 눌러서 돌아보기</string>
+    <string name="notify_content_unread_summary_total">총 %1$d편 읽지 않음</string>
+    <string name="notify_content_analysis_done">글 분석을 완료하고 요약을 저장했어요</string>
+    <string name="notify_content_downloading_preparing">다운로드를 준비하는 중…</string>
+    <string name="notify_content_downloading_multi">다운로드 중 (%1$d/%2$d) · %3$d%%%4$s</string>
+    <string name="notify_content_downloading_single">다운로드 중 %1$d%%%2$s</string>
+    <string name="notify_content_downloading_title">오프라인 미디어를 다운로드하는 중</string>
+    <string name="notify_content_downloading_title_with_name">미디어를 다운로드하는 중: %1$s</string>
+    <string name="notify_content_download_done_default">미디어 %1$d개 다운로드를 완료했어요</string>
+    <string name="notify_content_download_done_with_title">\"%1$s\" 미디어 %2$d개 다운로드를 완료했어요</string>
+    <string name="notify_content_download_done_title">오프라인 미디어 다운로드 완료</string>
+    <string name="notify_content_download_failed_reason">일부 미디어 다운로드 실패</string>
+    <string name="notify_content_download_failed_title">오프라인 미디어 다운로드 미완료</string>
+
+    <!-- Backup / Archive -->
+    <string name="backup_error_size_limit">백업이 크기 상한을 초과했어요</string>
+    <string name="backup_error_file_count">백업 파일 수가 너무 많아요</string>
+    <string name="backup_error_total_size">백업 전체 크기가 상한을 초과했어요</string>
+    <string name="backup_error_invalid_name">잘못된 백업 파일 이름: %1$s</string>
+    <string name="backup_error_missing_manifest">백업 파일이 손상되었을 수 있어요</string>
+    <string name="backup_progress_almost_done">거의 완료되었어요</string>
+    <string name="backup_error_unsupported_format">지원하지 않는 백업 형식 또는 버전</string>
+    <string name="backup_error_duplicate_assets">백업 리소스 중복</string>
+    <string name="backup_error_invalid_avatar_name">아바타 백업 파일 이름이 잘못되었어요</string>
+    <string name="backup_error_invalid_avatar_format">아바타 백업 형식이 잘못되었어요</string>
+    <string name="backup_error_invalid_avatar_crop">아바타 크롭 데이터가 잘못되었어요</string>
+    <string name="backup_error_duplicate_avatar_names">아바타 백업 파일 이름이 중복돼요</string>
+    <string name="backup_progress_restore_done">복원 완료, 총 %1$d편</string>
+
+    <!-- On-Device Classifier -->
+    <string name="classifier_uncategorized">미분류</string>
+    <string name="classifier_time_unknown">시간 미상</string>
+    <string name="classifier_saved_on">%1$s에 저장</string>
+
+    <!-- URL Parser -->
+    <string name="parser_kind_post">스레드 글</string>
+    <string name="parser_kind_short">단축 링크</string>
+    <string name="parser_kind_share_link">댓글 / 공유</string>
+    <string name="parser_instagram_reel">Reels</string>
+    <string name="parser_instagram_post">게시물</string>
+
+    <!-- Pro Copy / Upgrade -->
+    <string name="pro_copy_body">Pro 업그레이드: 커스텀 카테고리 무제한, 전용 아이콘, 스마트 큐레이션.\n무료 기능은 그대로 유지돼요.</string>
+    <string name="pro_lock_cta">Pro 잠금 해제</string>
+    <string name="pro_share_limit_title">무료 버전 안내</string>
+    <string name="pro_share_limit_body">무료 버전은 카테고리 %1$d개까지. Pro로 업그레이드하면 무제한입니다.</string>
+    <string name="pro_upsell_body">Pro 잠금 해제: 무제한 카테고리, 전용 아이콘, 스마트 큐레이션.</string>
+
+    <!-- Passcode / Unlock Dialog -->
+    <string name="passcode_title">Reater Pro 잠금 해제</string>
+    <string name="passcode_link_mode_hint">원클릭 활성화 링크 붙여넣기</string>
+    <string name="passcode_manual_mode_hint">라이선스 키 / Email</string>
+    <string name="passcode_switch_mode_desc">입력 모드 전환</string>
+    <string name="passcode_link_placeholder">reater:... 또는 http://... 한 줄을 붙여넣으세요</string>
+    <string name="passcode_parsed_email_code">인식한 이메일: %1$s ｜ 라이선스 키: %2$s</string>
+    <string name="passcode_code_placeholder">라이선스 키 입력 (PRO-XXXX-XXXX-XXXX)</string>
+    <string name="passcode_email_placeholder">가입한 Email 입력 (필수)</string>
+    <string name="passcode_email_intent_text">안녕하세요, Reater Pro 라이선스를 신청하고 싶어요.\nEmail: %1$s</string>
+    <string name="passcode_contact_author">작성자에게 이메일 보내기</string>
+    <string name="passcode_link_parse_error">링크를 해석할 수 없어요. 직접 입력으로 이용해 주세요</string>
+    <string name="passcode_verify_failed">라이선스 키가 올바르지 않아요. 다시 시도하거나 작성자에게 문의해 주세요.</string>
+    <string name="passcode_verifying">인증하는 중…</string>
+    <string name="passcode_verify_and_unlock">인증 후 잠금 해제</string>
+    <string name="passcode_play_billing_title">Google Play에서 일회성 구매</string>
+    <string name="passcode_play_billing_price">가격: %1$s</string>
+    <string name="passcode_play_billing_restore">구매 복원</string>
+    <string name="passcode_play_billing_error">Google Play 구매를 시작할 수 없어요</string>
+
+    <!-- Icon Gallery Dialog -->
+    <string name="icon_gallery_filter_all">전체</string>
+    <string name="icon_gallery_filter_free">기본 무료</string>
+    <string name="icon_gallery_filter_pro">PRO</string>
+    <string name="icon_gallery_cannot_read_avatar">아바타 원본을 읽을 수 없어요</string>
+    <string name="icon_gallery_import_failed">이미지 가져오기에 실패했어요. 다시 선택해 주세요</string>
+    <string name="icon_gallery_cannot_read_image">이미지를 읽을 수 없어요. 다시 선택해 주세요</string>
+    <string name="icon_gallery_save_failed">아바타 저장에 실패했어요. 다시 시도해 주세요</string>
+    <string name="icon_gallery_delete_current_title">현재 아바타를 삭제할까요?</string>
+    <string name="icon_gallery_delete_history_title">히스토리 아바타를 삭제할까요?</string>
+    <string name="icon_gallery_delete_current_body">내장 아이콘으로 되돌아가요.</string>
+    <string name="icon_gallery_delete_history_body">이 아바타의 원본 이미지와 편집 기록을 삭제해요.</string>
+    <string name="icon_gallery_delete_button">삭제</string>
+    <string name="icon_gallery_cancel">취소</string>
+    <string name="icon_gallery_gallery_title">아이콘 갤러리</string>
+    <string name="icon_gallery_close">닫기</string>
+    <string name="icon_gallery_type_label">유형: %1$s</string>
+    <string name="icon_gallery_expand_type">유형 펼치기</string>
+    <string name="icon_gallery_collapse_type">유형 접기</string>
+    <string name="icon_gallery_go_pro">PRO로 이동</string>
+    <string name="icon_gallery_apply_avatar">내 아바타로 설정</string>
+    <string name="icon_gallery_custom_avatar_title">커스텀 개인 아바타</string>
+    <string name="icon_gallery_custom_avatar_desc">내 사진을 아바타로 사용 (Pro 필요).</string>
+    <string name="icon_gallery_go_pro_button">PRO로 이동</string>
+    <string name="icon_gallery_select_from_gallery">앨범에서 선택</string>
+    <string name="icon_gallery_history_avatars">아바타 히스토리</string>
+    <string name="icon_gallery_no_history">아직 히스토리가 없어요. 앨범에서 첫 사진을 선택하세요.</string>
+    <string name="icon_gallery_current_avatar">현재 아바타</string>
+    <string name="icon_gallery_history_avatar">히스토리 아바타</string>
+    <string name="icon_gallery_current_custom_avatar">현재 사용 중인 커스텀 아바타</string>
+    <string name="icon_gallery_saved_custom_avatar">저장된 커스텀 크롭 아바타</string>
+    <string name="icon_gallery_set_as_avatar">아바타로 설정</string>
+    <string name="icon_gallery_edit">편집</string>
+    <string name="icon_gallery_delete_avatar">아바타 삭제</string>
+    <string name="icon_gallery_save_edited_title">편집한 아바타 저장</string>
+    <string name="icon_gallery_save_edited_body">새 파일로 저장할까요, 아니면 이 아바타를 덮어쓸까요?</string>
+    <string name="icon_gallery_overwrite">덮어쓰기</string>
+    <string name="icon_gallery_save_as_new">새 이름으로 저장</string>
+    <string name="icon_gallery_accessibility_custom_avatar">개인 커스텀 아바타</string>
+    <string name="icon_gallery_accessibility_avatar">개인 아바타</string>
+
+    <!-- Smart Classification Dialog -->
+    <string name="smart_class_title_new">키워드 규칙 추가</string>
+    <string name="smart_class_title_edit">키워드 규칙 편집</string>
+    <string name="smart_class_close">닫기</string>
+    <string name="smart_class_hint">게시물에 아래 텍스트가 포함되면 지정한 카테고리로 자동 분류돼요.</string>
+    <string name="smart_class_match_text_label">매칭 텍스트 (여러 키워드 가능)</string>
+    <string name="smart_class_match_text_placeholder">텍스트 입력, 예: AI, 테크, ChatGPT</string>
+    <string name="smart_class_target_category_label">대상 카테고리 (앱 카테고리)</string>
+    <string name="smart_class_select_target_category">대상 카테고리 선택</string>
+    <string name="smart_class_custom_tag_label">커스텀 태그 (선택)</string>
+    <string name="smart_class_custom_tag_placeholder">선택 입력, 예: 메모, 중요</string>
+    <string name="smart_class_delete_rule">규칙 삭제</string>
+    <string name="smart_class_cancel">취소</string>
+    <string name="smart_class_save">저장</string>
+
+    <!-- Smart Collection Rule Dialog -->
+    <string name="smart_collection_title">스마트 분류 규칙 편집</string>
+    <string name="smart_collection_close">닫기</string>
+    <string name="smart_collection_basic_settings">기본 설정</string>
+    <string name="smart_collection_change_icon_desc">아이콘 변경</string>
+    <string name="smart_collection_rule_name_label">규칙 이름</string>
+    <string name="smart_collection_enabled">이 스마트 규칙 사용</string>
+    <string name="smart_collection_enabled_desc">조건에 일치하면 이 스마트 분류 보기에 자동으로 나타나요</string>
+    <string name="smart_collection_condition_mode">조건 모드</string>
+    <string name="smart_collection_mode_or">하나의 조건만 일치 (OR)</string>
+    <string name="smart_collection_mode_and">모든 조건 일치 (AND)</string>
+    <string name="smart_collection_conditions_label">일치 조건</string>
+    <string name="smart_collection_matched_count">일치 콘텐츠: %1$d편</string>
+    <string name="smart_collection_no_matches">현재 일치하는 콘텐츠가 없어요</string>
+    <string name="smart_collection_preview_matching">일치 콘텐츠 미리보기</string>
+    <string name="smart_collection_reset_default">기본 규칙으로 복원</string>
+    <string name="smart_collection_delete_rule">규칙 삭제</string>
+    <string name="smart_collection_cancel">취소</string>
+    <string name="smart_collection_save">저장</string>
+    <string name="smart_collection_discard_changes_title">저장하지 않은 변경 사항을 버릴까요?</string>
+    <string name="smart_collection_discard_changes_body">저장하지 않은 변경 사항이 있어요. 나가면 이 변경 사항은 사라져요.</string>
+    <string name="smart_collection_discard_confirm">변경 버리기</string>
+    <string name="smart_collection_continue_editing">계속 편집</string>
+    <string name="smart_collection_delete_confirm_title">규칙을 삭제할까요?</string>
+    <string name="smart_collection_delete_confirm_body">규칙을 삭제해도 게시물은 삭제되지 않아요.</string>
+    <string name="smart_collection_delete_confirm">삭제</string>
+    <string name="smart_collection_reset_confirm_title">기본 규칙으로 복원할까요?</string>
+    <string name="smart_collection_reset_confirm_body">\"%1$s\"의 기본 조건으로 되돌아가요.</string>
+    <string name="smart_collection_reset_confirm">기본으로 복원</string>
+    <string name="smart_collection_delete_condition_desc">조건 삭제</string>
+    <string name="smart_collection_field_group_content">콘텐츠</string>
+    <string name="smart_collection_field_group_status">상태</string>
+    <string name="smart_collection_field_group_interaction">인터랙션 지표</string>
+    <string name="smart_collection_field_group_time">시간</string>
+    <string name="smart_collection_field_group_smart">스마트 분류</string>
+    <string name="smart_collection_default_read_status_unread">읽지 않음</string>
+    <string name="smart_collection_hint_min_value">최솟값</string>
+    <string name="smart_collection_hint_max_value">최댓값</string>
+    <string name="smart_collection_example_likes">예: 100</string>
+    <string name="smart_collection_example_replies">예: 20</string>
+    <string name="smart_collection_example_reposts">예: 10</string>
+    <string name="smart_collection_example_shares">예: 5</string>
+    <string name="smart_collection_example_author">예: @user 또는 닉네임</string>
+    <string name="smart_collection_example_tag">예: AI</string>
+    <string name="smart_collection_example_content">예: Midjourney 또는 Prompt</string>
+    <string name="smart_collection_example_comment">예: 튜토리얼 자료</string>
+    <string name="smart_collection_example_ai_summary">예: 핵심 요약</string>
+    <string name="smart_collection_example_manual_note">예: 필독</string>
+    <string name="smart_collection_favorite_true_label">즐겨찾기함</string>
+    <string name="smart_collection_favorite_false_label">즐겨찾기 안 함</string>
+    <string name="smart_collection_read_status_unread_label">읽지 않음</string>
+    <string name="smart_collection_read_status_read_label">읽음</string>
+    <string name="smart_collection_has_media_true_label">예</string>
+    <string name="smart_collection_has_media_false_label">아니요</string>
+    <string name="smart_collection_has_image_true_label">예</string>
+    <string name="smart_collection_has_image_false_label">아니요</string>
+    <string name="smart_collection_has_video_true_label">예</string>
+    <string name="smart_collection_has_video_false_label">아니요</string>
+    <string name="smart_collection_days_label">일수</string>
+    <string name="smart_collection_days_suffix">일</string>
+    <string name="smart_collection_days_placeholder">예: 30</string>
+    <string name="smart_collection_select_category_hint">카테고리 선택</string>
+    <string name="smart_collection_current_category">지정 카테고리: %1$s</string>
+    <string name="smart_collection_match_source_label">매칭 대상:</string>
+    <string name="smart_collection_source_title">제목</string>
+    <string name="smart_collection_source_body">본문</string>
+    <string name="smart_collection_source_comments">댓글</string>
+    <string name="smart_collection_source_manual_note">메모</string>
+    <string name="smart_collection_preview_title">조건 일치 콘텐츠 미리보기 (총 %1$d편)</string>
+    <string name="smart_collection_preview_empty">현재 일치하는 게시물이 없어요</string>
+    <string name="smart_collection_preview_close">미리보기 닫기</string>
+    <string name="smart_collection_preview_matched_label">일치한 조건:</string>
+    <string name="smart_collection_icon_title">규칙 전용 아이콘 선택</string>
+    <string name="smart_collection_icon_smart_rule">스마트 규칙 전용 아이콘</string>
+    <string name="smart_collection_icon_other">기타 사용 가능한 아이콘</string>
+
+    <!-- Threads Stats Row -->
+    <string name="threads_stats_like">좋아요</string>
+    <string name="threads_stats_reply">답글</string>
+    <string name="threads_stats_repost">리포스트</string>
+    <string name="threads_stats_share">공유</string>
+
+    <!-- Reater Dropdown -->
+    <string name="dropdown_collapse_menu">메뉴 접기</string>
+    <string name="dropdown_expand_menu">메뉴 펼치기</string>
+    <string name="dropdown_apply">적용</string>
+
+    <!-- Pro Category Filter Row -->
+    <string name="filter_all">전체</string>
+    <string name="filter_uncategorized">미분류</string>
+
+    <!-- Copyable Text Block -->
+    <string name="copyable_toast_copied">본문을 복사했어요</string>
+    <string name="copyable_accessibility_copy">본문 복사</string>
+    <string name="copyable_expand">전체 보기</string>
+    <string name="copyable_collapse">접기</string>
+
+    <!-- Time Format -->
+    <string name="time_unknown">시간 미상</string>
+    <string name="time_saved_on">%1$s에 저장</string>
+
+    <!-- Media Download Worker -->
+    <string name="worker_download_failed">미디어 %1$d개 다운로드 실패%2$s</string>
+    <string name="worker_download_skipped"> (%1$d개 스트림 건너뜀)</string>
+
+    <!-- AI Analysis Worker -->
+    <string name="worker_ai_not_authorized">AI 전송 설정이 아직 허용되지 않았어요</string>
+    <string name="worker_ai_no_api_key">API Key가 아직 설정되지 않았어요</string>
+    <string name="worker_ai_user_note_prefix">사용자 직접 메모:\n%1$s</string>
+
+    <!-- Reater Glance Widget -->
+    <string name="widget_empty_no_posts">지금 읽을 게시물이 없어요. Threads에서 공유해 보세요!</string>
+    <string name="widget_label_unread">읽을 글</string>
+    <string name="widget_label_note">메모: %1$s</string>
+
+    <!-- Fetch Progress (ThreadsGraphQLClient / XClient / InstagramClient) -->
+    <string name="fetch_progress_body_parsed">게시물 본문을 가져왔어요</string>
+    <string name="fetch_progress_comments_done">핵심 댓글 %1$d개를 가져왔어요</string>
+    <string name="fetch_progress_downloading_media">미디어를 다운로드하는 중 (%1$d/%2$d)</string>
+    <string name="fetch_progress_media_done">오프라인 미디어 다운로드를 완료했어요</string>
+    <string name="fetch_progress_media_partial">부분 완료 (성공 %1$d, 실패 %2$d, 나머지는 백그라운드에서 계속돼요)</string>
+    <string name="fetch_error_invalid_x_url">잘못된 X 게시물 링크</string>
+    <string name="fetch_error_x_failed">X 게시물 가져오기 실패</string>
+    <string name="fetch_error_invalid_youtube_url">잘못된 YouTube 링크</string>
+    <string name="fetch_youtube_fallback_title">YouTube 동영상</string>
+
+    <!-- AI Client Errors (OpenAiClient) -->
+    <string name="ai_error_generic">AI 분석에 실패했어요. 잠시 후 다시 시도해 주세요</string>
+    <string name="ai_error_401">API 키가 잘못되었거나 권한이 없어요. 설정에서 확인해 주세요</string>
+    <string name="ai_error_403">액세스가 거부되었어요. 이 키에는 해당 모델 호출 권한이 없어요</string>
+    <string name="ai_error_404">지정한 모델을 찾을 수 없거나 API 주소가 존재하지 않아요</string>
+    <string name="ai_error_429">요청이 너무 많거나 한도를 모두 사용했어요. 잠시 후 다시 시도해 주세요</string>
+    <string name="ai_error_5xx">AI 서비스 서버 연결에 문제가 있어요. 잠시 후 다시 시도해 주세요</string>
+    <string name="ai_error_network">연결에 실패했어요. 잠시 후 다시 시도해 주세요</string>
+    <string name="ai_error_timeout">AI 서버 응답이 시간 초과되었어요. 네트워크 연결을 확인하고 다시 시도해 주세요</string>
+    <string name="ai_error_unreachable">AI 서버에 연결할 수 없어요. 네트워크 또는 주소 설정을 확인해 주세요</string>
+
+    <!-- Backup Manager Progress / Errors -->
+    <string name="backup_eta_seconds">남은 시간 약 %1$d초</string>
+    <string name="backup_eta_minutes">남은 시간 약 %1$d분</string>
+    <string name="backup_eta_min_sec">남은 시간 약 %1$d분 %2$d초</string>
+    <string name="backup_progress_preparing">백업 데이터를 준비하는 중…</string>
+    <string name="backup_progress_packing">백업 데이터를 묶는 중 (%1$d/%2$d)</string>
+    <string name="backup_progress_refetching_media">누락된 미디어를 다시 가져오는 중 (%1$d/%2$d)</string>
+    <string name="backup_progress_packaging">.reater 백업 파일을 만드는 중…</string>
+    <string name="backup_progress_packaging_detail">미디어 리소스 총 %1$d개</string>
+    <string name="backup_error_empty_file">백업 파일 생성에 실패했어요 (파일 크기 0)</string>
+    <string name="backup_progress_reading">백업 파일을 읽는 중…</string>
+    <string name="backup_error_file_empty">백업 파일이 비어 있어요. 다시 선택해 주세요</string>
+    <string name="backup_progress_extracting">.reater 백업 리소스를 푸는 중…</string>
+    <string name="backup_error_missing_manifest_file">유효하지 않은 백업 파일이에요</string>
+    <string name="backup_error_content_empty">백업 파일 내용이 비어 있어요</string>
+    <string name="backup_error_parse_failed">백업 형식 오류: %1$s</string>
+    <string name="backup_warning_missing_assets">미디어 %1$d개가 누락되어 링크로 복원해요</string>
+    <string name="backup_error_illegal_format">유효하지 않은 .reater 백업 파일이에요</string>
+    <string name="backup_error_too_many_items">백업 파일 항목이 너무 많아요 (상한 초과)</string>
+    <string name="backup_error_missing_url">가져온 데이터에 유효한 URL이 없어요</string>
+    <string name="backup_progress_restoring_articles">게시물을 복원하는 중 (%1$d/%2$d)</string>
+    <string name="backup_progress_writing_db">로컬 데이터베이스에 쓰는 중…</string>
+    <string name="backup_progress_writing_db_detail">로컬 데이터베이스에 쓰는 중 (%1$d/%2$d)</string>
+
+    <!-- Billing (PlayBillingManager) -->
+    <string name="billing_connecting">Google Play에 연결하는 중이에요. 잠시 후 다시 시도해 주세요.</string>
+    <string name="billing_processing">결제를 처리하는 중이에요. 완료되면 Pro가 자동으로 활성화돼요.</string>
+    <string name="billing_purchase_done_verify_fail">구매는 완료되었지만 인증에 문제가 발생했어요. 다음에 열 때 다시 시도해요.</string>
+    <string name="billing_unavailable">현재 Google Play에서 Pro 상품을 제공할 수 없어요.</string>
+    <string name="billing_pro_activated">Reater Pro가 활성화되었어요.</string>
+
+    <!-- Avatar Errors (SettingsRepository) -->
+    <string name="avatar_error_copy_failed">아바타를 앱 저장 공간으로 복사할 수 없어요</string>
+    <string name="avatar_error_read_failed">아바타 이미지를 읽을 수 없어요</string>
+    <string name="avatar_error_save_failed">아바타 이미지를 저장할 수 없어요</string>
+
+    <!-- Repository -->
+    <string name="repo_manual_note_author">직접 쓴 메모</string>
+
+    <!-- Notifications (NotifyCenter extra) -->
+    <string name="notify_ai_done_title">AI 분석 완료</string>
+    <string name="notify_ai_done_title_with_name">AI 분석 완료: %1$s</string>
+    <string name="notify_ai_failed_title">AI 분석 미완료</string>
+    <string name="notify_ai_failed_title_with_name">AI 분석 미완료: %1$s</string>
+    <string name="notify_download_done_with_failures">%1$s (실패 %2$d개)</string>
+
+    <!-- MainActivity: AI / Backup / Pro -->
+    <string name="main_error_ai_not_authorized">먼저 설정에서 AI 분석을 허용해 주세요</string>
+    <string name="main_error_no_api_key">먼저 설정에서 API Key를 설정해 주세요</string>
+    <string name="main_export_preparing">내보낼 백업 데이터를 준비하는 중…</string>
+    <string name="main_error_open_export_file">지정한 내보내기 파일을 열 수 없어요</string>
+    <string name="main_export_done">.reater 백업 파일을 내보냈어요</string>
+    <string name="main_export_failed">내보내기 실패: %1$s</string>
+    <string name="main_import_reading">백업 파일을 읽고 푸는 중…</string>
+    <string name="main_error_invalid_file_type">.reater 백업 파일만 지원해요</string>
+    <string name="main_error_open_backup_file">선택한 백업 파일을 열 수 없어요</string>
+    <string name="main_restore_done">백업을 복원했어요 (총 %1$d편)</string>
+    <string name="main_restore_failed">복원 실패: %1$s</string>
+    <string name="main_pro_unlock_success">Reater Pro 잠금 해제에 성공했어요!</string>
+    <string name="main_pro_deeplink_failed">활성화에 실패했어요. 라이선스 키를 불러왔으니 \"인증 후 잠금 해제\"를 눌러 다시 시도해 주세요</string>
+
+    <!-- MainActivity: Notification Permission Dialog -->
+    <string name="main_notif_permission_dialog_message">예정된 시간에 읽기 알림을 받으려면 알림 권한을 허용해 주세요.</string>
+    <string name="main_button_go_settings">설정으로 이동</string>
+    <string name="main_button_later">나중에</string>
+
+    <!-- MainActivity: Trash -->
+    <string name="main_trash_move_dialog_message">휴지통으로 이동하며 30일간 보관돼요. 그동안 언제든 복원할 수 있어요.</string>
+    <string name="main_trash_moved_with_retention">휴지통으로 이동했어요 (30일 보관)</string>
+    <string name="main_trash_clear_title">휴지통을 비울까요?</string>
+    <string name="main_trash_clear_message">모든 기록을 영구 삭제할까요? 되돌릴 수 없어요.</string>
+    <string name="main_trash_cleared">휴지통을 비웠어요</string>
+    <string name="main_moved_to_trash">휴지통으로 이동했어요</string>
+    <string name="main_trash_empty_hint">휴지통이 비어 있어요\n삭제된 항목은 30일간 여기에 보관돼요</string>
+    <string name="main_trash_count_title">휴지통 기록 (%1$d)</string>
+    <string name="main_trash_clear_button">휴지통 비우기</string>
+    <string name="main_trash_remaining_days">%1$d일 후 영구 삭제돼요</string>
+    <string name="main_delete_permanently">영구 삭제</string>
+
+    <!-- MainActivity: Feed / Search / Status -->
+    <string name="main_avatar_changed">개인 아바타를 성공적으로 변경했어요</string>
+    <string name="main_category_deleted">카테고리를 삭제했어요. 게시물은 미분류로 변경돼요</string>
+    <string name="main_copied_filter_with_count">현재 필터의 링크와 요약 %1$d개를 복사했어요</string>
+    <string name="main_no_posts_in_filter">현재 필터에 게시물이 없어요</string>
+    <string name="main_accessibility_copy_filter">현재 필터의 모든 링크와 요약 복사</string>
+    <string name="main_accessibility_clear_search">검색 지우기</string>
+    <string name="main_search_no_match">\"%1$s\"에 일치하는 내용을 찾을 수 없어요</string>
+    <string name="main_empty_all_hint">아직 콘텐츠가 없어요\nThreads나 Instagram에서 \"공유\"를 누르면 저장돼요!</string>
+    <string name="main_marked_read">읽음으로 표시했어요 (읽지 않음에는 표시되지 않아요)</string>
+    <string name="main_marked_unread">읽지 않음으로 표시했어요</string>
+    <string name="main_favorited">즐겨찾기에 추가했어요</string>
+    <string name="main_unfavorited">즐겨찾기를 취소했어요</string>
+    <string name="main_search_no_match_unread">읽지 않은 글에서 \"%1$s\"에 일치하는 내용을 찾을 수 없어요</string>
+    <string name="main_all_read_congrats">좋아요! 모든 게시물을 다 읽었어요</string>
+    <string name="main_search_no_match_favorite">즐겨찾기에서 \"%1$s\"에 일치하는 내용을 찾을 수 없어요</string>
+    <string name="main_empty_favorite_hint">아직 즐겨찾기가 없어요\n게시물 카드의 책갈피를 누르면 추가돼요!</string>
+    <string name="main_deleted_permanently">영구 삭제했어요</string>
+    <string name="main_smart_rule_applied">스마트 분류가 게시물 %1$d편을 업데이트했어요!</string>
+    <string name="main_restore_success">복원에 성공했어요!</string>
+
+    <!-- MainActivity: Category Management -->
+    <string name="main_category_management">카테고리 관리</string>
+    <string name="main_category_count_summary">총 %1$d개 카테고리, 자유롭게 순서를 바꿀 수 있어요</string>
+    <string name="main_category_free_limit_summary">무료 %1$d/%2$d · 업그레이드 시 카테고리 무제한</string>
+    <string name="main_category_add_new">＋ 카테고리 추가</string>
+    <string name="main_category_edit">카테고리 편집</string>
+    <string name="main_smart_rules_desc">저장할 때 알맞은 카테고리로 자동 분류해요</string>
+    <string name="main_smart_rule_keyword_title">본문 키워드로 자동 분류</string>
+    <string name="main_smart_rule_keyword_desc">본문과 제목 키워드로 자동 분류해요</string>
+    <string name="main_smart_rule_author_title">작성자 이름으로 자동 분류</string>
+    <string name="main_smart_rule_author_desc">작성자의 과거 패턴으로 자동 분류해요</string>
+    <string name="main_smart_rule_custom_title">특정 텍스트 자동 분류</string>
+    <string name="main_smart_rule_custom_priority">최우선 순위</string>
+    <string name="main_smart_rule_custom_desc">특정 텍스트가 포함되면 지정한 카테고리를 우선 적용해요</string>
+    <string name="main_smart_rule_custom_empty">아직 규칙이 없어요. \"매칭 규칙 추가\"를 눌러 설정을 시작하세요.</string>
+    <string name="main_smart_rule_add_rule">매칭 규칙 추가</string>
+    <string name="main_smart_rule_reapply_hint">모든 게시물에 다시 적용</string>
+
+    <!-- Splash Ad Tags -->
+    <string name="splash_tag_thread_context">#스레드 맥락</string>
+    <string name="splash_tag_offline">#오프라인 정리</string>
+
+    <!-- Avatar Crop Dialog -->
+    <string name="avatar_crop_title">아바타 위치 편집</string>
+    <string name="avatar_crop_close_desc">편집 닫기</string>
+    <string name="avatar_crop_hint">드래그로 이동 · 핀치로 확대/축소, 원 안이 아바타예요</string>
+    <string name="avatar_crop_image_desc">크롭할 이미지</string>
+    <string name="avatar_crop_rotate">90° 회전</string>
+    <string name="avatar_crop_apply">적용</string>
+
+    <!-- Category Drag Handle -->
+    <string name="category_drag_move_up">카테고리 위로 이동</string>
+    <string name="category_drag_move_down">카테고리 아래로 이동</string>
+    <string name="category_drag_reorder_desc">드래그해서 정렬</string>
+
+    <!-- Category Dropdown -->
+    <string name="category_dropdown_search_or_new">검색 또는 새 카테고리 입력…</string>
+    <string name="category_dropdown_clear_desc">카테고리 지우기</string>
+    <string name="category_dropdown_no_match">일치하는 카테고리가 없어요</string>
+    <string name="category_dropdown_has_match">일치하는 카테고리</string>
+    <string name="category_dropdown_add_new">＋ \"%1$s\" 추가</string>
+
+    <!-- Category Filter Bar -->
+    <string name="category_filter_all_categories">전체 카테고리</string>
+    <string name="category_filter_search_hint">카테고리 검색</string>
+    <string name="category_filter_clear_desc">지우기</string>
+    <string name="category_filter_item_count">%1$d개</string>
+    <string name="category_filter_platform_desc">플랫폼 필터: %1$s (%2$d개)</string>
+
+    <!-- Category Manage Dialogs -->
+    <string name="category_new_title">새 카테고리</string>
+    <string name="category_edit_title">카테고리 편집</string>
+    <string name="category_name_placeholder">카테고리 이름 (예: 테크, 라이프, 독서)</string>
+    <string name="category_name_label">카테고리 이름</string>
+    <string name="category_select_icon">아이콘 선택</string>
+    <string name="category_pro_badge_desc">Pro 전용</string>
+    <string name="category_create">만들기</string>
+    <string name="category_discard_title">아직 만들지 않은 카테고리를 버릴까요?</string>
+    <string name="category_discard_message">\"%1$s\"를 입력했지만 아직 만들지 않았어요. 돌아가면 초안이 사라져요.</string>
+    <string name="category_discard_confirm">버리기</string>
+    <string name="category_continue_editing">계속 편집</string>
+    <string name="category_builtin_no_delete">내장 카테고리는 삭제할 수 없어요. 이름 변경과 아이콘 변경은 할 수 있어요</string>
+    <string name="category_delete_confirm_title">\"%1$s\"을(를) 삭제할까요?</string>
+    <string name="category_delete_confirm_message">카테고리의 게시물은 \"미분류\"로 변경돼요.</string>
+
+    <!-- Category Badge -->
+    <string name="category_badge_fallback">미분류</string>
+
+    <!-- Icon Gallery -->
+    <string name="icon_gallery_in_use">사용 중</string>
+
+    <!-- Passcode / Pro -->
+    <string name="passcode_email_subject">Reater Pro 라이선스 신청</string>
+    <string name="passcode_manual_email_hint">jimmy910824@gmail.com으로 직접 메일을 보내 주세요</string>
+    <string name="passcode_unlock_success">Reater Pro 잠금 해제에 성공했어요!</string>
+    <string name="pro_smart_curation_badge">Pro 전용 스마트 큐레이션</string>
+
+    <!-- Smart Collection Rule Dialog (extra) -->
+    <string name="smart_collection_add_condition">＋ 조건 추가</string>
+    <string name="smart_collection_matching_live">실시간 매칭 중</string>
+    <string name="smart_collection_hint_contains_any">키워드는 공백으로 구분하고, 하나라도 일치하면 돼요</string>
+    <string name="smart_collection_hint_contains_all">키워드는 공백으로 구분하고, 모두 일치해야 해요</string>
+    <string name="smart_collection_preview_more">… 그 외 %1$d편 일치</string>
+    <string name="smart_desc_ai_summary">AI 요약에 \"%1$s\" 포함</string>
+    <string name="smart_summary_ai_summary">AI 요약에 \"%1$s\" 포함</string>
+    <string name="smart_op_label_equals">같음</string>
+    <string name="smart_op_label_not_equals">같지 않음</string>
+    <string name="smart_op_label_contains_any_keywords">키워드 하나라도 포함</string>
+    <string name="smart_op_label_contains_all_keywords">모든 키워드 포함</string>
+    <string name="smart_op_label_gte">크거나 같음</string>
+    <string name="smart_op_label_lte">작거나 같음</string>
+
+    <!-- Detail Dialog (extra) -->
+    <string name="detail_ai_started_background">AI 분석이 백그라운드에서 시작되었어요. 완료되면 알림을 보내드려요</string>
+    <string name="detail_ai_summary_section">AI 스마트 요약</string>
+
+    <!-- Inline Video Player -->
+    <string name="video_poster_desc">오디오 커버</string>
+    <string name="video_play_failed">동영상을 재생할 수 없어요</string>
+    <string name="video_retry">다시 시도</string>
+    <string name="video_pause_desc">일시정지</string>
+    <string name="video_play_desc">재생</string>
+    <string name="video_unmute_desc">음소거 해제</string>
+    <string name="video_mute_desc">음소거</string>
+    <string name="video_fullscreen_desc">전체 화면으로 확대해서 재생</string>
+    <string name="video_fullscreen_close_desc">전체 화면 닫기</string>
+    <string name="video_rotate_desc">화면 방향 전환</string>
+    <string name="video_rotate_button">전환</string>
+    <string name="video_rewind_10_desc">10초 뒤로</string>
+    <string name="video_forward_10_desc">10초 앞으로</string>
+    <string name="video_download_desc">동영상 다운로드</string>
+    <string name="video_download_button">다운로드</string>
+    <string name="video_speed_title">재생 속도</string>
+    <string name="video_speed_normal">1.0x (보통)</string>
+    <string name="video_speed_selected_desc">선택됨</string>
+    <string name="video_export_format_title">다운로드 형식 선택</string>
+    <string name="video_export_format_message">오디오(음악) 게시물이에요. 저장할 버전을 선택하세요:</string>
+    <string name="video_export_music">음악 버전</string>
+    <string name="video_export_video">동영상 버전</string>
+    <string name="video_export_music_title">음악 버전 (.m4a)</string>
+    <string name="video_export_music_desc">커버와 가사가 포함된 오디오 전용 파일, \"음악/Reater\"에 저장해요.</string>
+    <string name="video_export_video_title">동영상 버전 (.mp4)</string>
+    <string name="video_export_video_desc">커버가 포함된 동영상 파일, 앨범 \"Movies/Reater\"에 저장해요.</string>
+    <string name="video_export_music_progress">음악 파일을 쓰는 중 (커버/가사 포함)…</string>
+    <string name="video_export_video_progress">동영상을 합성하는 중 (커버 화면 포함)…</string>
+    <string name="video_exporting_title">내보내는 중</string>
+    <string name="video_music_desc">음악 버전</string>
+    <string name="video_movie_desc">동영상 버전</string>
+
+    <!-- SafeBarModifiers (download/save feedback) -->
+    <string name="save_error_no_media">저장할 유효한 미디어 파일이 없어요</string>
+    <string name="save_done_music">음악에 저장했어요</string>
+    <string name="save_done_gallery">앨범에 저장했어요</string>
+    <string name="save_error_network">다운로드 또는 저장에 실패했어요. 네트워크 연결을 확인해 주세요</string>
+    <string name="save_error_audio_unavailable">오디오 파일을 사용할 수 없어요. 먼저 재생 중에 열어 주세요</string>
+    <string name="save_done_music_with_meta">음악에 저장했어요 (곡명/커버/가사 포함)</string>
+    <string name="save_error_audio_check">저장에 실패했어요. 네트워크와 오디오 파일을 확인해 주세요</string>
+    <string name="save_done_gallery_with_cover">앨범에 저장했어요 (커버 포함 동영상)</string>
+    <string name="save_error_compose_failed">합성에 실패했어요 (커버 가져오기 또는 인코딩 실패)</string>
+
+    <!-- Settings Dialog (extra) -->
+    <string name="settings_reader_preview_tagline">Reater 리더 미리보기: 좋은 게시물을 탐색하고 소장하기</string>
+    <string name="settings_backup_format_label">.reater 전용 백업 형식</string>
+
+    <!-- Share Save (extra) -->
+    <string name="share_fetching_comments_auto">핵심 댓글을 자동으로 가져오는 중…</string>
+    <string name="share_eta_prefix"> · 남은 시간 약 %1$s</string>
+
+    <!-- Widget -->
+    <string name="widget_title_later_reading">Reater 나중에 읽기</string>
+
+    <!-- AdMob Config (non-translatable) -->
+    <string name="admob_app_id" translatable="false">ca-app-pub-2415998114933157~8828014028</string>
+    <string name="admob_unit_splash" translatable="false">ca-app-pub-2415998114933157/2889592955</string>
+
+    <string name="tab_pro_categories">PRO 카테고리</string>
+    <string name="tab_trash">휴지통 (30일)</string>
+    <string name="tab_analytics">분석</string>
+    <string name="smart_summary_separator_or"> 또는 </string>
+    <string name="parser_instagram_share">IG 공유</string>
+    <string name="pro_lock_desc_unlocked_features">Pro로 업그레이드: 무제한 카테고리, 전용 아이콘, 스마트 큐레이션.\n무료 기능은 그대로입니다.</string>
+    <string name="passcode_play_billing_button">Google Play에서 구매</string>
+    <string name="icon_gallery_tab_icons">아이콘</string>
+    <string name="icon_gallery_tab_custom_avatar">커스텀 아바타</string>
+    <string name="icon_gallery_unlock_pro">PRO 잠금 해제</string>
+    <string name="backup_progress_items_detail">총 %1$d개 게시물</string>
+    <string name="main_notif_permission_dialog_title">알림 권한 허용</string>
+    <string name="main_notif_permission_dialog_body">읽기 알림이 켜져 있지만 알림 권한이 꺼져 있습니다.\n\n제때 알림을 받으려면 알림을 허용해 주세요.</string>
+    <string name="main_trash_move_dialog_title">휴지통으로 이동할까요?</string>
+    <string name="main_trash_restore_button">복원</string>
+    <string name="main_smart_rules_title">스마트 분류 규칙</string>
+    <string name="main_smart_rule_target_category_fallback">지정 카테고리</string>
+    <string name="smart_op_label_gt">보다 큼</string>
+    <string name="smart_op_label_lt">보다 작음</string>
+    <string name="smart_op_label_within_days">최근 N일</string>
+    <string name="smart_op_label_older_than_days">N일 전 이전</string>
+    <string name="smart_op_label_newer_than_days">N일 이내</string>
+    <string name="detail_ai_summary">AI 요약</string>
+    <string name="post_card_ai_summary_prefix">✨ AI 요약: %1$s</string>
+    <string name="media_viewer_image">이미지</string>
+    <string name="analytics_pro_full">PRO 전체</string>
+    <string name="analytics_count_suffix">%1$d편</string>
+    <string name="analytics_slot_count_percent">%1$d편 (%2$d%%)</string>
+    <string name="detail_avatar_desc">@%1$s 아바타</string>
+    <string name="settings_daily_preset_morning">08:00 아침 독서</string>
+    <string name="settings_daily_preset_noon">12:00 점심</string>
+    <string name="settings_daily_preset_evening">18:00 퇴근 후</string>
+    <string name="settings_daily_preset_night">21:00 저녁</string>
+    <string name="settings_daily_preset_bedtime">23:00 취침 전</string>
+    <string name="settings_ai_service_title">AI 서비스 (BYOK)</string>
+    <string name="settings_ai_key_saved_placeholder">•••••••••••••••• (저장됨)</string>
+    <string name="notify_unread_count_title">안 읽은 글 %1$d편</string>
+    <string name="notify_eta_remaining"> · %1$02d:%2$02d 남음</string>
+    <string name="share_badge_video">▶ 동영상</string>
+    <string name="share_badge_audio">♪ 오디오</string>
+    <string name="passcode_price_loading">불러오는 중…</string>
+    <string name="save_type_audio">오디오</string>
+    <string name="save_type_video">동영상</string>
+    <string name="save_type_image">이미지</string>
+    <string name="save_downloading_what">%1$s 다운로드 중…</string>
+    <string name="smart_collection_preview_no_body">(본문 없음)</string>
+</resources>

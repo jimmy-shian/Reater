@@ -1,5 +1,7 @@
 package com.reater.app.data.remote.x
 
+import android.content.Context
+import com.reater.app.R
 import com.reater.app.data.remote.FetchedMedia
 import com.reater.app.data.remote.FetchedPostResult
 import com.reater.app.data.remote.MediaDedup
@@ -8,6 +10,7 @@ import com.reater.app.data.remote.threads.TopicTags
 import com.reater.app.domain.UrlParser
 import com.reater.app.data.remote.FetchProgressInfo
 import com.reater.app.data.remote.FetchStage
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -39,7 +42,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class XClient @Inject constructor(
-    private val mediaDownloader: MediaDownloader
+    private val mediaDownloader: MediaDownloader,
+    @ApplicationContext private val context: Context
 ) {
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -57,7 +61,7 @@ class XClient @Inject constructor(
                 val statusId = parse?.statusId?.takeIf { it.isNotBlank() && it.all(Char::isDigit) }
                     ?: fallbackStatusId.trim().takeIf { it.isNotBlank() && it.all(Char::isDigit) }
                 if (statusId.isNullOrBlank()) {
-                    return@withContext Result.failure(IllegalArgumentException("無效的 X 貼文連結"))
+                    return@withContext Result.failure(IllegalArgumentException(context.getString(R.string.fetch_error_invalid_x_url)))
                 }
                 val handleHint = parse?.handle.orEmpty()
 
@@ -68,7 +72,7 @@ class XClient @Inject constructor(
                     parsed = fetchSyndication(statusId)
                 }
                 if (parsed == null) {
-                    return@withContext Result.failure(IllegalStateException("X 貼文抓取失敗（兩個來源皆無資料）"))
+                    return@withContext Result.failure(IllegalStateException(context.getString(R.string.fetch_error_x_failed)))
                 }
 
                 val body = parsed.bodyText
@@ -92,7 +96,7 @@ class XClient @Inject constructor(
                     topicTag = TopicTags.firstHashtag(body)
                 )
                 // 階段 2：已取得貼文內文
-                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = "已取得貼文內文"), currentResult)
+                onProgress?.invoke(FetchProgressInfo(stage = FetchStage.BODY_PARSED, message = context.getString(R.string.fetch_progress_body_parsed)), currentResult)
 
                 // 階段 4：分批非同步下載媒體
                 val distinctMedia = MediaDedup.distinctFetched(parsed.media)
@@ -106,7 +110,7 @@ class XClient @Inject constructor(
                     // 存檔後 MediaDownloadWorker 才有東西可以接續下載。
                     currentResult = currentResult.copy(media = distinctMedia)
                     onProgress?.invoke(
-                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = "正在下載媒體 (0/$totalMedia)", mediaIndex = 0, mediaTotal = totalMedia),
+                        FetchProgressInfo(stage = FetchStage.DOWNLOADING_MEDIA, message = context.getString(R.string.fetch_progress_downloading_media, 0, totalMedia), mediaIndex = 0, mediaTotal = totalMedia),
                         currentResult
                     )
                     distinctMedia.forEachIndexed { index, m ->
@@ -118,7 +122,7 @@ class XClient @Inject constructor(
                                 onProgress?.invoke(
                                     FetchProgressInfo(
                                         stage = FetchStage.DOWNLOADING_MEDIA,
-                                        message = "正在下載媒體 (${succeededMediaCount + 1}/$totalMedia)",
+                                        message = context.getString(R.string.fetch_progress_downloading_media, succeededMediaCount + 1, totalMedia),
                                         mediaIndex = succeededMediaCount + 1,
                                         mediaTotal = totalMedia,
                                         bytesRead = p.bytesRead,
@@ -141,7 +145,7 @@ class XClient @Inject constructor(
                         onProgress?.invoke(
                             FetchProgressInfo(
                                 stage = FetchStage.DOWNLOADING_MEDIA,
-                                message = "正在下載媒體 ($succeededMediaCount/$totalMedia)",
+                                message = context.getString(R.string.fetch_progress_downloading_media, succeededMediaCount, totalMedia),
                                 mediaIndex = succeededMediaCount,
                                 mediaTotal = totalMedia
                             ),
@@ -158,7 +162,8 @@ class XClient @Inject constructor(
                     else -> "FAILED"
                 }
                 val finalStage = if (failedMediaCount == 0) FetchStage.COMPLETED else FetchStage.PARTIAL_SUCCESS
-                val finalMsg = if (failedMediaCount == 0) "已完成下載離線媒體" else "已完成部分下載（成功 $downloadedCount 個，失敗 $failedMediaCount 個，其餘交由背景續傳）"
+                val finalMsg = if (failedMediaCount == 0) context.getString(R.string.fetch_progress_media_done)
+                    else context.getString(R.string.fetch_progress_media_partial, downloadedCount, failedMediaCount)
                 currentResult = currentResult.copy(status = status)
                 onProgress?.invoke(
                     FetchProgressInfo(stage = finalStage, message = finalMsg, mediaIndex = downloadedCount, mediaTotal = totalMedia),

@@ -13,7 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.reater.app.R
 import com.reater.app.data.local.entity.CategoryEntity
 
 /** Editable combobox: the editor retains its identity and focus as results change. */
@@ -57,15 +59,15 @@ fun CategoryDropdown(
         OutlinedTextField(
             value = if (focused || expanded) queryText else selected?.name.orEmpty(),
             onValueChange = { query(it); expand(true) },
-            label = { Text(if (focused) "搜尋或輸入新分類…" else "選擇分類") },
-            placeholder = { Text("未分類") },
+            label = { Text(if (focused) stringResource(R.string.category_dropdown_search_or_new) else stringResource(R.string.label_select_category)) },
+            placeholder = { Text(stringResource(R.string.category_uncategorized)) },
             singleLine = true,
             leadingIcon = { CategoryIcon(selected) },
             trailingIcon = {
                 Row {
                     if (queryText.isNotEmpty() || selectedCategoryId != null) {
                         IconButton(onClick = { query(""); expand(true) }) {
-                            Icon(Icons.Default.Clear, "清除分類")
+                            Icon(Icons.Default.Clear, stringResource(R.string.category_dropdown_clear_desc))
                         }
                     }
                     IconButton(onClick = { expand(!expanded) }) { ReaterDropdownArrow(expanded) }
@@ -79,16 +81,16 @@ fun CategoryDropdown(
         )
         ReaterDropdownPanel(expanded) {
             Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-                ReaterDropdownOption("未分類", selectedCategoryId == null, { select(null) })
-                if (filtered.isEmpty()) Text("找不到相符分類", Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else if (normalized.isNotBlank()) Text("符合分類", Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+                ReaterDropdownOption(stringResource(R.string.category_uncategorized), selectedCategoryId == null, { select(null) })
+                if (filtered.isEmpty()) Text(stringResource(R.string.category_dropdown_no_match), Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (normalized.isNotBlank()) Text(stringResource(R.string.category_dropdown_has_match), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
                 filtered.forEach { category ->
                     ReaterDropdownOption(category.name, selectedCategoryId == category.id, { select(category.id) },
                         leading = { CategoryIcon(category) })
                 }
                 if (canCreate) {
                     HorizontalDivider()
-                    ReaterDropdownOption("＋ 新增「$normalized」", false, {
+                    ReaterDropdownOption(stringResource(R.string.category_dropdown_add_new, normalized), false, {
                         onRequestCreate(normalized)
                         expand(false)
                         focusManager.clearFocus()

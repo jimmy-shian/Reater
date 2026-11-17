@@ -43,9 +43,9 @@ object NotifyCenter {
             mgr.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "閱讀提醒",
+                    context.getString(R.string.notify_channel_reading_reminder),
                     NotificationManager.IMPORTANCE_DEFAULT
-                ).apply { description = "未讀回顧與每日回顧通知" }
+                ).apply { description = context.getString(R.string.notify_channel_reading_reminder_desc) }
             )
         }
         ensureDownloadChannel(context)
@@ -57,9 +57,9 @@ object NotifyCenter {
             mgr.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_DOWNLOAD,
-                    "離線媒體下載",
+                    context.getString(R.string.notify_channel_offline_download),
                     NotificationManager.IMPORTANCE_LOW
-                ).apply { description = "背景下載圖片與影片時的即時進度" }
+                ).apply { description = context.getString(R.string.notify_channel_offline_download_desc) }
             )
         }
     }
@@ -99,8 +99,8 @@ object NotifyCenter {
         ensureChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle("還有未讀文章")
-            .setContentText(if (title.isBlank()) "你儲存的文章還沒看，點我回顧" else "「$title」還沒看，點我回顧")
+            .setContentTitle(context.getString(R.string.notify_content_unread_title))
+            .setContentText(if (title.isBlank()) context.getString(R.string.notify_content_unread_text_default) else context.getString(R.string.notify_content_unread_text_with_title, title))
             .setContentIntent(openAppIntent(context, itemId))
             .setAutoCancel(true)
             .build()
@@ -117,15 +117,15 @@ object NotifyCenter {
 
         val titleText = "未讀 ${unreadCount} 篇"
         val snippet = mainItem?.displayBody?.trim()?.replace("\n", " ")?.take(60)?.takeIf { it.isNotBlank() }
-            ?: "你儲存的文章還沒看，點我回顧"
+            ?: context.getString(R.string.notify_content_unread_text_default)
         val author = mainItem?.item?.authorDisplayName?.takeIf { it.isNotBlank() }
             ?: mainItem?.item?.authorHandle?.takeIf { it.isNotBlank() }
         val contentText = if (author != null) "$author：$snippet" else snippet
 
         val bigText = if (mainItem != null) {
-            if (author != null) "精選文章（$author）：\n$snippet" else "精選文章：\n$snippet"
+            if (author != null) context.getString(R.string.notify_content_unread_title_with_author, author, snippet) else context.getString(R.string.notify_content_unread_text_no_author, snippet)
         } else {
-            "還有 $unreadCount 篇未讀，點擊開啟回顧"
+            context.getString(R.string.notify_content_unread_summary, unreadCount)
         }
 
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -135,7 +135,7 @@ object NotifyCenter {
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .setBigContentTitle(titleText)
-                    .setSummaryText("共 $unreadCount 篇未讀")
+                    .setSummaryText(context.getString(R.string.notify_content_unread_summary_total, unreadCount))
                     .bigText(bigText)
             )
             .setContentIntent(openAppIntent(context, mainItem?.item?.id))
@@ -154,9 +154,9 @@ object NotifyCenter {
         ensureChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle(if (title.isBlank()) "AI 分析完成" else "AI 分析完成：$title")
-            .setContentText(summary.ifBlank { "已完成文章分析並儲存摘要" })
-            .setStyle(NotificationCompat.BigTextStyle().bigText(summary.ifBlank { "已完成文章分析並儲存摘要" }))
+            .setContentTitle(if (title.isBlank()) context.getString(R.string.notify_ai_done_title) else context.getString(R.string.notify_ai_done_title_with_name, title))
+            .setContentText(summary.ifBlank { context.getString(R.string.notify_content_analysis_done) })
+            .setStyle(NotificationCompat.BigTextStyle().bigText(summary.ifBlank { context.getString(R.string.notify_content_analysis_done) }))
             .setContentIntent(openAppIntent(context, itemId))
             .setAutoCancel(true)
             .build()
@@ -171,7 +171,7 @@ object NotifyCenter {
         ensureChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle(if (title.isBlank()) "AI 分析未完成" else "AI 分析未完成：$title")
+            .setContentTitle(if (title.isBlank()) context.getString(R.string.notify_ai_failed_title) else context.getString(R.string.notify_ai_failed_title_with_name, title))
             .setContentText(errorMessage)
             .setStyle(NotificationCompat.BigTextStyle().bigText(errorMessage))
             .setContentIntent(openAppIntent(context, itemId))
@@ -318,14 +318,14 @@ object NotifyCenter {
         val speedEtaPart = if (speedText.isNotBlank()) " · $speedText$etaText" else etaText
 
         val contentText = when {
-            totalCount <= 0 -> "正在準備下載…"
-            totalCount > 1 -> "下載中 ($currentIndex/$totalCount) · $percent%$speedEtaPart"
-            else -> "下載中 $percent%$speedEtaPart"
+            totalCount <= 0 -> context.getString(R.string.notify_content_downloading_preparing)
+            totalCount > 1 -> context.getString(R.string.notify_content_downloading_multi, currentIndex, totalCount, percent, speedEtaPart)
+            else -> context.getString(R.string.notify_content_downloading_single, percent, speedEtaPart)
         }
 
         val note = NotificationCompat.Builder(context, CHANNEL_DOWNLOAD)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle(if (title.isBlank()) "正在下載離線媒體" else "正在下載媒體：${title.take(30)}")
+            .setContentTitle(if (title.isBlank()) context.getString(R.string.notify_content_downloading_title) else context.getString(R.string.notify_content_downloading_title_with_name, title.take(30)))
             .setContentText(contentText)
             .setProgress(100, percent.coerceIn(0, 100), percent <= 0)
             .setOngoing(true)
@@ -342,11 +342,11 @@ object NotifyCenter {
     fun postDownloadComplete(context: Context, itemId: Long, title: String, count: Int, failed: Int = 0) {
         if (!canNotify(context)) return
         ensureDownloadChannel(context)
-        val baseText = if (title.isBlank()) "已完成 $count 個媒體下載" else "「${title.take(30)}」已完成 $count 個媒體下載"
+        val baseText = if (title.isBlank()) context.getString(R.string.notify_content_download_done_default, count) else context.getString(R.string.notify_content_download_done_with_title, title.take(30), count)
         val note = NotificationCompat.Builder(context, CHANNEL_DOWNLOAD)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle("離線媒體下載完成")
-            .setContentText(if (failed > 0) "$baseText（另有 $failed 個失敗）" else baseText)
+            .setContentTitle(context.getString(R.string.notify_content_download_done_title))
+            .setContentText(if (failed > 0) context.getString(R.string.notify_download_done_with_failures, baseText, failed) else baseText)
             .setProgress(0, 0, false)
             .setOngoing(false)
             .setAutoCancel(true)
@@ -358,12 +358,12 @@ object NotifyCenter {
         }
     }
 
-    fun postDownloadFailed(context: Context, itemId: Long, title: String, reason: String = "部分媒體下載失敗") {
+    fun postDownloadFailed(context: Context, itemId: Long, title: String, reason: String = context.getString(R.string.notify_content_download_failed_reason)) {
         if (!canNotify(context)) return
         ensureDownloadChannel(context)
         val note = NotificationCompat.Builder(context, CHANNEL_DOWNLOAD)
             .setSmallIcon(R.drawable.ic_stat_reater)
-            .setContentTitle("離線媒體下載未完成")
+            .setContentTitle(context.getString(R.string.notify_content_download_failed_title))
             .setContentText(if (title.isBlank()) reason else "「${title.take(30)}」$reason")
             .setProgress(0, 0, false)
             .setOngoing(false)

@@ -13,9 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.reater.app.R
 
 /**
  * Dialog 通用頂欄：標題靠左、X 關閉鍵永遠最右，符合操作邏輯。
@@ -49,7 +51,7 @@ fun DialogHeader(
         ) {
             Icon(
                 Icons.Default.Close,
-                contentDescription = "關閉",
+                contentDescription = stringResource(R.string.close),
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(22.dp)
             )

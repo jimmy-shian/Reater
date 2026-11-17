@@ -57,10 +57,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.reater.app.R
 import com.reater.app.ui.MainViewModel
 import com.reater.app.ui.components.shortDayLabel
 
@@ -123,19 +125,19 @@ fun AnalyticsScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StatCard(
-                    title = "今日儲存",
+                    title = stringResource(R.string.analytics_title_today_saved),
                     value = state.savedToday.toString(),
                     icon = Icons.AutoMirrored.Filled.TrendingUp,
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
-                    title = "今日打開",
+                    title = stringResource(R.string.analytics_title_today_opened),
                     value = state.openedToday.toString(),
                     icon = Icons.Default.AccessTime,
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
-                    title = "累計回顧",
+                    title = stringResource(R.string.analytics_title_total_review),
                     value = state.totalReviews.toString(),
                     icon = Icons.Default.AutoAwesome,
                     modifier = Modifier.weight(1f)
@@ -152,7 +154,7 @@ fun AnalyticsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isPro) "儲存趨勢分析（近 30 天）" else "儲存趨勢分析（本週）",
+                        text = if (isPro) stringResource(R.string.analytics_saved_trend_pro) else stringResource(R.string.analytics_saved_trend_free),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )
@@ -173,7 +175,7 @@ fun AnalyticsScreen(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "點擊圖表中任一長條或日期點，可查看即時資料次數與佔比",
+                    text = stringResource(R.string.analytics_chart_hint),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -196,7 +198,7 @@ fun AnalyticsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "期間內尚無儲存記錄",
+                            text = stringResource(R.string.analytics_empty),
                             color = MaterialTheme.colorScheme.outline,
                             fontSize = 14.sp
                         )
@@ -262,7 +264,7 @@ fun AnalyticsScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "佔期間總儲存 $percent%",
+                                        text = stringResource(R.string.analytics_bar_percent, percent),
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.outline
                                     )
@@ -278,7 +280,7 @@ fun AnalyticsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "則文章",
+                                    text = stringResource(R.string.analytics_articles),
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.outline,
                                     modifier = Modifier.padding(bottom = 2.dp)
@@ -296,17 +298,17 @@ fun AnalyticsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     InsightPill(
-                        label = "期間總量",
+                        label = stringResource(R.string.analytics_label_total),
                         value = "${totalPeriodSaves} 則",
                         modifier = Modifier.weight(1f)
                     )
                     InsightPill(
-                        label = "單日最高",
+                        label = stringResource(R.string.analytics_label_daily_max),
                         value = "${maxDailySave} 則",
                         modifier = Modifier.weight(1f)
                     )
                     InsightPill(
-                        label = "每日平均",
+                        label = stringResource(R.string.analytics_label_daily_avg),
                         value = "${avgDailySave} 則",
                         modifier = Modifier.weight(1f)
                     )
@@ -328,7 +330,7 @@ fun AnalyticsScreen(
                 ) {
                     Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("解鎖 Pro・開啟近 30 天與無期限趨勢")
+                    Text(stringResource(R.string.analytics_unlock_pro))
                 }
             }
         }
@@ -437,10 +439,10 @@ private fun InteractiveAnalyticsChart(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "次數 (則)", fontSize = 11.sp, color = outline)
+                Text(text = stringResource(R.string.analytics_y_axis_count), fontSize = 11.sp, color = outline)
                 if (selectedIndex in data.indices) {
                     Text(
-                        text = "選取：${data[selectedIndex].first} (${data[selectedIndex].second} 則)",
+                        text = stringResource(R.string.analytics_selected_data, data[selectedIndex].first, data[selectedIndex].second),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = primary
@@ -610,10 +612,10 @@ private fun TimeFrequencySection(
     val total = (morningCount + afternoonCount + eveningCount + nightCount).coerceAtLeast(1)
 
     val slots = listOf(
-        TimeSlotInfo("晨間時段", "06:00 - 12:00", morningCount, morningCount.toFloat() / total),
-        TimeSlotInfo("午後時段", "12:00 - 18:00", afternoonCount, afternoonCount.toFloat() / total),
-        TimeSlotInfo("晚間黃金", "18:00 - 24:00", eveningCount, eveningCount.toFloat() / total),
-        TimeSlotInfo("深夜寧靜", "00:00 - 06:00", nightCount, nightCount.toFloat() / total)
+        TimeSlotInfo(stringResource(R.string.analytics_timeslot_morning), "06:00 - 12:00", morningCount, morningCount.toFloat() / total),
+        TimeSlotInfo(stringResource(R.string.analytics_timeslot_afternoon), "12:00 - 18:00", afternoonCount, afternoonCount.toFloat() / total),
+        TimeSlotInfo(stringResource(R.string.analytics_timeslot_evening), "18:00 - 24:00", eveningCount, eveningCount.toFloat() / total),
+        TimeSlotInfo(stringResource(R.string.analytics_timeslot_night), "00:00 - 06:00", nightCount, nightCount.toFloat() / total)
     )
 
     val peakSlot = slots.maxByOrNull { it.count }
@@ -633,12 +635,12 @@ private fun TimeFrequencySection(
             ) {
                 Column {
                     Text(
-                        text = "時段與儲存頻率分佈",
+                        text = stringResource(R.string.analytics_timeslot_title),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "分析您一整天中最常閱讀與收藏內容的時段",
+                        text = stringResource(R.string.analytics_timeslot_desc),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -650,7 +652,7 @@ private fun TimeFrequencySection(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "高峰：${peakSlot.title}",
+                            text = stringResource(R.string.analytics_peak_slot, peakSlot.title),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer

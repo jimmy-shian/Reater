@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.reater.app.R
@@ -49,9 +50,10 @@ fun CategoryFilterBar(
     var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(active) { if (!active) expanded = false }
 
-    val allOptions = remember {
+    val allPlatformLabel = stringResource(R.string.filter_all)
+    val allOptions = remember(allPlatformLabel) {
         listOf(
-            PlatformOption("全部", "ALL", R.drawable.ic_platform_all),
+            PlatformOption(allPlatformLabel, "ALL", R.drawable.ic_platform_all),
             PlatformOption("Threads", UrlParser.PLATFORM_THREADS, R.drawable.ic_threads),
             PlatformOption("Instagram", UrlParser.PLATFORM_INSTAGRAM, R.drawable.ic_instagram),
             PlatformOption("X", UrlParser.PLATFORM_X, R.drawable.ic_x),
@@ -72,10 +74,12 @@ fun CategoryFilterBar(
         listOf(allOptions.first { it.key == "ALL" }) + activePlatforms
     }
 
+    val allCategoriesLabel = stringResource(R.string.category_filter_all_categories)
+    val uncategorizedLabel = stringResource(R.string.filter_uncategorized)
     val label = when (selectedId) {
-        null -> "全部分類"
-        -1L -> "未分類"
-        else -> categories.firstOrNull { it.id == selectedId }?.name ?: "全部分類"
+        null -> allCategoriesLabel
+        -1L -> uncategorizedLabel
+        else -> categories.firstOrNull { it.id == selectedId }?.name ?: allCategoriesLabel
     }
 
     val configuration = LocalConfiguration.current
@@ -102,7 +106,7 @@ fun CategoryFilterBar(
                 expanded = expanded,
                 onClick = { expanded = !expanded },
                 title = label,
-                value = "${if (selectedId == null) totalCount else counts[selectedId] ?: 0} 筆",
+                value = stringResource(R.string.category_filter_item_count, if (selectedId == null) totalCount else counts[selectedId] ?: 0),
                 compact = true,
                 leading = {
                     if (selectedId != null && selectedId != -1L) {
@@ -144,7 +148,7 @@ fun CategoryFilterBar(
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (query.isEmpty()) {
                             Text(
-                                "搜尋分類",
+                                stringResource(R.string.category_filter_search_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 maxLines = 1,
@@ -169,7 +173,7 @@ fun CategoryFilterBar(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
-                                contentDescription = "清除",
+                                contentDescription = stringResource(R.string.category_filter_clear_desc),
                                 modifier = Modifier.size(14.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -193,18 +197,18 @@ fun CategoryFilterBar(
 
                 // 系統項目：全部分類與未分類
                 ReaterDropdownOption(
-                    text = "全部分類",
+                    text = allCategoriesLabel,
                     selected = selectedId == null,
                     compact = true,
-                    subLabel = "$totalCount 筆",
+                    subLabel = stringResource(R.string.category_filter_item_count, totalCount),
                     onClick = { select(null) }
                 )
                 if (query.isBlank() || "未分類".contains(query.trim(), ignoreCase = true)) {
                     ReaterDropdownOption(
-                        text = "未分類",
+                        text = uncategorizedLabel,
                         selected = selectedId == -1L,
                         compact = true,
-                        subLabel = "${counts[-1L] ?: 0} 筆",
+                        subLabel = stringResource(R.string.category_filter_item_count, counts[-1L] ?: 0),
                         onClick = { select(-1L) }
                     )
                 }
@@ -222,7 +226,7 @@ fun CategoryFilterBar(
                         text = cat.name,
                         selected = selectedId == cat.id,
                         compact = true,
-                        subLabel = "${counts[cat.id] ?: 0} 筆",
+                        subLabel = stringResource(R.string.category_filter_item_count, counts[cat.id] ?: 0),
                         leading = { CategoryIcon(cat, modifier = Modifier.size(16.dp)) },
                         onClick = { select(cat.id) }
                     )
@@ -230,7 +234,7 @@ fun CategoryFilterBar(
 
                 if (filtered.isEmpty() && query.isNotBlank() && !"未分類".contains(query.trim(), ignoreCase = true)) {
                     Text(
-                        text = "找不到相符分類",
+                        text = stringResource(R.string.category_dropdown_no_match),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(12.dp)
@@ -279,7 +283,7 @@ internal fun PlatformSwitchButton(
                     val option = availableOptions.firstOrNull { it.key == key } ?: current
                     Icon(
                         painter = painterResource(option.iconRes),
-                        contentDescription = "平台篩選：${option.label}（$count 筆）",
+                        contentDescription = stringResource(R.string.category_filter_platform_desc, option.label, count),
                         modifier = Modifier.size(21.dp),
                         tint = if (option.key == "ALL") MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.primary

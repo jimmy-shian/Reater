@@ -54,11 +54,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.reater.app.R
 import com.reater.app.data.local.entity.CategoryEntity
 import com.reater.app.data.local.entity.ItemDetail
 import com.reater.app.domain.TextAttachmentStore
@@ -149,7 +151,7 @@ fun PostCard(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (!itemDetail.isRead) "未讀" else "已讀",
+                                text = if (!itemDetail.isRead) stringResource(R.string.post_card_status_unread) else stringResource(R.string.post_card_status_read),
                                 fontSize = 11.sp,
                                 fontWeight = if (!itemDetail.isRead) FontWeight.Bold else FontWeight.Medium,
                                 color = if (!itemDetail.isRead) MaterialTheme.colorScheme.onPrimaryContainer
@@ -163,7 +165,7 @@ fun PostCard(
                         ) {
                             DropdownMenuItem(
                                 text = {
-                                    Text(if (itemDetail.isRead) "標示為未讀" else "標示為已讀")
+                                    Text(if (itemDetail.isRead) stringResource(R.string.post_card_action_mark_unread) else stringResource(R.string.post_card_action_mark_read))
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -178,7 +180,7 @@ fun PostCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("複製分享網址與摘要") },
+                                text = { Text(stringResource(R.string.post_card_action_copy_url_summary)) },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Default.ContentCopy,
@@ -191,7 +193,7 @@ fun PostCard(
                                     val shareText = formatPostShareText(itemDetail)
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("Reater Share", shareText))
-                                    Toast.makeText(context, "已複製網址與摘要", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.post_card_toast_copied_url_summary), Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
@@ -253,13 +255,13 @@ fun PostCard(
                             val shareText = formatPostShareText(itemDetail)
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("Reater Share", shareText))
-                            Toast.makeText(context, "已複製貼文網址與摘要", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.post_card_toast_copied_post), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "複製分享",
+                            contentDescription = stringResource(R.string.post_card_accessibility_copy_share),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(17.dp)
                         )
@@ -280,7 +282,7 @@ fun PostCard(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "外部開啟",
+                            contentDescription = stringResource(R.string.post_card_accessibility_open_external),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(17.dp)
                         )
@@ -293,7 +295,7 @@ fun PostCard(
                     ) {
                         Icon(
                             imageVector = if (itemDetail.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            contentDescription = "收藏",
+                            contentDescription = stringResource(R.string.post_card_accessibility_favorite),
                             tint = if (itemDetail.isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(18.dp)
                         )
@@ -306,7 +308,7 @@ fun PostCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "移至垃圾桶",
+                            contentDescription = stringResource(R.string.post_card_accessibility_trash),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(18.dp)
                         )
@@ -317,11 +319,12 @@ fun PostCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Body Text — 點內文即展開詳情（像 Threads）；URL 仍可點擊外部跳轉
+            val emptyBodyText = stringResource(R.string.post_card_empty_body)
             LinkifiedText(
                 text = remember(itemDetail.displayBody) {
                     itemDetail.displayBody.trim()
                         .replace(Regex("\n{3,}"), "\n\n")
-                        .ifBlank { "無內文" }
+                        .ifBlank { emptyBodyText }
                 },
                 fontSize = 14.sp,
                 maxLines = 4,
@@ -337,7 +340,7 @@ fun PostCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 CopyableTextBlock(
                     text = textAttachment,
-                    label = "文字附件",
+                    label = stringResource(R.string.post_card_label_text_attachment),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -406,7 +409,7 @@ fun PostCard(
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("詳情", fontSize = 11.sp, color = Color.White, maxLines = 1)
+                            Text(stringResource(R.string.post_card_button_detail), fontSize = 11.sp, color = Color.White, maxLines = 1)
                         }
                     }
                 }
@@ -439,7 +442,7 @@ fun PostCard(
                         .padding(8.dp)
                 ) {
                     Text(
-                        text = "筆記: ${itemDetail.manualNote}",
+                        text = stringResource(R.string.post_card_label_note, itemDetail.manualNote),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         maxLines = 2,
@@ -451,7 +454,7 @@ fun PostCard(
             if (itemDetail.comments.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "包含 ${itemDetail.comments.size} 則精華留言",
+                    text = stringResource(R.string.post_card_label_comments, itemDetail.comments.size),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -460,7 +463,7 @@ fun PostCard(
             // 儲存時間記錄
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = formatSavedTime(itemDetail.item.sourceFetchedAt),
+                text = formatSavedTime(LocalContext.current, itemDetail.item.sourceFetchedAt),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

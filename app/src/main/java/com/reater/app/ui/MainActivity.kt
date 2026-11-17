@@ -283,6 +283,7 @@ private fun MainThemedScreen(
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val repository: ThreadPostRepository,
     private val settingsRepository: SettingsRepository,
     private val smartCollectionEngine: SmartCollectionEngine,
@@ -838,10 +839,10 @@ class MainViewModel @Inject constructor(
 
     suspend fun summarizeItemWithAi(item: ItemDetail, manualNote: String = item.manualNote): Result<String> {
         if (!aiTransmissionConsent.value) {
-            return Result.failure(IllegalStateException("尚未授權將貼文傳送至 AI 服務，請先於系統設定中勾選允許"))
+            return Result.failure(IllegalStateException(appContext.getString(com.reater.app.R.string.main_error_ai_not_authorized)))
         }
         val key = settingsRepository.getOpenAiApiKey().orEmpty()
-        if (key.isBlank()) return Result.failure(IllegalStateException("請先於設定中配置 API Key"))
+        if (key.isBlank()) return Result.failure(IllegalStateException(appContext.getString(com.reater.app.R.string.main_error_no_api_key)))
 
         val commentsJoined = item.comments.joinToString("\n") { "${it.author}: ${it.text}" }
         val summaryInput = listOf(item.displayBody, manualNote.takeIf { it.isNotBlank() }?.let {
@@ -1005,27 +1006,28 @@ fun MainScreen(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) ioScope.launch {
-            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, "正在準備匯出備份資料...")
+            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, context.getString(R.string.main_export_preparing))
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         viewModel.exportJson(out) { prog ->
                             backupProgress = prog
                         }
-                    } ?: error("無法開啟指定匯出檔案")
+                    } ?: error(context.getString(R.string.main_error_open_export_file))
                 }
             }
             backupProgress = null
             Toast.makeText(
                 context,
-                if (result.isSuccess) "已匯出 .reater 備份檔" else "匯出失敗：${result.exceptionOrNull()?.localizedMessage}",
+                if (result.isSuccess) context.getString(R.string.main_export_done)
+                else context.getString(R.string.main_export_failed, result.exceptionOrNull()?.localizedMessage ?: ""),
                 Toast.LENGTH_LONG
             ).show()
         }
     }
     val reaterImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) ioScope.launch {
-            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, "正在讀取並解壓備份檔...")
+            backupProgress = com.reater.app.data.backup.BackupProgress(0, 1, context.getString(R.string.main_import_reading))
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     // 自動過濾：僅接受 .reater 專屬格式（檔名 + 內容雙重校驗，詳見 BackupManager）
@@ -1041,19 +1043,19 @@ fun MainScreen(
                         !displayName.endsWith(".reater", ignoreCase = true) &&
                         !displayName.endsWith(".json", ignoreCase = true)
                     ) {
-                        error("僅支援 .reater 專屬格式，請重新選擇 .reater 備份檔")
+                        error(context.getString(R.string.main_error_invalid_file_type))
                     }
                     context.contentResolver.openInputStream(uri)?.use { inp ->
                         viewModel.importJson(inp) { prog ->
                             backupProgress = prog
                         }.getOrThrow()
-                    } ?: error("無法開啟所選備份檔案")
+                    } ?: error(context.getString(R.string.main_error_open_backup_file))
                 }
             }
             backupProgress = null
             Toast.makeText(
                 context,
-                result.fold({ "已還原備份（共 $it 筆文章）" }, { "還原失敗：${it.localizedMessage}" }),
+                result.fold({ context.getString(R.string.main_restore_done, it) }, { context.getString(R.string.main_restore_failed, it.localizedMessage ?: "") }),
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -1122,7 +1124,7 @@ fun MainScreen(
                         } else {
                             Spacer(modifier = Modifier.weight(1f))
                         }
-                        prog.estimatedRemainingText?.let { etaText ->
+                        prog.etaText(LocalContext.current)?.let { etaText ->
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = etaText,
@@ -1173,8 +1175,8 @@ fun MainScreen(
         val success = viewModel.unlockWithPasscode(pending.code, pending.email)
         Toast.makeText(
             context,
-            if (success) "Reater Pro 已成功解鎖！"
-            else "一鍵開通失敗，已帶入啟用碼，請按「驗證並啟用」重試",
+            if (success) context.getString(R.string.main_pro_unlock_success)
+            else context.getString(R.string.main_pro_deeplink_failed),
             Toast.LENGTH_LONG
         ).show()
         if (!success) showUnlockDialog = true
@@ -1185,14 +1187,14 @@ fun MainScreen(
             onDismissRequest = { showNotifPermissionDialog = false },
             title = {
                 Text(
-                    text = "開啟通知權限",
+                    text = stringResource(R.string.main_notif_permission_dialog_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "您已開啟閱讀提醒通知，但目前系統尚未允許通知權限。\n\n請允許通知權限，才能在預定時間收到未讀文章推播提醒。",
+                    text = stringResource(R.string.main_notif_permission_dialog_body),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1221,12 +1223,12 @@ fun MainScreen(
                         }
                     }
                 ) {
-                    Text("前往設定", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.main_button_go_settings), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showNotifPermissionDialog = false }) {
-                    Text("稍後再說")
+                    Text(stringResource(R.string.main_button_later))
                 }
             }
         )
@@ -1235,23 +1237,23 @@ fun MainScreen(
     if (itemToDelete != null) {
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
-            title = { Text("移至垃圾桶？") },
-            text = { Text("此記錄將移入垃圾桶並保留 30 天，期間內可隨時還原；超過 30 天後系統將自動永久清除。") },
+            title = { Text(stringResource(R.string.main_trash_move_dialog_title)) },
+            text = { Text(stringResource(R.string.main_trash_move_dialog_message)) },
             confirmButton = {
                 Button(
                     onClick = {
                         itemToDelete?.let { viewModel.moveToTrash(it) }
                         itemToDelete = null
-                        Toast.makeText(context, "已移至垃圾桶 (保留 30 天)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.main_trash_moved_with_retention), Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("移至垃圾桶")
+                    Text(stringResource(R.string.detail_action_move_to_trash))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { itemToDelete = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1260,23 +1262,23 @@ fun MainScreen(
     if (showEmptyTrashConfirm) {
         AlertDialog(
             onDismissRequest = { showEmptyTrashConfirm = false },
-            title = { Text("清空垃圾桶？") },
-            text = { Text("確定要永久刪除垃圾桶中的所有記錄嗎？此動作無法復原。") },
+            title = { Text(stringResource(R.string.main_trash_clear_title)) },
+            text = { Text(stringResource(R.string.main_trash_clear_message)) },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.emptyTrash()
                         showEmptyTrashConfirm = false
-                        Toast.makeText(context, "垃圾桶已清空", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.main_trash_cleared), Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("清空")
+                    Text(stringResource(R.string.main_trash_clear_button))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showEmptyTrashConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1299,7 +1301,7 @@ fun MainScreen(
                 com.reater.app.ui.player.VideoPlaybackManager.pauseAll()
                 viewModel.moveToTrash(liveDetail)
                 selectedItemForDetail = null
-                Toast.makeText(context, "已移至垃圾桶", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.main_moved_to_trash), Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1330,7 +1332,7 @@ fun MainScreen(
             onSelectCustomAvatar = { viewModel.setCustomAvatarUri(it) },
             onSelectAvatar = { id ->
                 viewModel.setCustomAvatarId(id)
-                Toast.makeText(context, "已成功更換個人頭貼", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.main_avatar_changed), Toast.LENGTH_SHORT).show()
                 showIconGallery = false
             },
             onOpenUnlock = {
@@ -1357,8 +1359,15 @@ fun MainScreen(
         val customCount = categories.count { !it.isDefault }
         val quotaText = if (!isPro) {
             val remaining = com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT - customCount
-            if (remaining > 0) "免費版還可新增 $remaining 個自訂分類（已用 $customCount/3）"
-            else "免費版自訂分類已滿（3/3），升級 Pro 可無限新增"
+            if (remaining > 0) stringResource(
+                R.string.free_category_limit_remaining, remaining, customCount,
+                com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT
+            )
+            else stringResource(
+                R.string.free_category_limit_full,
+                com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT,
+                com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT
+            )
         } else null
         // key 帶 prefill：從下拉「新增 xxx」進來時帶入關鍵字；返回捨棄後草稿不殘留
         androidx.compose.runtime.key(createPrefill) {
@@ -1385,11 +1394,11 @@ fun MainScreen(
             onDismiss = { viewModel.setEditingCategory(null) },
             onSave = { name, avatar ->
                 viewModel.renameCategory(live.id, name, avatar)
-                Toast.makeText(context, "分類已更新", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.detail_toast_category_updated), Toast.LENGTH_SHORT).show()
             },
             onDelete = {
                 viewModel.deleteCategory(live.id)
-                Toast.makeText(context, "分類已刪除，貼文改為未分類", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.main_category_deleted), Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1405,12 +1414,12 @@ fun MainScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     com.reater.app.ui.components.DialogHeader(
-                        title = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_TITLE,
+                        title = stringResource(R.string.pro_share_limit_title),
                         onClose = { viewModel.setShowProLimitNotice(false) }
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = com.reater.app.ui.components.ProCopy.SHARE_LIMIT_DESC,
+                        text = stringResource(R.string.pro_share_limit_body, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT),
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1421,14 +1430,14 @@ fun MainScreen(
                         horizontalArrangement = Arrangement.End
                     ) {
                         OutlinedButton(onClick = { viewModel.setShowProLimitNotice(false) }) {
-                            Text("我知道了")
+                            Text(stringResource(R.string.ok))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = {
                             viewModel.setShowProLimitNotice(false)
                             showUnlockDialog = true
                         }) {
-                            Text("解鎖 Pro")
+                            Text(stringResource(R.string.pro_lock_cta))
                         }
                     }
                 }
@@ -1498,16 +1507,16 @@ fun MainScreen(
                                 }
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Reater Group Share", shareText))
-                                Toast.makeText(context, "已複製目前篩選共 ${activePosts.size} 則網址與摘要", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.main_copied_filter_with_count, activePosts.size), Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "目前篩選無貼文", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.main_no_posts_in_filter), Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "複製目前篩選的所有網址與摘要",
+                            contentDescription = stringResource(R.string.main_accessibility_copy_filter),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1623,7 +1632,7 @@ fun MainScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "清除搜尋",
+                                contentDescription = stringResource(R.string.main_accessibility_clear_search),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -1724,19 +1733,19 @@ fun MainScreen(
                     modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 3,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(3) } },
-                    text = { Text("PRO 分類") }
+                    text = { Text(stringResource(R.string.tab_pro_categories)) }
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 4,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(4) } },
-                    text = { Text("垃圾桶 (30天)") }
+                    text = { Text(stringResource(R.string.tab_trash)) }
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
                     selected = pagerState.currentPage == 5,
                     onClick = { pagerScope.launch { pagerState.animateScrollToPage(5) } },
-                    text = { Text("分析") }
+                    text = { Text(stringResource(R.string.tab_analytics)) }
                 )
             }
 
@@ -1761,8 +1770,8 @@ fun MainScreen(
                             selectedPlatform = allPlatformFilter,
                             onPlatformSelect = { allPlatformFilter = it },
                             active = currentTab == page,
-                            emptyMessage = if (searchQuery.isNotBlank()) "找不到符合「$searchQuery」的內容"
-                            else "目前尚無內容\n在 Threads 或 Instagram 中點擊分享至 Reater 即可保存！",
+                            emptyMessage = if (searchQuery.isNotBlank()) stringResource(R.string.main_search_no_match, searchQuery)
+                            else stringResource(R.string.main_empty_all_hint),
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1773,7 +1782,7 @@ fun MainScreen(
                                 viewModel.toggleRead(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willBeRead) "已標為已讀（不再顯示於未讀）" else "已標為未讀",
+                                    if (willBeRead) context.getString(R.string.main_marked_read) else context.getString(R.string.main_marked_unread),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1782,7 +1791,7 @@ fun MainScreen(
                                 viewModel.toggleFavorite(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willFav) "已加入收藏" else "已取消收藏",
+                                    if (willFav) context.getString(R.string.main_favorited) else context.getString(R.string.main_unfavorited),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1799,8 +1808,8 @@ fun MainScreen(
                             selectedPlatform = unreadPlatformFilter,
                             onPlatformSelect = { unreadPlatformFilter = it },
                             active = currentTab == page,
-                            emptyMessage = if (searchQuery.isNotBlank()) "未讀中找不到符合「$searchQuery」的內容"
-                            else "太棒了！所有貼文皆已閱讀完畢",
+                            emptyMessage = if (searchQuery.isNotBlank()) stringResource(R.string.main_search_no_match_unread, searchQuery)
+                            else stringResource(R.string.main_all_read_congrats),
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1811,7 +1820,7 @@ fun MainScreen(
                                 viewModel.toggleRead(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willBeRead) "已標為已讀（不再顯示於未讀）" else "已標為未讀",
+                                    if (willBeRead) context.getString(R.string.main_marked_read) else context.getString(R.string.main_marked_unread),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1820,7 +1829,7 @@ fun MainScreen(
                                 viewModel.toggleFavorite(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willFav) "已加入收藏" else "已取消收藏",
+                                    if (willFav) context.getString(R.string.main_favorited) else context.getString(R.string.main_unfavorited),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1837,8 +1846,8 @@ fun MainScreen(
                             selectedPlatform = favoritePlatformFilter,
                             onPlatformSelect = { favoritePlatformFilter = it },
                             active = currentTab == page,
-                            emptyMessage = if (searchQuery.isNotBlank()) "收藏中找不到符合「$searchQuery」的內容"
-                            else "尚無收藏貼文\n在貼文卡片點擊書籤即可收藏！",
+                            emptyMessage = if (searchQuery.isNotBlank()) stringResource(R.string.main_search_no_match_favorite, searchQuery)
+                            else stringResource(R.string.main_empty_favorite_hint),
                             onSelectDetail = { detail ->
                                 selectedItemForDetail = detail
                                 viewModel.markAsRead(detail)
@@ -1849,7 +1858,7 @@ fun MainScreen(
                                 viewModel.toggleRead(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willBeRead) "已標為已讀（不再顯示於未讀）" else "已標為未讀",
+                                    if (willBeRead) context.getString(R.string.main_marked_read) else context.getString(R.string.main_marked_unread),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1858,7 +1867,7 @@ fun MainScreen(
                                 viewModel.toggleFavorite(detail)
                                 Toast.makeText(
                                     context,
-                                    if (willFav) "已加入收藏" else "已取消收藏",
+                                    if (willFav) context.getString(R.string.main_favorited) else context.getString(R.string.main_unfavorited),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1892,7 +1901,7 @@ fun MainScreen(
                             onDeleteCustomKeywordRule = viewModel::deleteCustomKeywordRule,
                             onApplySmartClassification = {
                                 viewModel.applySmartClassification { count ->
-                                    Toast.makeText(context, "智慧分類已更新 $count 篇貼文！", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.main_smart_rule_applied, count), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         )
@@ -1903,11 +1912,11 @@ fun MainScreen(
                             onEmptyTrash = { showEmptyTrashConfirm = true },
                             onRestore = { detail ->
                                 viewModel.restoreFromTrash(detail)
-                                Toast.makeText(context, "已成功還原！", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.main_restore_success), Toast.LENGTH_SHORT).show()
                             },
                             onDeletePermanently = { detail ->
                                 viewModel.deletePermanently(detail)
-                                Toast.makeText(context, "已永久刪除", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.main_deleted_permanently), Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -2106,11 +2115,12 @@ private fun ProCategoryTabContent(
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("分類管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(if (isPro) "共 ${categories.size} 個分類，可自由排序" else "免費 ${categories.count { !it.isDefault }}/3・升級後分類無上限",
+            Text(stringResource(R.string.main_category_management), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(if (isPro) stringResource(R.string.main_category_count_summary, categories.size)
+            else stringResource(R.string.main_category_free_limit_summary, categories.count { !it.isDefault }, com.reater.app.domain.OnDeviceClassifier.FREE_CUSTOM_CATEGORY_LIMIT),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
-            OutlinedButton(onClick = onAddCategoryClick, modifier = Modifier.fillMaxWidth()) { Text("＋ 新增分類") }
+            OutlinedButton(onClick = onAddCategoryClick, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.main_category_add_new)) }
         }
         items(orderedCategories, key = { "category_${it.id}" }) { category ->
             val isDragging = draggingCategoryId == category.id
@@ -2208,7 +2218,7 @@ private fun ProCategoryTabContent(
                         onClick = { onEditCategory(category) },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.Edit, "編輯分類", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Edit, stringResource(R.string.main_category_edit), modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -2217,9 +2227,9 @@ private fun ProCategoryTabContent(
         item {
             Spacer(Modifier.height(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("智慧分類規則", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.main_smart_rules_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "儲存貼文時自動分析並歸入合適分類；包含 2 項自動偵測開關與 1 項客製化比對。",
+                    stringResource(R.string.main_smart_rules_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2268,12 +2278,12 @@ private fun ProCategoryTabContent(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "自動根據內文關鍵字去分類",
+                            text = stringResource(R.string.main_smart_rule_keyword_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "自動比對貼文內文與標題關鍵字，命中時推薦歸入相應分類",
+                            text = stringResource(R.string.main_smart_rule_keyword_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2323,12 +2333,12 @@ private fun ProCategoryTabContent(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "根據作者名稱去分類",
+                            text = stringResource(R.string.main_smart_rule_author_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "依據該作者過往的分類習慣，自動歸類至作者關聯分類",
+                            text = stringResource(R.string.main_smart_rule_author_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2368,7 +2378,7 @@ private fun ProCategoryTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "特定文字自動歸類",
+                                    text = stringResource(R.string.main_smart_rule_custom_title),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -2377,7 +2387,7 @@ private fun ProCategoryTabContent(
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                 ) {
                                     Text(
-                                        text = "最高優先度",
+                                        text = stringResource(R.string.main_smart_rule_custom_priority),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Bold,
@@ -2387,7 +2397,7 @@ private fun ProCategoryTabContent(
                             }
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                text = "貼文或留言包含特定文字時，享有最高優先權，優先歸類至指定的 APP 分類",
+                                text = stringResource(R.string.main_smart_rule_custom_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2402,7 +2412,7 @@ private fun ProCategoryTabContent(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "尚未設定特定文字歸類規則，點擊下方「新增比對規則」加入設定。",
+                                text = stringResource(R.string.main_smart_rule_custom_empty),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
@@ -2475,7 +2485,7 @@ private fun ProCategoryTabContent(
                                                     )
                                                 } else {
                                                     Text(
-                                                        text = rule.targetCategoryName.ifBlank { "指定分類" },
+                                                        text = rule.targetCategoryName.ifBlank { stringResource(R.string.main_smart_rule_target_category_fallback) },
                                                         style = MaterialTheme.typography.labelMedium,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
@@ -2502,7 +2512,7 @@ private fun ProCategoryTabContent(
                                             },
                                             modifier = Modifier.size(28.dp)
                                         ) {
-                                            Icon(Icons.Default.Edit, contentDescription = "編輯", modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.icon_gallery_edit), modifier = Modifier.size(16.dp))
                                         }
                                         IconButton(
                                             onClick = {
@@ -2513,7 +2523,7 @@ private fun ProCategoryTabContent(
                                         ) {
                                             Icon(
                                                 Icons.Default.DeleteOutline,
-                                                contentDescription = "刪除",
+                                                contentDescription = stringResource(R.string.delete),
                                                 modifier = Modifier.size(16.dp),
                                                 tint = MaterialTheme.colorScheme.error
                                             )
@@ -2535,7 +2545,7 @@ private fun ProCategoryTabContent(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("新增比對規則")
+                        Text(stringResource(R.string.main_smart_rule_add_rule))
                     }
                 }
             }
@@ -2550,7 +2560,7 @@ private fun ProCategoryTabContent(
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("立即重新套用智慧分類至所有貼文")
+                Text(stringResource(R.string.main_smart_rule_reapply_hint))
             }
         }
     }
@@ -2579,7 +2589,7 @@ private fun TrashTabContent(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "垃圾桶目前是空的\n被移除的項目會在此保留 30 天",
+                    text = stringResource(R.string.main_trash_empty_hint),
                     color = MaterialTheme.colorScheme.outline,
                     fontSize = 15.sp,
                     lineHeight = 22.sp,
@@ -2600,7 +2610,7 @@ private fun TrashTabContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "垃圾桶記錄 (${trashPosts.size})",
+                        text = stringResource(R.string.main_trash_count_title, trashPosts.size),
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
@@ -2610,7 +2620,7 @@ private fun TrashTabContent(
                     ) {
                         Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("清空垃圾桶", fontSize = 12.sp)
+                        Text(stringResource(R.string.main_trash_clear_button), fontSize = 12.sp)
                     }
                 }
             }
@@ -2665,7 +2675,7 @@ fun TrashCard(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "剩餘 ${remainingDays} 天後永久清除",
+                        text = stringResource(R.string.main_trash_remaining_days, remainingDays),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Medium,
@@ -2677,11 +2687,12 @@ fun TrashCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            val emptyBodyText = stringResource(R.string.post_card_empty_body)
             Text(
                 text = remember(itemDetail.displayBody) {
                     itemDetail.displayBody.trim()
                         .replace(Regex("\n{3,}"), "\n\n")
-                        .ifBlank { "無內文" }
+                        .ifBlank { emptyBodyText }
                 },
                 fontSize = 13.sp,
                 maxLines = 2,
@@ -2703,7 +2714,7 @@ fun TrashCard(
                 ) {
                     Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("還原", fontSize = 12.sp)
+                    Text(stringResource(R.string.main_trash_restore_button), fontSize = 12.sp)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
@@ -2713,7 +2724,7 @@ fun TrashCard(
                 ) {
                     Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("永久刪除", fontSize = 12.sp)
+                    Text(stringResource(R.string.main_delete_permanently), fontSize = 12.sp)
                 }
             }
         }

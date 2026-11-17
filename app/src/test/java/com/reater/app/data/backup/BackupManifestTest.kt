@@ -1,5 +1,6 @@
 package com.reater.app.data.backup
 
+import com.reater.app.R
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -97,19 +98,17 @@ class BackupManifestTest {
 
     @Test fun backupProgressEtaFormattingTests() {
         val p1 = BackupProgress(5, 10, "stage", "detail", null)
-        assertNull(p1.estimatedRemainingText)
+        assertNull(p1.estimatedRemainingSeconds)
 
-        val p2 = BackupProgress(10, 10, "stage", "detail", 0L)
-        assertEquals("即將完成", p2.estimatedRemainingText)
-
-        val p3 = BackupProgress(3, 10, "stage", "detail", 45L)
-        assertEquals("預估剩餘約 45 秒", p3.estimatedRemainingText)
-
-        val p4 = BackupProgress(1, 10, "stage", "detail", 60L)
-        assertEquals("預估剩餘約 1 分鐘", p4.estimatedRemainingText)
-
-        val p5 = BackupProgress(1, 10, "stage", "detail", 85L)
-        assertEquals("預估剩餘約 1 分 25 秒", p5.estimatedRemainingText)
+        // ETA 顯示文字改由 BackupProgress.etaText(context) 以字串資源產生；
+        // 純 JVM 測試無 Android Context，改驗證資源分支選擇邏輯。
+        assertEquals(R.string.backup_progress_almost_done, etaFormatSelection(0L).first)
+        assertEquals(R.string.backup_eta_seconds, etaFormatSelection(45L).first)
+        assertTrue(etaFormatSelection(45L).second.contentEquals(longArrayOf(45L)))
+        assertEquals(R.string.backup_eta_minutes, etaFormatSelection(60L).first)
+        assertTrue(etaFormatSelection(60L).second.contentEquals(longArrayOf(1L)))
+        assertEquals(R.string.backup_eta_min_sec, etaFormatSelection(85L).first)
+        assertTrue(etaFormatSelection(85L).second.contentEquals(longArrayOf(1L, 25L)))
     }
 
     @Test fun etaEstimatorEdgeCasesDoNotThrow() {

@@ -31,6 +31,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import android.content.res.Configuration
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.reater.app.R
 import com.reater.app.ui.player.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -204,7 +206,7 @@ fun MediaViewerDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Text("${pager.currentPage + 1} / ${media.size}", color = Color.White)
-                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "關閉", tint = Color.White) }
+                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.media_viewer_close), tint = Color.White) }
                     }
                 }
                 AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(),
@@ -219,9 +221,9 @@ fun MediaViewerDialog(
                             modifier = Modifier.height(48.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                         ) {
-                            Icon(Icons.Default.Download, "下載圖片", tint = Color.White)
+                            Icon(Icons.Default.Download, stringResource(R.string.media_viewer_download), tint = Color.White)
                             Spacer(Modifier.width(6.dp))
-                            Text("下載圖片", color = Color.White)
+                            Text(stringResource(R.string.media_viewer_download), color = Color.White)
                         }
                     }
                 }
@@ -378,8 +380,8 @@ private fun ZoomableViewerImage(
         }
         if (loading) CircularProgressIndicator()
         if (failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("載入失敗", color = Color.White)
-            Button(onClick = { retry++ }) { Text("重新載入") }
+            Text(stringResource(R.string.media_viewer_load_failed), color = Color.White)
+            Button(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
         }
     }
 }

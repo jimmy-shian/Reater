@@ -35,11 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.reater.app.R
 
 /**
  * 可一鍵複製的內文區塊（Prompt / 長文專用）。
@@ -100,13 +102,13 @@ fun CopyableTextBlock(
                         val clipboard =
                             context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Reater", text))
-                        Toast.makeText(context, "已複製內文", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.copyable_toast_copied), Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.size(30.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "複製內文",
+                        contentDescription = stringResource(R.string.copyable_accessibility_copy),
                         tint = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(16.dp)
                     )
@@ -135,7 +137,7 @@ fun CopyableTextBlock(
                         .padding(horizontal = 2.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = if (expanded) "收起" else "展開全文",
+                        text = if (expanded) stringResource(R.string.copyable_collapse) else stringResource(R.string.copyable_expand),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary
@@ -143,7 +145,7 @@ fun CopyableTextBlock(
                     Spacer(modifier = Modifier.width(2.dp))
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "收起" else "展開全文",
+                        contentDescription = if (expanded) stringResource(R.string.copyable_collapse) else stringResource(R.string.copyable_expand),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)
                     )

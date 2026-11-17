@@ -47,6 +47,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.reater.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -526,7 +527,7 @@ suspend fun saveMediaToGalleryWithFeedback(
 
     if (localFile == null && remoteUrl.isBlank()) {
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "無有效媒體檔案可儲存", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.save_error_no_media), Toast.LENGTH_SHORT).show()
         }
         return
     }
@@ -536,7 +537,7 @@ suspend fun saveMediaToGalleryWithFeedback(
             copyFileToGallery(context, localFile, isVideo, isAudio)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, if (ok) (if (isAudio) "已儲存到音樂" else "已儲存到相簿") else "儲存失敗", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (ok) (if (isAudio) context.getString(R.string.save_done_music) else context.getString(R.string.save_done_gallery)) else context.getString(R.string.save_error), Toast.LENGTH_SHORT).show()
         }
         return
     }
@@ -544,11 +545,11 @@ suspend fun saveMediaToGalleryWithFeedback(
     // 需由遠端網址下載
     withContext(Dispatchers.Main) {
         val what = when {
-            isAudio -> "音訊"
-            isVideo -> "影片"
-            else -> "圖片"
+            isAudio -> context.getString(R.string.save_type_audio)
+            isVideo -> context.getString(R.string.save_type_video)
+            else -> context.getString(R.string.save_type_image)
         }
-        Toast.makeText(context, "正在下載$what...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.save_downloading_what, what), Toast.LENGTH_SHORT).show()
     }
 
     val ok = withContext(Dispatchers.IO) {
@@ -561,7 +562,7 @@ suspend fun saveMediaToGalleryWithFeedback(
     }
 
     withContext(Dispatchers.Main) {
-        Toast.makeText(context, if (ok) (if (isAudio) "已儲存到音樂" else "已儲存到相簿") else "下載或儲存失敗，請檢查網路連線", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, if (ok) (if (isAudio) context.getString(R.string.save_done_music) else context.getString(R.string.save_done_gallery)) else context.getString(R.string.save_error_network), Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -578,7 +579,7 @@ suspend fun exportAudioAsTaggedMusicWithFeedback(
 ): Boolean {
     val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
     if (audioFile == null) {
-        withContext(Dispatchers.Main) { Toast.makeText(context, "音訊檔不可用，請先在播放中開啟", Toast.LENGTH_SHORT).show() }
+        withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.save_error_audio_unavailable), Toast.LENGTH_SHORT).show() }
         return false
     }
     val ok = withContext(Dispatchers.IO) {
@@ -620,7 +621,7 @@ suspend fun exportAudioAsTaggedMusicWithFeedback(
     withContext(Dispatchers.Main) {
         Toast.makeText(
             context,
-            if (ok) "已儲存到音樂（含曲名/封面/歌詞）" else "儲存失敗，請確認網路與音訊檔可用",
+            if (ok) context.getString(R.string.save_done_music_with_meta) else context.getString(R.string.save_error_audio_check),
             Toast.LENGTH_SHORT
         ).show()
     }
@@ -639,7 +640,7 @@ suspend fun exportAudioAsCoverVideoWithFeedback(
 ): Boolean {
     val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
     if (audioFile == null) {
-        withContext(Dispatchers.Main) { Toast.makeText(context, "音訊檔不可用，請先在播放中開啟", Toast.LENGTH_SHORT).show() }
+        withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.save_error_audio_unavailable), Toast.LENGTH_SHORT).show() }
         return false
     }
     val ok = withContext(Dispatchers.IO) {
@@ -664,7 +665,7 @@ suspend fun exportAudioAsCoverVideoWithFeedback(
     withContext(Dispatchers.Main) {
         Toast.makeText(
             context,
-            if (ok) "已儲存到相簿（影片含封面）" else "合成失敗（封面取得或編碼失敗）",
+            if (ok) context.getString(R.string.save_done_gallery_with_cover) else context.getString(R.string.save_error_compose_failed),
             Toast.LENGTH_SHORT
         ).show()
     }

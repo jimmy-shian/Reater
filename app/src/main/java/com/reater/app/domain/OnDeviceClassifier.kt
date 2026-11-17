@@ -19,7 +19,7 @@ class OnDeviceClassifier @Inject constructor(
 
     companion object {
         /** 免費版自訂分類上限 */
-        const val FREE_CUSTOM_CATEGORY_LIMIT = 3
+        const val FREE_CUSTOM_CATEGORY_LIMIT = 5
 
         // 常用領域基礎關鍵字庫（當使用者尚未設定自訂關鍵字時，依照分類名稱自動匹配提供基本智慧分類能力）
         private val DOMAIN_KEYWORDS: Map<List<String>, List<String>> = mapOf(

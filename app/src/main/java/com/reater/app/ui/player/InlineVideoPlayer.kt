@@ -93,6 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import com.reater.app.R
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -464,7 +465,7 @@ fun InlineVideoPlayer(
         if (showPoster) {
             AsyncImage(
                 model = posterUrl,
-                contentDescription = "音訊封面",
+                contentDescription = stringResource(R.string.video_poster_desc),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
@@ -472,11 +473,11 @@ fun InlineVideoPlayer(
         if (playbackError) {
             Column(Modifier.background(Color.Black.copy(alpha = .85f)).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("影片無法播放", color = Color.White)
+                Text(stringResource(R.string.video_play_failed), color = Color.White)
                 Button(onClick = {
                     isPrepared = false; isBuffering = true; playbackError = false; isPlaying = true
                     retryAttempt++
-                }) { Text("重新嘗試") }
+                }) { Text(stringResource(R.string.video_retry)) }
             }
         }
 
@@ -506,7 +507,7 @@ fun InlineVideoPlayer(
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "暫停" else "播放",
+                    contentDescription = if (isPlaying) stringResource(R.string.video_pause_desc) else stringResource(R.string.video_play_desc),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
@@ -519,7 +520,7 @@ fun InlineVideoPlayer(
             ) {
                 Icon(
                     imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = if (isMuted) "取消靜音" else "靜音",
+                    contentDescription = if (isMuted) stringResource(R.string.video_unmute_desc) else stringResource(R.string.video_mute_desc),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
@@ -548,7 +549,7 @@ fun InlineVideoPlayer(
         ) {
             Icon(
                 imageVector = Icons.Default.Fullscreen,
-                contentDescription = "放大全螢幕播放",
+                contentDescription = stringResource(R.string.video_fullscreen_desc),
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
             )
@@ -761,25 +762,24 @@ fun FullscreenVideoViewer(
     if (showAudioExportChooser) {
         AlertDialog(
             onDismissRequest = { showAudioExportChooser = false },
-            title = { Text("選擇下載格式") },
+            title = { Text(stringResource(R.string.video_export_format_title)) },
             text = {
                 // 可捲動：橫向螢幕內容超過對話框高度時不被截斷
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text("這是一則音訊（音樂）貼文，可選擇要儲存的版本：", fontSize = 14.sp)
+                    Text(stringResource(R.string.video_export_format_message), fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(
                             painter = painterResource(R.drawable.ic_music_note),
-                            contentDescription = "音樂版",
+                            contentDescription = stringResource(R.string.video_music_desc),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("音樂版（.m4a）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.video_export_music_title), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "純音訊檔，內嵌曲名／歌手／封面圖／歌詞 metadata，" +
-                                    "存到手機「音樂/Reater」；音樂 App 會自動顯示專輯封面與歌詞。",
+                                stringResource(R.string.video_export_music_desc),
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -790,16 +790,15 @@ fun FullscreenVideoViewer(
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(
                             painter = painterResource(R.drawable.ic_movie),
-                            contentDescription = "影片版",
+                            contentDescription = stringResource(R.string.video_movie_desc),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("影片版（.mp4）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.video_export_video_title), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "把封面做成畫面的影片，存到相簿「Movies/Reater」，" +
-                                    "可直接播放或分享到其他 App（畫面為靜態封面）。",
+                                stringResource(R.string.video_export_video_desc),
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -812,7 +811,7 @@ fun FullscreenVideoViewer(
                 Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = {
                         showAudioExportChooser = false
-                        audioExportLabel = "正在寫入音樂檔（含封面/歌詞）…"
+                        audioExportLabel = context.getString(R.string.video_export_music_progress)
                         coroutineScope.launch {
                             exportAudioAsTaggedMusicWithFeedback(
                                 context = context,
@@ -823,11 +822,11 @@ fun FullscreenVideoViewer(
                             )
                             audioExportLabel = null
                         }
-                    }) { Text("音樂版") }
+                    }) { Text(stringResource(R.string.video_export_music)) }
                     Spacer(modifier = Modifier.width(4.dp))
                     TextButton(onClick = {
                         showAudioExportChooser = false
-                        audioExportLabel = "正在合成影片（含封面畫面）…"
+                        audioExportLabel = context.getString(R.string.video_export_video_progress)
                         coroutineScope.launch {
                             exportAudioAsCoverVideoWithFeedback(
                                 context = context,
@@ -837,18 +836,18 @@ fun FullscreenVideoViewer(
                             )
                             audioExportLabel = null
                         }
-                    }) { Text("影片版") }
+                    }) { Text(stringResource(R.string.video_export_video)) }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAudioExportChooser = false }) { Text("取消") }
+                TextButton(onClick = { showAudioExportChooser = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
     if (audioExportLabel != null) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("匯出中") },
+            title = { Text(stringResource(R.string.video_exporting_title)) },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -962,7 +961,7 @@ fun FullscreenVideoViewer(
         if (showPoster) {
             AsyncImage(
                 model = posterUrl,
-                contentDescription = "音訊封面",
+                contentDescription = stringResource(R.string.video_poster_desc),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
@@ -1046,12 +1045,12 @@ fun FullscreenVideoViewer(
         if (playbackError) {
             Column(Modifier.background(Color.Black.copy(alpha = .85f)).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("影片無法播放", color = Color.White)
+                Text(stringResource(R.string.video_play_failed), color = Color.White)
                 Button(onClick = {
                     isPrepared = false; isBuffering = true; playbackError = false; isPlaying = true
                     retryAttempt++
-                }) { Text("重新嘗試") }
-                Button(onClick = { handleClose() }) { Text("關閉") }
+                }) { Text(stringResource(R.string.video_retry)) }
+                Button(onClick = { handleClose() }) { Text(stringResource(R.string.close)) }
             }
         }
 
@@ -1085,7 +1084,7 @@ fun FullscreenVideoViewer(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "關閉全螢幕",
+                                contentDescription = stringResource(R.string.video_fullscreen_close_desc),
                                 tint = Color.White
                             )
                         }
@@ -1109,13 +1108,13 @@ fun FullscreenVideoViewer(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ScreenRotation,
-                                contentDescription = "切換螢幕方向",
+                                contentDescription = stringResource(R.string.video_rotate_desc),
                                 tint = Color.White,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "切換",
+                                text = stringResource(R.string.video_rotate_button),
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -1138,7 +1137,7 @@ fun FullscreenVideoViewer(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Replay10,
-                            contentDescription = "倒退 10 秒",
+                            contentDescription = stringResource(R.string.video_rewind_10_desc),
                             tint = Color.White,
                             modifier = Modifier.size(28.dp)
                         )
@@ -1170,7 +1169,7 @@ fun FullscreenVideoViewer(
                     ) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "暫停" else "播放",
+                            contentDescription = if (isPlaying) stringResource(R.string.video_pause_desc) else stringResource(R.string.video_play_desc),
                             tint = Color.White,
                             modifier = Modifier.size(48.dp)
                         )
@@ -1184,7 +1183,7 @@ fun FullscreenVideoViewer(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Forward10,
-                            contentDescription = "快進 10 秒",
+                            contentDescription = stringResource(R.string.video_forward_10_desc),
                             tint = Color.White,
                             modifier = Modifier.size(28.dp)
                         )
@@ -1291,7 +1290,7 @@ fun FullscreenVideoViewer(
                                 ) {
                                     Icon(
                                         imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = if (isMuted) "取消靜音" else "靜音",
+                                        contentDescription = if (isMuted) stringResource(R.string.video_unmute_desc) else stringResource(R.string.video_mute_desc),
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1329,13 +1328,13 @@ fun FullscreenVideoViewer(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Download,
-                                        contentDescription = "下載影片",
+                                        contentDescription = stringResource(R.string.video_download_desc),
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "下載",
+                                        text = stringResource(R.string.video_download_button),
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium
@@ -1400,7 +1399,7 @@ fun FullscreenVideoViewer(
                                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)
                             ) {
                                 Text(
-                                    text = "播放速度",
+                                    text = stringResource(R.string.video_speed_title),
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
@@ -1430,7 +1429,7 @@ fun FullscreenVideoViewer(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (speed == 1.0f) "1.0x (正常)" else "${speed}x",
+                                            text = if (speed == 1.0f) stringResource(R.string.video_speed_normal) else "${speed}x",
                                             color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
                                             fontSize = 14.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
@@ -1438,7 +1437,7 @@ fun FullscreenVideoViewer(
                                         if (isSelected) {
                                             Icon(
                                                 imageVector = Icons.Default.Check,
-                                                contentDescription = "已選擇",
+                                                contentDescription = stringResource(R.string.video_speed_selected_desc),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
                                             )

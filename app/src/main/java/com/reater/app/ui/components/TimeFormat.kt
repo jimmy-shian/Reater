@@ -1,5 +1,7 @@
 package com.reater.app.ui.components
 
+import android.content.Context
+import com.reater.app.R
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -9,9 +11,9 @@ private val savedFmt = SimpleDateFormat("yyyy/M/d HH:mm", Locale.getDefault())
 private val dayFmt = SimpleDateFormat("M/d", Locale.getDefault())
 
 /** 儲存時間：sourceFetchedAt 即首次存入 Reater 的時間 */
-fun formatSavedTime(millis: Long): String {
-    if (millis <= 0L) return "時間未知"
-    return "儲存於 " + savedFmt.format(Date(millis))
+fun formatSavedTime(context: Context, millis: Long): String {
+    if (millis <= 0L) return context.getString(R.string.time_unknown)
+    return context.getString(R.string.time_saved_on, savedFmt.format(Date(millis)))
 }
 
 /** 今日 00:00（local）millis */
