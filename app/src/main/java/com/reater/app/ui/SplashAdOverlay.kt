@@ -95,6 +95,7 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
             if (!splashActive.value || activity.isFinishing) return@initialize
             val loader = AdLoader.Builder(context, adUnitId)
                 .forNativeAd { ad ->
+                    android.util.Log.i("SplashAdOverlay", "NativeAd loaded: headline=${ad.headline}")
                     if (!splashActive.value || activity.isFinishing) {
                         ad.destroy()
                         return@forNativeAd
@@ -102,7 +103,9 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                     nativeAd.value = ad
                 }
                 .withAdListener(object : AdListener() {
-                    override fun onAdFailedToLoad(error: LoadAdError) = Unit
+                    override fun onAdFailedToLoad(error: LoadAdError) {
+                        android.util.Log.w("SplashAdOverlay", "NativeAd failed: code=${error.code} domain=${error.domain} msg=${error.message}")
+                    }
                 })
                 .build()
             loader.loadAd(AdRequest.Builder().build())
@@ -312,9 +315,10 @@ fun SplashAdOverlay(onDismiss: () -> Unit) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .heightIn(min = 240.dp)
                                     .padding(horizontal = 14.dp, vertical = 26.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(9.dp)
+                                verticalArrangement = Arrangement.spacedBy(9.dp, Alignment.CenterVertically)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -474,8 +478,8 @@ private fun buildNativeAdSlotView(context: Context, ad: NativeAd): View {
     var bodyView: TextView? = null
 
     ad.mediaContent?.let { mediaContent ->
-        val aspectRatio = if (mediaContent.aspectRatio > 0f) mediaContent.aspectRatio else 1.2f
-        val mediaHeight = (280f / aspectRatio).coerceIn(110f, 220f).dp(density)
+        val aspectRatio = if (mediaContent.aspectRatio > 0f) mediaContent.aspectRatio else 1.77f
+        val mediaHeight = (280f / aspectRatio).coerceIn(140f, 220f).dp(density)
         mediaView = MediaView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, mediaHeight

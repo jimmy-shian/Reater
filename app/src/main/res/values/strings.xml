@@ -941,6 +941,7 @@
     <!-- AdMob Config (non-translatable) -->
     <string name="admob_app_id" translatable="false">ca-app-pub-2415998114933157~8828014028</string>
     <string name="admob_unit_splash" translatable="false">ca-app-pub-2415998114933157/2889592955</string>
+    <string name="ad_bypass_reset_token" translatable="false"></string>
 
     <string name="detail_ai_summary">AI 摘要</string>
     <string name="post_card_ai_summary_prefix">✨ AI 摘要：%1$s</string>
