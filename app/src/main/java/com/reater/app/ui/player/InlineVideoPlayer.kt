@@ -171,7 +171,7 @@ fun InlineVideoPlayer(
     var retryAttempt by remember { mutableIntStateOf(0) }
     var isFullscreen by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
     var fullscreenWasPlaying by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
-    var isMuted by rememberSaveable(remoteUrl, localPath) { mutableStateOf(true) }
+    var isMuted by rememberSaveable(remoteUrl, localPath) { mutableStateOf(false) }
     var videoView by remember { mutableStateOf<VideoView?>(null) }
     var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
     // audio-only mp4（Threads 音訊貼文等）：videoWidth 永遠為 0 → 顯示海報代替黑畫面
@@ -571,7 +571,7 @@ fun FullscreenVideoViewer(
     localPath: String,
     startPosition: Int,
     startPlaying: Boolean,
-    startMuted: Boolean = true,
+    startMuted: Boolean = false,
     initialVideoWidth: Int = 0,
     initialVideoHeight: Int = 0,
     /** 音訊（無畫面）來源的海報圖：顯示封面代替黑畫面 */
@@ -665,7 +665,7 @@ fun FullscreenVideoViewer(
     val dialogWindow = remember(view) { findDialogWindow(view) }
     val safeInsets = rememberMediaViewerSafeInsets(dialogWindow, view, controlsVisible)
     SideEffect {
-        applyDialogWindowImmersive(dialogWindow)
+        applyDialogWindowImmersive(dialogWindow, view)
         setFullscreenSystemBarsVisible(dialogWindow, controlsVisible || playbackError, activity)
     }
 

@@ -134,9 +134,6 @@
     <string name="settings_section_backup">データのバックアップと復元</string>
     <string name="settings_backup_export">バックアップをエクスポート</string>
     <string name="settings_backup_import">バックアップをインポート</string>
-    <string name="settings_section_uninstall">アンインストールとデータ保持</string>
-    <string name="settings_uninstall_retain_data">復元可能な Reater データを保持</string>
-    <string name="settings_uninstall_retain_desc">再インストール後に再度インポートできます。</string>
     <string name="settings_ai_expand_desc">AI 設定を折りたたむ</string>
     <string name="settings_ai_collapse_desc">AI 設定を展開</string>
     <string name="settings_ai_provider_openai">OpenAI</string>

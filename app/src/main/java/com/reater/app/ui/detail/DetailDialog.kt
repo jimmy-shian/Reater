@@ -507,7 +507,7 @@ fun DetailDialog(
         val noteKeyboard = LocalSoftwareKeyboardController.current
         val noteImeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
         SideEffect {
-            applyDialogWindowImmersive(dialogWindow)
+            applyDialogWindowImmersive(dialogWindow, view)
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(
             alpha = (0.6f * (1f - abs(dragState.offset) / dragState.containerHeight)).coerceIn(0f, 0.6f)

@@ -63,9 +63,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.defaultMinSize
 import com.reater.app.domain.defaultCollectionDisplayName
 import androidx.compose.foundation.lazy.LazyColumn
@@ -121,6 +123,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -151,6 +154,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -409,9 +413,6 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val aiTransmissionConsent: StateFlow<Boolean> = settingsRepository.aiTransmissionConsent
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val keepDataAfterUninstall: StateFlow<Boolean> = settingsRepository.keepDataAfterUninstall
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val smartRuleContentKeywordsEnabled: StateFlow<Boolean> = settingsRepository.smartRuleContentKeywordsEnabled
@@ -807,10 +808,6 @@ class MainViewModel @Inject constructor(
 
     fun setAiTransmissionConsent(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setAiTransmissionConsent(enabled) }
-    }
-
-    fun setKeepDataAfterUninstall(keep: Boolean) {
-        viewModelScope.launch { settingsRepository.setKeepDataAfterUninstall(keep) }
     }
 
     suspend fun getSavedApiKey(): String? {
@@ -1339,10 +1336,6 @@ fun MainScreen(
                 reaterExportLauncher.launch(defaultName)
             },
             onImportJson = { reaterImportLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain")) },
-            onTriggerUninstallBackup = {
-                val defaultName = "reater_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.getDefault()).format(java.util.Date())}.reater"
-                reaterExportLauncher.launch(defaultName)
-            },
             onOpenIconGallery = { showIconGallery = true },
             onOpenUnlock = { showUnlockDialog = true }
         )
@@ -1670,36 +1663,104 @@ fun MainScreen(
                 pageCount = { 6 }
             )
             val pagerScope = androidx.compose.runtime.rememberCoroutineScope()
+            var programmaticTargetPage by remember { mutableStateOf<Int?>(null) }
+            var tabScrollJob by remember { mutableStateOf<Job?>(null) }
 
-            LaunchedEffect(pagerState.currentPage) {
-                if (currentTab != pagerState.currentPage) {
-                    viewModel.onTabChanged(pagerState.currentPage)
-                }
-                if (pagerState.currentPage == 5) {
-                    viewModel.loadAnalytics()
+            // 手勢滑動即時同步 currentPage 至 ViewModel，點擊切頁動畫期間不反寫。
+            LaunchedEffect(pagerState) {
+                androidx.compose.runtime.snapshotFlow {
+                    Pair(pagerState.currentPage, programmaticTargetPage)
+                }.collect { (page, targetPage) ->
+                    if (targetPage == null) {
+                        if (viewModel.tabIndex.value != page) {
+                            viewModel.onTabChanged(page)
+                        }
+                        if (page == 5) {
+                            viewModel.loadAnalytics()
+                        }
+                    }
                 }
             }
 
             LaunchedEffect(currentTab) {
-                if (pagerState.currentPage != currentTab) {
-                    pagerState.animateScrollToPage(currentTab)
+                if (currentTab == 5) {
+                    viewModel.loadAnalytics()
+                }
+                if (programmaticTargetPage == null &&
+                    !pagerState.isScrollInProgress &&
+                    pagerState.currentPage != currentTab
+                ) {
+                    programmaticTargetPage = currentTab
+                    try {
+                        pagerState.animateScrollToPage(currentTab)
+                    } finally {
+                        if (programmaticTargetPage == currentTab) {
+                            programmaticTargetPage = null
+                        }
+                    }
                 }
             }
 
-            // Tab 標籤列：點擊切換；左右滑動切換由下方 HorizontalPager 跟手處理
+            fun selectTab(index: Int) {
+                programmaticTargetPage = index
+                viewModel.onTabChanged(index)
+                if (index == 5) {
+                    viewModel.loadAnalytics()
+                }
+                tabScrollJob?.cancel()
+                tabScrollJob = pagerScope.launch {
+                    try {
+                        pagerState.animateScrollToPage(index)
+                    } finally {
+                        if (programmaticTargetPage == index) {
+                            programmaticTargetPage = null
+                        }
+                    }
+                }
+            }
+
+            // Tab 標籤列：點擊切換；左右滑動切換時標籤與底線指示器即時跟手同步
+            val selectedTab = (programmaticTargetPage ?: pagerState.currentPage).coerceIn(0, 5)
             ScrollableTabRow(
-                selectedTabIndex = pagerState.currentPage,
+                selectedTabIndex = selectedTab,
                 edgePadding = 16.dp,
                 containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.primary
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = { tabPositions ->
+                    if (tabPositions.isNotEmpty()) {
+                        val maxIndex = tabPositions.lastIndex
+                        val exactPage = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                            .coerceIn(0f, maxIndex.toFloat())
+                        val leftIndex = exactPage.toInt().coerceIn(0, maxIndex)
+                        val rightIndex = (leftIndex + 1).coerceAtMost(maxIndex)
+                        val fraction = (exactPage - leftIndex).coerceIn(0f, 1f)
+                        val indicatorLeft = lerp(
+                            tabPositions[leftIndex].left,
+                            tabPositions[rightIndex].left,
+                            fraction
+                        )
+                        val indicatorRight = lerp(
+                            tabPositions[leftIndex].right,
+                            tabPositions[rightIndex].right,
+                            fraction
+                        )
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentSize(Alignment.BottomStart)
+                                .offset(x = indicatorLeft)
+                                .width((indicatorRight - indicatorLeft).coerceAtLeast(0.dp))
+                        )
+                    }
+                }
             ) {
                 Tab(
                     modifier = Modifier.height(38.dp),
-                    selected = pagerState.currentPage == 0,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(0) } },
+                    selected = selectedTab == 0,
+                    onClick = { selectTab(0) },
                     text = { Text(stringResource(R.string.tab_all)) }
                 )
-                val isUnreadSelected = pagerState.currentPage == 1
+                val isUnreadSelected = selectedTab == 1
                 val unreadCount = unreadPosts.size
                 val unreadBadgeText = when {
                     unreadCount <= 0 -> null
@@ -1709,7 +1770,7 @@ fun MainScreen(
                 Tab(
                     modifier = Modifier.height(38.dp),
                     selected = isUnreadSelected,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(1) } },
+                    onClick = { selectTab(1) },
                     text = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1749,26 +1810,26 @@ fun MainScreen(
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
-                    selected = pagerState.currentPage == 2,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(2) } },
+                    selected = selectedTab == 2,
+                    onClick = { selectTab(2) },
                     text = { Text(stringResource(R.string.tab_favorite)) }
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
-                    selected = pagerState.currentPage == 3,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(3) } },
+                    selected = selectedTab == 3,
+                    onClick = { selectTab(3) },
                     text = { Text(stringResource(R.string.tab_pro_categories)) }
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
-                    selected = pagerState.currentPage == 4,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(4) } },
+                    selected = selectedTab == 4,
+                    onClick = { selectTab(4) },
                     text = { Text(stringResource(R.string.tab_trash)) }
                 )
                 Tab(
                     modifier = Modifier.height(38.dp),
-                    selected = pagerState.currentPage == 5,
-                    onClick = { pagerScope.launch { pagerState.animateScrollToPage(5) } },
+                    selected = selectedTab == 5,
+                    onClick = { selectTab(5) },
                     text = { Text(stringResource(R.string.tab_analytics)) }
                 )
             }

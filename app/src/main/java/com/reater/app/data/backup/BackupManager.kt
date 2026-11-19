@@ -53,7 +53,6 @@ data class ExportedSettings(
     val isProLicensed: Boolean = false,
     val proLicenseEmail: String? = null,
     val proLicenseCode: String? = null,
-    val keepDataAfterUninstall: Boolean = false,
     val aiAnalyzeOnSave: Boolean = false
 )
 
@@ -491,7 +490,6 @@ class BackupManager @Inject constructor(
                     isProLicensed = settingsRepository.isProUnlocked.first(),
                     proLicenseEmail = settingsRepository.proLicenseEmail.first(),
                     proLicenseCode = settingsRepository.proLicenseCode.first(),
-                    keepDataAfterUninstall = settingsRepository.keepDataAfterUninstall.first(),
                     autoFetchEnabled = settingsRepository.autoFetchEnabled.first(),
                     lastCategoryName = settingsRepository.lastSelectedCategoryId.first()?.let(categoryNames::get)
                 )
@@ -962,7 +960,6 @@ class BackupManager @Inject constructor(
                 settingsRepository.setCustomBaseUrl(s.customBaseUrl)
                 settingsRepository.setAiTransmissionConsent(s.aiTransmissionConsent)
                 settingsRepository.setAiAnalyzeOnSave(s.aiAnalyzeOnSave)
-                settingsRepository.setKeepDataAfterUninstall(s.keepDataAfterUninstall)
                 settingsRepository.setCustomAvatarId(s.customAvatarId)
                 val reference = validCurrentAvatarReference ?: imported.currentAvatarReference ?: s.customAvatarUri?.let { File(it).name }
                 val restoredAvatar = reference?.let(restoredNames::get)?.let { File(avatarDir, it) }

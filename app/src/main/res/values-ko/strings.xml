@@ -134,9 +134,6 @@
     <string name="settings_section_backup">데이터 백업 및 복원</string>
     <string name="settings_backup_export">백업 내보내기</string>
     <string name="settings_backup_import">백업 가져오기</string>
-    <string name="settings_section_uninstall">앱 제거 및 데이터 유지</string>
-    <string name="settings_uninstall_retain_data">복원 가능한 Reater 데이터 유지</string>
-    <string name="settings_uninstall_retain_desc">다시 설치한 후에도 가져올 수 있어요.</string>
     <string name="settings_ai_expand_desc">AI 설정 접기</string>
     <string name="settings_ai_collapse_desc">AI 설정 펼치기</string>
     <string name="settings_ai_provider_openai">OpenAI</string>

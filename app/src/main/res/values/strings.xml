@@ -137,9 +137,6 @@
     <string name="settings_section_backup">資料備份與還原</string>
     <string name="settings_backup_export">匯出備份</string>
     <string name="settings_backup_import">匯入備份</string>
-    <string name="settings_section_uninstall">解除安裝與資料保留</string>
-    <string name="settings_uninstall_retain_data">保留可還原的 Reater 資料</string>
-    <string name="settings_uninstall_retain_desc">重新安裝後可再次匯入。</string>
     <string name="settings_ai_expand_desc">收合 AI 設定</string>
     <string name="settings_ai_collapse_desc">展開 AI 設定</string>
     <string name="settings_ai_provider_openai">OpenAI</string>

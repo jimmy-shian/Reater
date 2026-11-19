@@ -140,7 +140,7 @@ fun MediaViewerDialog(
         val window = remember(view) { findDialogWindow(view) }
         val safeInsets = rememberMediaViewerSafeInsets(window, view, controlsVisible)
         SideEffect {
-            applyDialogWindowImmersive(window)
+            applyDialogWindowImmersive(window, view)
             if (!media[pager.currentPage].isVideo) setFullscreenSystemBarsVisible(window, controlsVisible, activity)
         }
         DisposableEffect(window, activity) { onDispose { setFullscreenSystemBarsVisible(window, true, activity) } }

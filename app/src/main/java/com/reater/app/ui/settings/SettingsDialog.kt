@@ -25,7 +25,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -117,7 +116,6 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onExportJson: () -> Unit,
     onImportJson: () -> Unit,
-    onTriggerUninstallBackup: () -> Unit = {},
     onOpenIconGallery: () -> Unit = {},
     onOpenUnlock: () -> Unit = {}
 ) {
@@ -1140,65 +1138,6 @@ fun SettingsDialog(
                                 style = MaterialTheme.typography.labelMedium,
                                 textAlign = TextAlign.Center
                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // ---------- 解除安裝與資料保留 ----------
-                    SettingsSectionTitle(stringResource(R.string.settings_section_uninstall))
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val keepDataAfterUninstall by viewModel.keepDataAfterUninstall.collectAsState()
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 64.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                val target = !keepDataAfterUninstall
-                                viewModel.setKeepDataAfterUninstall(target)
-                                if (target) {
-                                    onTriggerUninstallBackup()
-                                }
-                            },
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            1.dp,
-                            if (keepDataAfterUninstall) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = keepDataAfterUninstall,
-                                onCheckedChange = { checked ->
-                                    viewModel.setKeepDataAfterUninstall(checked)
-                                    if (checked) {
-                                        onTriggerUninstallBackup()
-                                    }
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.settings_uninstall_retain_data),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = stringResource(R.string.settings_uninstall_retain_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    lineHeight = 16.sp
-                                )
-                            }
                         }
                     }
 

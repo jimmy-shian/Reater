@@ -134,9 +134,6 @@
     <string name="settings_section_backup">Backup &amp; Restore</string>
     <string name="settings_backup_export">Export backup</string>
     <string name="settings_backup_import">Import backup</string>
-    <string name="settings_section_uninstall">Uninstall &amp; Data</string>
-    <string name="settings_uninstall_retain_data">Keep restorable Reater data</string>
-    <string name="settings_uninstall_retain_desc">Import again after reinstalling.</string>
     <string name="settings_ai_expand_desc">Collapse AI settings</string>
     <string name="settings_ai_collapse_desc">Expand AI settings</string>
     <string name="settings_ai_provider_openai">OpenAI</string>

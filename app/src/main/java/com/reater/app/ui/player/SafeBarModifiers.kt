@@ -14,6 +14,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.Surface
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
@@ -78,20 +79,61 @@ fun findDialogWindow(view: View): Window? {
     return (view.context.findPlayerActivity())?.window
 }
 
+private fun findDialogLayoutView(view: View?, decorView: View?): View? {
+    var cur: Any? = view
+    while (cur is View) {
+        if (cur.javaClass.name == "androidx.compose.ui.window.DialogLayout") return cur
+        cur = cur.parent
+    }
+    fun searchDown(v: View?): View? {
+        if (v == null) return null
+        if (v.javaClass.name == "androidx.compose.ui.window.DialogLayout") return v
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                searchDown(v.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+    return searchDown(decorView)
+}
+
 /**
  * 將 Dialog Window 設置為全螢幕沉浸式（透明系統列、延伸至瀏海區域）。
  */
 @Suppress("DEPRECATION")
-fun applyDialogWindowImmersive(window: Window?) {
+fun applyDialogWindowImmersive(window: Window?, view: View? = null) {
     window?.let { win ->
         WindowCompat.setDecorFitsSystemWindows(win, false)
-        // Compose DialogLayout 只設 setLayout(MATCH_PARENT, WRAP_CONTENT)：
-        // WRAP_CONTENT 子視窗的 frame 由 WMS 依「父視窗 visible frame」動態推導，
-        // 在 One UI 上會下移一段系統列高度 → 頂部露出底層內容、高度不足。
-        // 明確設為 MATCH_PARENT × MATCH_PARENT 對齊整個螢幕。
-        win.setLayout(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT
+        val decor = win.decorView
+        if (decor.paddingLeft != 0 || decor.paddingTop != 0 || decor.paddingRight != 0 || decor.paddingBottom != 0) {
+            decor.setPadding(0, 0, 0, 0)
+        }
+        // Compose DialogLayout 在 usePlatformDefaultWidth = false 時會用 screenHeightDp（扣除系統列）
+        // 測量並覆寫 window.setLayout，造成系統列出現時視窗整體下移且底部被裁切。
+        // 將其改為 true 使 DialogLayout 採用 WindowManager 給予的 MATCH_PARENT 全螢幕尺寸。
+        findDialogLayoutView(view, decor)?.let { dialogLayout ->
+            runCatching {
+                val field = dialogLayout.javaClass.getDeclaredField("usePlatformDefaultWidth").apply {
+                    isAccessible = true
+                }
+                if (!field.getBoolean(dialogLayout)) {
+                    val setter = runCatching {
+                        dialogLayout.javaClass.getMethod("setUsePlatformDefaultWidth", Boolean::class.javaPrimitiveType)
+                    }.getOrNull()
+                    if (setter != null) {
+                        setter.invoke(dialogLayout, true)
+                    } else {
+                        field.setBoolean(dialogLayout, true)
+                    }
+                    dialogLayout.requestLayout()
+                }
+            }
+        }
+        win.addFlags(
+            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
         )
         win.statusBarColor = android.graphics.Color.TRANSPARENT
         win.navigationBarColor = android.graphics.Color.TRANSPARENT
@@ -99,33 +141,43 @@ fun applyDialogWindowImmersive(window: Window?) {
             win.isNavigationBarContrastEnforced = false
             win.isStatusBarContrastEnforced = false
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            win.attributes = win.attributes.apply {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        val lp = win.attributes
+        var attrsChanged = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            lp.layoutInDisplayCutoutMode != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        ) {
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            attrsChanged = true
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (lp.fitInsetsTypes != 0 || lp.fitInsetsSides != 0) {
+                lp.fitInsetsTypes = 0
+                lp.fitInsetsSides = 0
+                attrsChanged = true
             }
         }
-        win.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        if (attrsChanged) {
+            win.attributes = lp
+        }
+        if (win.attributes.width != WindowManager.LayoutParams.MATCH_PARENT ||
+            win.attributes.height != WindowManager.LayoutParams.MATCH_PARENT
+        ) {
+            win.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
+        }
     }
 }
 
-/** 隱藏控制列時讓系統列一同進入沉浸模式，邊緣滑動仍可暫時叫出。 */
+/** 隱藏控制列時讓系統列一同進入沉浸模式，邊緣滑動仍可暫時叫出。僅操作 Dialog 視窗（無 Dialog 時才退回 Activity）。 */
 fun setFullscreenSystemBarsVisible(window: Window?, visible: Boolean, activity: Activity? = null) {
-    window?.let { win ->
-        WindowCompat.getInsetsController(win, win.decorView).apply {
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (visible) show(WindowInsetsCompat.Type.systemBars())
-            else hide(WindowInsetsCompat.Type.systemBars())
-        }
-    }
-    activity?.window?.let { actWin ->
-        if (actWin != window) {
-            WindowCompat.getInsetsController(actWin, actWin.decorView).apply {
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (visible) show(WindowInsetsCompat.Type.systemBars())
-                else hide(WindowInsetsCompat.Type.systemBars())
-            }
-        }
+    val targetWin = window ?: activity?.window ?: return
+    WindowCompat.getInsetsController(targetWin, targetWin.decorView).apply {
+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (visible) show(WindowInsetsCompat.Type.systemBars())
+        else hide(WindowInsetsCompat.Type.systemBars())
     }
 }
 
@@ -289,9 +341,9 @@ fun rememberMediaViewerSafeInsets(
     val cSystemBarsBottomPx = maxOf(composeSystemBars.getBottom(density), composeSystemBarsIgnoring.getBottom(density))
 
     // 2. 系統硬體資源尺寸保底（即使特定 OEM 深度定制系統在 WindowInsets 報告 0 也能保底）
-    val resNavHeightPx = remember(view) { getSystemNavigationBarHeightPx(view.context) }
-    val resNavWidthPx = remember(view) { getSystemNavigationBarWidthPx(view.context) }
-    val resStatusHeightPx = remember(view) { getSystemStatusBarHeightPx(view.context) }
+    val resNavHeightPx = remember(view, configuration.orientation) { getSystemNavigationBarHeightPx(view.context) }
+    val resNavWidthPx = remember(view, configuration.orientation) { getSystemNavigationBarWidthPx(view.context) }
+    val resStatusHeightPx = remember(view, configuration.orientation) { getSystemStatusBarHeightPx(view.context) }
 
     fun collectCompatSources(): List<WindowInsetsCompat?> {
         val list = mutableListOf<WindowInsetsCompat?>()
@@ -406,8 +458,7 @@ fun rememberMediaViewerSafeInsets(
             with(density) { combinedBottomPx.toDp() }
         }
 
-        // 檢視器不把頂部導覽列納入布局；頂部控制列以 overlay 顯示。
-        return MediaViewerSafeInsets(left = leftDp, top = 0.dp, right = rightDp, bottom = bottomDp)
+        return MediaViewerSafeInsets(left = leftDp, top = topDp, right = rightDp, bottom = bottomDp)
     }
 
     var trigger by remember { mutableIntStateOf(0) }
@@ -447,9 +498,13 @@ fun rememberMediaViewerSafeInsets(
         cStatusTopPx,
         cCutoutLeftPx,
         cCutoutRightPx,
+        cCutoutTopPx,
         cSafeDrawingBottomPx,
         cSafeDrawingRightPx,
-        cSafeDrawingLeftPx
+        cSafeDrawingLeftPx,
+        cSafeDrawingTopPx,
+        cSystemBarsTopPx,
+        cSystemBarsBottomPx
     ) {
         computeCurrentInsets(collectCompatSources(), controlsVisible)
     }
@@ -464,8 +519,7 @@ fun fullscreenTopBarModifier(safeInsets: MediaViewerSafeInsets): Modifier =
     Modifier.padding(
         start = safeInsets.left + 16.dp,
         end = safeInsets.right + 16.dp,
-        // 頂部導覽列只顯示在 overlay，不參與媒體區域的高度計算。
-        top = 8.dp,
+        top = safeInsets.top + 8.dp,
         bottom = 8.dp
     )
 
@@ -480,7 +534,7 @@ fun fullscreenBottomBarModifier(safeInsets: MediaViewerSafeInsets): Modifier =
         start = safeInsets.left + 16.dp,
         end = safeInsets.right + 16.dp,
         top = 8.dp,
-        bottom = safeInsets.bottom + 28.dp
+        bottom = safeInsets.bottom + 16.dp
     )
 
 @Composable
