@@ -890,7 +890,7 @@
     <string name="video_export_music_title">音楽版（.m4a）</string>
     <string name="video_export_music_desc">カバーと歌詞を含む音声ファイル。「Music/Reater」に保存します。</string>
     <string name="video_export_video_title">動画版（.mp4）</string>
-    <string name="video_export_video_desc">カバー付きの動画ファイル。アルバムの「Movies/Reater」に保存します。</string>
+    <string name="video_export_video_desc">カバーと同期歌詞字幕付きの動画ファイル（字幕は画面幅に収まるよう自動改行）。「Movies/Reater」に保存します。</string>
     <string name="video_export_music_progress">音楽ファイルを書き込み中（カバー/歌詞つき）…</string>
     <string name="video_export_video_progress">動画を合成中（カバーフレームつき）…</string>
     <string name="video_exporting_title">エクスポート中</string>
@@ -969,5 +969,13 @@
     <string name="save_type_image">画像</string>
     <string name="save_downloading_what">%1$sをダウンロード中…</string>
     <string name="smart_collection_preview_no_body">（本文なし）</string>
+    <string name="notify_export_video_running_title">動画の合成を実行中</string>
+    <string name="notify_export_music_running_title">音楽エクスポートを実行中</string>
+    <string name="notify_export_running_desc">バックグラウンドで実行中です。このまま他の投稿を閲覧できます。</string>
+    <string name="notify_export_video_done_title">動画の合成が完了しました</string>
+    <string name="notify_export_music_done_title">音楽エクスポートが完了しました</string>
+    <string name="notify_export_failed_title">エクスポートに失敗しました</string>
+    <string name="video_export_background_started">バックグラウンドで実行中です。このまま閲覧を続けられます。</string>
+    <string name="save_error_compose_failed_reason">合成に失敗しました：%1$s</string>
     <string name="studio_announcement_default_tag">お知らせ</string>
 </resources>

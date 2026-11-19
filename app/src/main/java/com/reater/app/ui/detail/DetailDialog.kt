@@ -426,6 +426,30 @@ fun DetailDialog(
     val audioMetaJsonByUrl = remember(item.item.rawJsonMin) {
         com.reater.app.domain.AudioMetaStore.toJsonUrlMap(item.item.rawJsonMin)
     }
+    // 舊存檔可能沒有 audio_meta（歌詞卡/匯出用不到）：偵測到 AUDIO 媒體但查無 meta 時，
+    // 重抓貼文一次，把新 metadata 合併進記憶體映射（不寫 DB），歌詞卡與匯出立即受惠。
+    var refreshedMetaJsonByUrl by remember(item.item.id) {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
+    LaunchedEffect(item.media, item.item.rawJsonMin) {
+        val audioMedia = item.media.firstOrNull { it.kind.equals("AUDIO", true) } ?: return@LaunchedEffect
+        val missing = audioMetaJsonByUrl[com.reater.app.data.remote.MediaDedup.normalizeKey(audioMedia.remoteUrl)].isNullOrBlank()
+        if (!missing || refreshedMetaJsonByUrl.isNotEmpty()) return@LaunchedEffect
+        val fresh = viewModel.refreshAudioPostSources(item.item.canonicalUrl, item.item.shortcode) ?: return@LaunchedEffect
+        if (fresh.audioMetaJson.isNotBlank()) {
+            refreshedMetaJsonByUrl = mapOf(
+                com.reater.app.data.remote.MediaDedup.normalizeKey(audioMedia.remoteUrl) to fresh.audioMetaJson,
+                com.reater.app.data.remote.MediaDedup.normalizeKey(fresh.audioUrl) to fresh.audioMetaJson
+            )
+        }
+    }
+    val mergedAudioMetaJsonByUrl = remember(audioMetaJsonByUrl, refreshedMetaJsonByUrl) {
+        audioMetaJsonByUrl + refreshedMetaJsonByUrl
+    }
+    /** 匯出用重抓：回傳新鮮的音訊網址/封面/歌詞（fbcdn 網址具時效性，過期後以此回復） */
+    val refreshAudioSourcesForExport: suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources? = {
+        viewModel.refreshAudioPostSources(item.item.canonicalUrl, item.item.shortcode)
+    }
 
     val aiActiveItemIds by viewModel.aiActiveItemIds.collectAsState()
     val isItemAiRunning = aiActiveItemIds.contains(item.item.id)
@@ -830,7 +854,7 @@ fun DetailDialog(
                             // 祖先區塊媒體（母文圖歸母文：銀晝戰績/裝備/排行在此顯示，不再掛到子文下）
                             if (aMedia.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                DetailMediaPager(aMedia, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }, audioMetaJsonByUrl) { media ->
+                                DetailMediaPager(aMedia, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }, mergedAudioMetaJsonByUrl) { media ->
                                     val key = com.reater.app.data.remote.MediaDedup.normalizeKey(media.remoteUrl)
                                     viewerIndex = viewerSortedMedia.indexOfFirst {
                                         com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == key
@@ -838,7 +862,7 @@ fun DetailDialog(
                                 }
                                 // 音訊（音樂貼文）：Threads 跳動歌詞文字卡
                                 Spacer(modifier = Modifier.height(6.dp))
-                                BlockAudioLyricsCard(aMedia, audioMetaJsonByUrl)
+                                BlockAudioLyricsCard(aMedia, mergedAudioMetaJsonByUrl)
                             }
 
                             // 互動圖示列（Threads 原生四件套，共用模組）
@@ -978,7 +1002,7 @@ fun DetailDialog(
                         // 貼文媒體預覽（只顯示屬於本區塊的圖；母文圖已在上方母文塊顯示，不再重複）
                         if (mainMediaList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            DetailMediaPager(mainMediaList, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }, audioMetaJsonByUrl) { media ->
+                            DetailMediaPager(mainMediaList, selectedMediaUrl, { selectedMediaUrl = it }, { dragState.pagerDragging = it }, mergedAudioMetaJsonByUrl) { media ->
                                 val key = com.reater.app.data.remote.MediaDedup.normalizeKey(media.remoteUrl)
                                 viewerIndex = viewerSortedMedia.indexOfFirst {
                                     com.reater.app.data.remote.MediaDedup.normalizeKey(it.remoteUrl) == key
@@ -986,7 +1010,7 @@ fun DetailDialog(
                             }
                             // 音訊（音樂貼文）：Threads 跳動歌詞文字卡
                             Spacer(modifier = Modifier.height(6.dp))
-                            BlockAudioLyricsCard(mainMediaList, audioMetaJsonByUrl)
+                            BlockAudioLyricsCard(mainMediaList, mergedAudioMetaJsonByUrl)
                         }
 
                         if (mainMediaList.isEmpty() && !hasAnyBlockMedia &&
@@ -1236,14 +1260,14 @@ fun DetailDialog(
                                         }
                                     }
                                     DetailMediaPager(entries, selectedMediaUrl, { selectedMediaUrl = it },
-                                        { dragState.pagerDragging = it }, audioMetaJsonByUrl) { selected ->
+                                        { dragState.pagerDragging = it }, mergedAudioMetaJsonByUrl) { selected ->
                                         commentViewerMedia = commentMedia.map {
                                             ViewerMedia(it.kind, it.remoteUrl, it.localPath)
                                         }
                                         commentViewerIndex = entries.indexOf(selected).coerceAtLeast(0)
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    BlockAudioLyricsCard(entries, audioMetaJsonByUrl)
+                                    BlockAudioLyricsCard(entries, mergedAudioMetaJsonByUrl)
                                 }
 
                                 // 留言互動數值列（Threads 原生四件套，共用模組；小一號圖示）
@@ -1313,7 +1337,8 @@ fun DetailDialog(
             media = viewerSortedMedia.map { ViewerMedia(kind = it.kind, remoteUrl = it.remoteUrl, localPath = it.localPath) },
             startIndex = (viewerIndex ?: 0).coerceIn(0, maxOf(0, viewerSortedMedia.size - 1)),
             onPageChanged = { index -> selectedMediaUrl = viewerSortedMedia[index].remoteUrl },
-            audioMetaJsonByUrl = audioMetaJsonByUrl,
+            audioMetaJsonByUrl = mergedAudioMetaJsonByUrl,
+            refreshAudioSources = refreshAudioSourcesForExport,
             onDismiss = { viewerIndex = null }
         )
     }
@@ -1323,7 +1348,8 @@ fun DetailDialog(
             media = commentViewerMedia ?: emptyList(),
             startIndex = commentViewerIndex,
             onPageChanged = { page -> commentViewerMedia?.getOrNull(page)?.let { selectedMediaUrl = it.remoteUrl } },
-            audioMetaJsonByUrl = audioMetaJsonByUrl,
+            audioMetaJsonByUrl = mergedAudioMetaJsonByUrl,
+            refreshAudioSources = refreshAudioSourcesForExport,
             onDismiss = { commentViewerMedia = null }
         )
     }

@@ -912,7 +912,7 @@
     <string name="video_export_music_title">音樂版（.m4a）</string>
     <string name="video_export_music_desc">純音訊檔，含封面與歌詞，存到「音樂/Reater」。</string>
     <string name="video_export_video_title">影片版（.mp4）</string>
-    <string name="video_export_video_desc">含封面的影片檔，存到相簿「Movies/Reater」。</string>
+    <string name="video_export_video_desc">含封面與同步歌詞字幕的影片檔（字幕自動換行不超出畫面），存到相簿「Movies/Reater」。</string>
     <string name="video_export_music_progress">正在寫入音樂檔（含封面/歌詞）…</string>
     <string name="video_export_video_progress">正在合成影片（含封面畫面）…</string>
     <string name="video_exporting_title">匯出中</string>
@@ -969,5 +969,13 @@
     <string name="save_type_image">圖片</string>
     <string name="save_downloading_what">正在下載%1$s…</string>
     <string name="smart_collection_preview_no_body">（無內文）</string>
+    <string name="notify_export_video_running_title">影片合成執行中</string>
+    <string name="notify_export_music_running_title">音樂匯出執行中</string>
+    <string name="notify_export_running_desc">正在背景執行中，可繼續滑動檢閱其他內容</string>
+    <string name="notify_export_video_done_title">影片合成完成</string>
+    <string name="notify_export_music_done_title">音樂匯出完成</string>
+    <string name="notify_export_failed_title">匯出未完成</string>
+    <string name="video_export_background_started">已開始在背景執行中，可繼續滑動檢閱</string>
+    <string name="save_error_compose_failed_reason">合成失敗：%1$s</string>
     <string name="studio_announcement_default_tag">官方公告</string>
 </resources>

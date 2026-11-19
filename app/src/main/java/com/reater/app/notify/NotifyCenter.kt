@@ -34,6 +34,7 @@ object NotifyCenter {
     const val UNREAD_WORK = "reater_unread_nudge"
     const val REVIEW_WORK = "reater_review_digest"
     const val DOWNLOAD_NOTIF_BASE = 30000
+    const val EXPORT_NOTIF_BASE = 40000
     const val ACTION_TRIGGER_REVIEW_DIGEST = "com.reater.app.action.TRIGGER_REVIEW_DIGEST"
     const val REQUEST_CODE_REVIEW_DIGEST_ALARM = 1001
 
@@ -380,5 +381,59 @@ object NotifyCenter {
         try {
             NotificationManagerCompat.from(context).cancel(DOWNLOAD_NOTIF_BASE + (itemId % 10000).toInt())
         } catch (_: Exception) {}
+    }
+
+    fun postMediaExportRunning(context: Context, notifId: Int, isVideo: Boolean) {
+        if (!canNotify(context)) return
+        ensureDownloadChannel(context)
+        val title = context.getString(
+            if (isVideo) R.string.notify_export_video_running_title
+            else R.string.notify_export_music_running_title
+        )
+        val note = NotificationCompat.Builder(context, CHANNEL_DOWNLOAD)
+            .setSmallIcon(R.drawable.ic_stat_reater)
+            .setContentTitle(title)
+            .setContentText(context.getString(R.string.notify_export_running_desc))
+            .setProgress(0, 0, true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openAppIntent(context))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(notifId, note)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    fun postMediaExportComplete(
+        context: Context,
+        notifId: Int,
+        isVideo: Boolean,
+        success: Boolean,
+        message: String
+    ) {
+        if (!canNotify(context)) return
+        ensureDownloadChannel(context)
+        val title = context.getString(
+            when {
+                !success -> R.string.notify_export_failed_title
+                isVideo -> R.string.notify_export_video_done_title
+                else -> R.string.notify_export_music_done_title
+            }
+        )
+        val note = NotificationCompat.Builder(context, CHANNEL_DOWNLOAD)
+            .setSmallIcon(R.drawable.ic_stat_reater)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setProgress(0, 0, false)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent(context))
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(notifId, note)
+        } catch (_: SecurityException) {
+        }
     }
 }

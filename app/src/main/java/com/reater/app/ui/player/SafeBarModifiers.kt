@@ -48,12 +48,17 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.reater.app.R
+import com.reater.app.notify.NotifyCenter
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 尋找 Compose Dialog 所在的真實 Window。
@@ -575,17 +580,30 @@ suspend fun exportAudioAsTaggedMusicWithFeedback(
     localPath: String,
     remoteUrl: String,
     posterUrl: String,
-    audioMetaJson: String
+    audioMetaJson: String,
+    refreshSources: (suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources?)? = null
 ): Boolean {
-    val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
+    var audioUrl = remoteUrl
+    var coverUrl = posterUrl
+    var metaJson = audioMetaJson
+    var audioFile = resolveAudioSourceFile(context, localPath, audioUrl)
+    if (audioFile == null && refreshSources != null) {
+        // 網址過期/無本機檔：重抓貼文換新網址與新 metadata 後重試
+        refreshSources()?.let { fresh ->
+            audioUrl = fresh.audioUrl
+            coverUrl = fresh.posterUrl
+            metaJson = fresh.audioMetaJson
+            audioFile = resolveAudioSourceFile(context, localPath = "", remoteUrl = audioUrl)
+        }
+    }
     if (audioFile == null) {
         withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.save_error_audio_unavailable), Toast.LENGTH_SHORT).show() }
         return false
     }
     val ok = withContext(Dispatchers.IO) {
         runCatching {
-            val meta = com.reater.app.domain.AudioMetaStore.decode(audioMetaJson)
-            val coverBitmap = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, posterUrl) }
+            val meta = com.reater.app.domain.AudioMetaStore.decode(metaJson)
+            val coverBitmap = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, coverUrl) }
             val coverJpeg = coverBitmap?.let { bm ->
                 try {
                     java.io.ByteArrayOutputStream(256 * 1024).use { bos ->
@@ -628,28 +646,153 @@ suspend fun exportAudioAsTaggedMusicWithFeedback(
     return ok
 }
 
+private val backgroundExportScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private val backgroundExportSeq = AtomicInteger(0)
+
 /**
- * 將音訊貼文匯出成「影片版 .mp4」：封面圖合成為視訊軌（靜態畫面）+ 原音訊 passthrough，
+ * 背景執行音訊匯出（「音樂版 .m4a」或「影片版 .mp4」）：
+ * 立即推送「執行中」系統通知與 Toast 提示，不阻斷使用者關閉檢視器或滑動檢閱其他內容。
+ */
+fun startBackgroundAudioExport(
+    context: Context,
+    isVideo: Boolean,
+    localPath: String,
+    remoteUrl: String,
+    posterUrl: String,
+    audioMetaJson: String = "",
+    refreshSources: (suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources?)? = null
+) {
+    val appContext = context.applicationContext
+    val notifId = NotifyCenter.EXPORT_NOTIF_BASE + (backgroundExportSeq.getAndIncrement() % 1000)
+    Toast.makeText(
+        appContext,
+        appContext.getString(R.string.video_export_background_started),
+        Toast.LENGTH_SHORT
+    ).show()
+    NotifyCenter.postMediaExportRunning(appContext, notifId, isVideo)
+
+    backgroundExportScope.launch {
+        var success = false
+        var message = ""
+        try {
+            if (isVideo) {
+                AudioVideoComposer.clearFailure()
+                success = exportAudioAsCoverVideoWithFeedback(
+                    context = appContext,
+                    localPath = localPath,
+                    remoteUrl = remoteUrl,
+                    posterUrl = posterUrl,
+                    audioMetaJson = audioMetaJson,
+                    refreshSources = refreshSources
+                )
+                message = when {
+                    success -> appContext.getString(R.string.save_done_gallery_with_cover)
+                    AudioVideoComposer.lastFailure.isNotBlank() -> appContext.getString(
+                        R.string.save_error_compose_failed_reason,
+                        AudioVideoComposer.lastFailure
+                    )
+                    else -> appContext.getString(R.string.save_error_compose_failed)
+                }
+            } else {
+                success = exportAudioAsTaggedMusicWithFeedback(
+                    context = appContext,
+                    localPath = localPath,
+                    remoteUrl = remoteUrl,
+                    posterUrl = posterUrl,
+                    audioMetaJson = audioMetaJson,
+                    refreshSources = refreshSources
+                )
+                message = if (success) {
+                    appContext.getString(R.string.save_done_music_with_meta)
+                } else {
+                    appContext.getString(R.string.save_error_audio_check)
+                }
+            }
+        } catch (t: Throwable) {
+            success = false
+            message = t.message?.takeIf { it.isNotBlank() }
+                ?: appContext.getString(
+                    if (isVideo) R.string.save_error_compose_failed else R.string.save_error_audio_check
+                )
+        } finally {
+            NotifyCenter.postMediaExportComplete(
+                context = appContext,
+                notifId = notifId,
+                isVideo = isVideo,
+                success = success,
+                message = message.ifBlank {
+                    appContext.getString(
+                        if (isVideo) R.string.save_error_compose_failed else R.string.save_error_audio_check
+                    )
+                }
+            )
+        }
+    }
+}
+
+/**
+ * 將音訊貼文匯出成「影片版 .mp4」：封面圖合成為視訊軌 + 依歌詞時間軸疊上同步字幕
+ * （文字自動換行，不超出畫面寬度），音訊重編碼為 AAC-LC（各裝置必解），
  * 進相簿可直接播放/分享。
+ *
+ * fbcdn 網址具時效性：本機無檔且下載失敗、或封面抓不到時，以 [refreshSources]
+ * 重抓貼文換新網址/新歌詞後重試一次（詳情頁提供；null=不重抓）。
  */
 suspend fun exportAudioAsCoverVideoWithFeedback(
     context: Context,
     localPath: String,
     remoteUrl: String,
-    posterUrl: String
+    posterUrl: String,
+    audioMetaJson: String = "",
+    refreshSources: (suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources?)? = null
 ): Boolean {
-    val audioFile = resolveAudioSourceFile(context, localPath, remoteUrl)
+    AudioVideoComposer.clearFailure()
+    var audioUrl = remoteUrl
+    var coverUrl = posterUrl
+    var metaJson = audioMetaJson
+    var refreshed = false
+    var audioFile = resolveAudioSourceFile(context, localPath, audioUrl)
+    if (audioFile == null && refreshSources != null && !refreshed) {
+        refreshed = true
+        val fresh = refreshSources()
+        if (fresh != null) {
+            audioUrl = fresh.audioUrl
+            coverUrl = fresh.posterUrl
+            metaJson = fresh.audioMetaJson
+            audioFile = resolveAudioSourceFile(context, localPath = "", remoteUrl = audioUrl)
+        }
+    }
     if (audioFile == null) {
         withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.save_error_audio_unavailable), Toast.LENGTH_SHORT).show() }
         return false
     }
     val ok = withContext(Dispatchers.IO) {
         runCatching {
-            val cover = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, posterUrl) }
-                ?: throw IllegalStateException("no cover")
+            if (metaJson.isBlank() && refreshSources != null && !refreshed) {
+                refreshed = true
+                refreshSources()?.let { fresh ->
+                    if (fresh.audioMetaJson.isNotBlank()) metaJson = fresh.audioMetaJson
+                    if (coverUrl.isBlank() && fresh.posterUrl.isNotBlank()) coverUrl = fresh.posterUrl
+                }
+            }
+            var cover = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, coverUrl) }
+            if (cover == null && refreshSources != null && !refreshed) {
+                refreshed = true
+                val fresh = refreshSources()
+                if (fresh != null) {
+                    coverUrl = fresh.posterUrl
+                    if (fresh.audioMetaJson.isNotBlank()) metaJson = fresh.audioMetaJson
+                    cover = kotlinx.coroutines.withTimeout(30_000L) { loadCoverBitmap(context, coverUrl) }
+                }
+            }
+            if (cover == null) throw IllegalStateException("no cover")
+            val lyrics = com.reater.app.domain.AudioMetaStore.decode(metaJson)
+                ?.lyrics
+                ?.map { AudioVideoComposer.Cue(it.text, it.startMs, it.endMs) }
+                .orEmpty()
             try {
                 val out = File(context.cacheDir, "reater_av_${System.currentTimeMillis()}.mp4")
-                val composed = AudioVideoComposer.compose(audioFile, cover, out)
+                val composed = AudioVideoComposer.compose(audioFile, cover, out, lyrics)
                 if (!composed) false else {
                     try {
                         copyFileToGallery(context, out, isVideo = true)
@@ -665,8 +808,15 @@ suspend fun exportAudioAsCoverVideoWithFeedback(
     withContext(Dispatchers.Main) {
         Toast.makeText(
             context,
-            if (ok) context.getString(R.string.save_done_gallery_with_cover) else context.getString(R.string.save_error_compose_failed),
-            Toast.LENGTH_SHORT
+            when {
+                ok -> context.getString(R.string.save_done_gallery_with_cover)
+                AudioVideoComposer.lastFailure.isNotBlank() -> context.getString(
+                    R.string.save_error_compose_failed_reason,
+                    AudioVideoComposer.lastFailure
+                )
+                else -> context.getString(R.string.save_error_compose_failed)
+            },
+            Toast.LENGTH_LONG
         ).show()
     }
     return ok

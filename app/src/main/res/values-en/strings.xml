@@ -890,7 +890,7 @@
     <string name="video_export_music_title">Music (.m4a)</string>
     <string name="video_export_music_desc">Audio-only file with cover and lyrics, saved to Music/Reater.</string>
     <string name="video_export_video_title">Video (.mp4)</string>
-    <string name="video_export_video_desc">Video with a static cover, saved to Movies/Reater.</string>
+    <string name="video_export_video_desc">Video with a cover and synced lyric subtitles (auto-wrapped to fit), saved to Movies/Reater.</string>
     <string name="video_export_music_progress">Writing music file (cover/lyrics)…</string>
     <string name="video_export_video_progress">Composing video (cover)…</string>
     <string name="video_exporting_title">Exporting</string>
@@ -969,5 +969,13 @@
     <string name="save_type_image">image</string>
     <string name="save_downloading_what">Downloading %1$s…</string>
     <string name="smart_collection_preview_no_body">(no body)</string>
+    <string name="notify_export_video_running_title">Video composition in progress</string>
+    <string name="notify_export_music_running_title">Music export in progress</string>
+    <string name="notify_export_running_desc">Running in the background. You can keep browsing.</string>
+    <string name="notify_export_video_done_title">Video export complete</string>
+    <string name="notify_export_music_done_title">Music export complete</string>
+    <string name="notify_export_failed_title">Export failed</string>
+    <string name="video_export_background_started">Running in the background. You can continue browsing.</string>
+    <string name="save_error_compose_failed_reason">Composition failed: %1$s</string>
     <string name="studio_announcement_default_tag">Announcement</string>
 </resources>

@@ -26,8 +26,10 @@ import com.reater.app.domain.OnDeviceClassifier
 import com.reater.app.domain.UrlParser
 import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.data.remote.threads.TopicTags
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.reater.app.domain.CustomKeywordRule
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,6 +54,40 @@ class ThreadPostRepository @Inject constructor(
     fun observeAllPosts(): Flow<List<ItemDetail>> = itemDao.observeAllItemDetails()
     fun observeUnreadPosts(): Flow<List<ItemDetail>> = itemDao.observeUnreadItemDetails()
     fun observeFavoritePosts(): Flow<List<ItemDetail>> = itemDao.observeFavoriteItemDetails()
+
+    /** 重新抓回的音訊貼文來源（fbcdn 網址具時效性，過期後匯出/播放前需重抓） */
+    data class RefreshedAudioSources(
+        val audioUrl: String,
+        val posterUrl: String,
+        val audioMetaJson: String
+    )
+
+    /**
+     * 重抓貼文取得「新鮮的」音訊網址/封面網址/曲名歌手歌詞 metadata。
+     * 舊存檔的 fbcdn 網址會過期（下載 403）、且較舊存檔可能沒有注入 audio_meta，
+     * 匯出與歌詞卡在來源失效時以此回復。抓不到或非音訊貼文回 null。
+     */
+    suspend fun refreshAudioPostSources(
+        canonicalUrl: String,
+        shortcode: String
+    ): RefreshedAudioSources? = withContext(Dispatchers.IO) {
+        runCatching {
+            val fetched = graphQLClient
+                .fetchPostByPostIdOrShortcode(canonicalUrl.ifBlank { shortcode }, shortcode)
+                .getOrNull() ?: return@runCatching null
+            val audio = fetched.media.firstOrNull {
+                it.kind.equals("AUDIO", true) && it.remoteUrl.startsWith("http")
+            } ?: return@runCatching null
+            val cover = fetched.media.firstOrNull {
+                it.kind.equals("IMAGE", true) && it.remoteUrl.startsWith("http")
+            }
+            RefreshedAudioSources(
+                audioUrl = audio.remoteUrl,
+                posterUrl = cover?.remoteUrl.orEmpty(),
+                audioMetaJson = audio.audioMetaJson
+            )
+        }.getOrNull()
+    }
     fun searchPosts(query: String): Flow<List<ItemDetail>> {
         val clean = query.trim()
         if (clean.codePointCount(0, clean.length) < 3) return itemDao.searchItemDetails(clean)

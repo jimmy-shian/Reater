@@ -314,6 +314,13 @@ class MainViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
+    /** 音訊貼文來源重抓（fbcdn 網址過期時匯出/歌詞卡回復用） */
+    suspend fun refreshAudioPostSources(
+        canonicalUrl: String,
+        shortcode: String
+    ): ThreadPostRepository.RefreshedAudioSources? =
+        repository.refreshAudioPostSources(canonicalUrl, shortcode)
+
     private val _tabIndex = MutableStateFlow(0) // 0: All, 1: Unread, 2: Favorite, 3: Pro 分類, 4: Trash, 5: 分析
     val tabIndex: StateFlow<Int> = _tabIndex
 

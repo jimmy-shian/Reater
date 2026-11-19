@@ -578,6 +578,8 @@ fun FullscreenVideoViewer(
     posterUrl: String = "",
     /** AUDIO 媒體 metadata JSON（AudioMetaStore.encode 格式；空字串=無，匯出用） */
     audioMetaJson: String = "",
+    /** 匯出來源失效（fbcdn 網址過期）時重抓貼文換新網址/歌詞；null=不重抓 */
+    refreshAudioSources: (suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources?)? = null,
     onDismissDrag: (Float) -> Unit = {},
     onDismissEnd: (Float) -> Unit = {},
     onClose: (finalPosition: Int, isPlaying: Boolean, isMuted: Boolean) -> Unit
@@ -756,9 +758,8 @@ fun FullscreenVideoViewer(
     }
     BackHandler { handleClose() }
 
-    // 音訊（無畫面）匯出：先問「影片版還是音樂版」，匯出中顯示進度視窗
+    // 音訊（無畫面）匯出：先問「影片版還是音樂版」，選定後於背景執行並推播通知，不阻斷檢閱操作
     var showAudioExportChooser by remember { mutableStateOf(false) }
-    var audioExportLabel by remember { mutableStateOf<String?>(null) }
     if (showAudioExportChooser) {
         AlertDialog(
             onDismissRequest = { showAudioExportChooser = false },
@@ -811,51 +812,34 @@ fun FullscreenVideoViewer(
                 Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = {
                         showAudioExportChooser = false
-                        audioExportLabel = context.getString(R.string.video_export_music_progress)
-                        coroutineScope.launch {
-                            exportAudioAsTaggedMusicWithFeedback(
-                                context = context,
-                                localPath = localPath,
-                                remoteUrl = remoteUrl,
-                                posterUrl = posterUrl,
-                                audioMetaJson = audioMetaJson
-                            )
-                            audioExportLabel = null
-                        }
+                        startBackgroundAudioExport(
+                            context = context,
+                            isVideo = false,
+                            localPath = localPath,
+                            remoteUrl = remoteUrl,
+                            posterUrl = posterUrl,
+                            audioMetaJson = audioMetaJson,
+                            refreshSources = refreshAudioSources
+                        )
                     }) { Text(stringResource(R.string.video_export_music)) }
                     Spacer(modifier = Modifier.width(4.dp))
                     TextButton(onClick = {
                         showAudioExportChooser = false
-                        audioExportLabel = context.getString(R.string.video_export_video_progress)
-                        coroutineScope.launch {
-                            exportAudioAsCoverVideoWithFeedback(
-                                context = context,
-                                localPath = localPath,
-                                remoteUrl = remoteUrl,
-                                posterUrl = posterUrl
-                            )
-                            audioExportLabel = null
-                        }
+                        startBackgroundAudioExport(
+                            context = context,
+                            isVideo = true,
+                            localPath = localPath,
+                            remoteUrl = remoteUrl,
+                            posterUrl = posterUrl,
+                            audioMetaJson = audioMetaJson,
+                            refreshSources = refreshAudioSources
+                        )
                     }) { Text(stringResource(R.string.video_export_video)) }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAudioExportChooser = false }) { Text(stringResource(R.string.cancel)) }
             }
-        )
-    }
-    if (audioExportLabel != null) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text(stringResource(R.string.video_exporting_title)) },
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(audioExportLabel.orEmpty(), fontSize = 14.sp)
-                }
-            },
-            confirmButton = {}
         )
     }
 

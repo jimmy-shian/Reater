@@ -890,7 +890,7 @@
     <string name="video_export_music_title">음악 버전 (.m4a)</string>
     <string name="video_export_music_desc">커버와 가사가 포함된 오디오 전용 파일, \"음악/Reater\"에 저장해요.</string>
     <string name="video_export_video_title">동영상 버전 (.mp4)</string>
-    <string name="video_export_video_desc">커버가 포함된 동영상 파일, 앨범 \"Movies/Reater\"에 저장해요.</string>
+    <string name="video_export_video_desc">커버와 가사 자막이 포함된 동영상 파일(자막은 화면 폭에 맞게 자동 줄바꿈), 앨범 \"Movies/Reater\"에 저장해요.</string>
     <string name="video_export_music_progress">음악 파일을 쓰는 중 (커버/가사 포함)…</string>
     <string name="video_export_video_progress">동영상을 합성하는 중 (커버 화면 포함)…</string>
     <string name="video_exporting_title">내보내는 중</string>
@@ -969,5 +969,13 @@
     <string name="save_type_image">이미지</string>
     <string name="save_downloading_what">%1$s 다운로드 중…</string>
     <string name="smart_collection_preview_no_body">(본문 없음)</string>
+    <string name="notify_export_video_running_title">동영상 합성 실행 중</string>
+    <string name="notify_export_music_running_title">음악 내보내기 실행 중</string>
+    <string name="notify_export_running_desc">백그라운드에서 실행 중입니다. 계속 탐색할 수 있습니다.</string>
+    <string name="notify_export_video_done_title">동영상 합성 완료</string>
+    <string name="notify_export_music_done_title">음악 내보내기 완료</string>
+    <string name="notify_export_failed_title">내보내기 실패</string>
+    <string name="video_export_background_started">백그라운드에서 실행 중입니다. 계속 탐색할 수 있습니다.</string>
+    <string name="save_error_compose_failed_reason">합성 실패: %1$s</string>
     <string name="studio_announcement_default_tag">공지사항</string>
 </resources>

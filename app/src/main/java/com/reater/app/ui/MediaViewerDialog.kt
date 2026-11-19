@@ -70,6 +70,8 @@ fun MediaViewerDialog(
     onPageChanged: (Int) -> Unit = {},
     /** AUDIO 媒體的 metadata JSON 映射（key = MediaDedup.normalizeKey(remoteUrl)），匯出「音樂版/影片版」與歌詞嵌入用 */
     audioMetaJsonByUrl: Map<String, String> = emptyMap(),
+    /** 匯出來源失效（fbcdn 網址過期）時重抓貼文換新網址/歌詞；null=不重抓 */
+    refreshAudioSources: (suspend () -> com.reater.app.data.repository.ThreadPostRepository.RefreshedAudioSources?)? = null,
     onDismiss: () -> Unit
 ) {
     if (media.isEmpty()) return
@@ -176,6 +178,7 @@ fun MediaViewerDialog(
                         audioMetaJson = if (item.kind.equals("AUDIO", ignoreCase = true)) {
                             com.reater.app.domain.AudioMetaStore.pickJson(audioMetaJsonByUrl, item.remoteUrl)
                         } else "",
+                        refreshAudioSources = refreshAudioSources,
                         onDismissDrag = { updateDismissDrag(it) },
                         onDismissEnd = { endDismissDrag(it) },
                         onClose = { _, _, _ -> dismissCallback() }
