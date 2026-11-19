@@ -201,6 +201,18 @@ object ThreadsHtmlParser {
                     }
                 }
                 if (bestDist < 8192) body = captions.getOrNull(bodyIdx).orEmpty()
+
+                val lpStart = maxOf(0, codePos - 8192)
+                val lpScope = html.substring(lpStart, minOf(html.length, codePos + 8192))
+                val lpRegex = Regex(""""link_preview_attachment"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+                val urlRegex = Regex(""""url"\s*:\s*"((?:\\.|[^"\\])*)"""")
+                val closestLp = lpRegex.findAll(lpScope)
+                    .minByOrNull { kotlin.math.abs((lpStart + it.range.first) - codePos) }
+                val rawUrl = closestLp?.let { urlRegex.find(it.groupValues[1])?.groupValues?.get(1) }.orEmpty()
+                val previewUrl = ThreadsSjsParser.unwrapRedirectUrl(unescapeJsonString(rawUrl))
+                if (previewUrl.startsWith("http", ignoreCase = true) && !ThreadsSjsParser.containsUrl(body, previewUrl)) {
+                    body = if (body.isBlank()) previewUrl else "$body\n$previewUrl"
+                }
             }
         }
 

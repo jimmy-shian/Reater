@@ -2,6 +2,7 @@ package com.reater.app.data.remote.threads
 
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.json.JSONObject
 import org.junit.Test
 
@@ -88,6 +89,100 @@ class ThreadsSjsParserRealHtmlTest {
         assertEquals(
             "https://www.threads.com/share/BAjN7HCsaj/",
             ThreadsSjsParser.postText(post)
+        )
+    }
+
+    @Test
+    fun parsesRenderedLinkPreviewCardWhenCaptionHasNoUrlText() {
+        val block = """
+            {"data":{"media":{
+              "code":"DfcWjjumKNM",
+              "user":{"username":"leeunhn","full_name":"李昀翰"},
+              "caption":{"text":"想用程式生 3D 模型，這套件讓你直接寫 Python 生物件，不用開建模軟體，sand3d 在 GitHub 有 944 星，README 寫著 3D modeling in Python, built for LLMs，就是給 LLM 寫程式生 3D 物件用的！"},
+              "text_post_app_info":{
+                "is_reply":false,
+                "link_preview_attachment":{
+                  "title":"GitHub - Sandflow-ai/sand3d: 3D modeling in Python, built for LLMs.",
+                  "url":"https://l.threads.com/?u=https%3A%2F%2Fgithub.com%2FSandflow-ai%2Fsand3d&e=AUAk9BgkcwYIhmhnrztYY30",
+                  "display_url":"github.com"
+                },
+                "text_fragments":{"fragments":[
+                  {
+                    "fragment_type":"plaintext",
+                    "plaintext":"想用程式生 3D 模型，這套件讓你直接寫 Python 生物件，不用開建模軟體，sand3d 在 GitHub 有 944 星，README 寫著 3D modeling in Python, built for LLMs，就是給 LLM 寫程式生 3D 物件用的！"
+                  }
+                ]}
+              }
+            }}}
+        """.trimIndent()
+        val result = ThreadsSjsParser.parseBlocks(listOf(block), "DfcWjjumKNM")!!
+        assertEquals(
+            "想用程式生 3D 模型，這套件讓你直接寫 Python 生物件，不用開建模軟體，sand3d 在 GitHub 有 944 星，README 寫著 3D modeling in Python, built for LLMs，就是給 LLM 寫程式生 3D 物件用的！\nhttps://github.com/Sandflow-ai/sand3d",
+            result.bodyText
+        )
+        assertFalse(result.bodyText.contains("l.threads.com"))
+    }
+
+    @Test
+    fun replacesTruncatedLinkFragmentDisplayTextAndAvoidsDuplicateWhenUrlAlreadyInCaption() {
+        val truncatedCaptionPost = JSONObject(
+            """
+            {
+              "caption": {"text": "可以參考這個工具\ngithub.com/Leonx…"},
+              "text_post_app_info": {
+                "link_preview_attachment": {
+                  "url": "https://l.threads.com/?u=https%3A%2F%2Fgithub.com%2FLeonxlnx%2Ftaste-skill&e=xyz"
+                },
+                "text_fragments": {
+                  "fragments": [
+                    {"fragment_type": "plaintext", "plaintext": "可以參考這個工具\n"},
+                    {
+                      "fragment_type": "link",
+                      "plaintext": "github.com/Leonx…",
+                      "link_fragment": {
+                        "display_text": "github.com/Leonx…",
+                        "uri": "https://github.com/Leonxlnx/taste-skill"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals(
+            "可以參考這個工具\nhttps://github.com/Leonxlnx/taste-skill",
+            ThreadsSjsParser.postText(truncatedCaptionPost)
+        )
+
+        val fullCaptionPost = JSONObject(
+            """
+            {
+              "caption": {"text": "如果是 Claude Code / Codex \n可以丟這個給他看看\nhttps://github.com/Leonxlnx/taste-skill"},
+              "text_post_app_info": {
+                "link_preview_attachment": {
+                  "url": "https://l.threads.com/?u=https%3A%2F%2Fgithub.com%2FLeonxlnx%2Ftaste-skill&e=xyz"
+                },
+                "text_fragments": {
+                  "fragments": [
+                    {"fragment_type": "plaintext", "plaintext": "如果是 Claude Code / Codex \n可以丟這個給他看看\n"},
+                    {
+                      "fragment_type": "link",
+                      "plaintext": "https://github.com/Leonxlnx/taste-skill",
+                      "link_fragment": {
+                        "display_text": "github.com/Leonx…",
+                        "uri": "https://github.com/Leonxlnx/taste-skill"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+            """.trimIndent()
+        )
+        assertEquals(
+            "如果是 Claude Code / Codex \n可以丟這個給他看看\nhttps://github.com/Leonxlnx/taste-skill",
+            ThreadsSjsParser.postText(fullCaptionPost)
         )
     }
 

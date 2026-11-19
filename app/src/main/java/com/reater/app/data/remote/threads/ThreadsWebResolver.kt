@@ -178,6 +178,25 @@ object ThreadsWebResolver {
             "var at0=body.indexOf('@'+author);" +
             "if(at0>=0)body=(body.substring(0,at0)+body.substring(at0+author.length+1)).trim();" +
             "}" +
+            "for(var li2=0;li2<links.length;li2++){" +
+            "var lh=links[li2].getAttribute('href')||'';" +
+            "if(lh.indexOf('https://l.threads.com/')===0||lh.indexOf('https://l.threads.net/')===0||lh.indexOf('https://l.instagram.com/')===0||lh.indexOf('https://l.facebook.com/')===0){" +
+            "var qi=lh.indexOf('?');" +
+            "if(qi>=0){" +
+            "var qp=lh.substring(qi+1).split('&');" +
+            "for(var qk=0;qk<qp.length;qk++){" +
+            "if(qp[qk].indexOf('u=')===0){" +
+            "try{var extUrl=decodeURIComponent(qp[qk].substring(2));" +
+            "if(extUrl.indexOf('http%3A')===0||extUrl.indexOf('https%3A')===0||extUrl.indexOf('http%3a')===0||extUrl.indexOf('https%3a')===0)extUrl=decodeURIComponent(extUrl);" +
+            "if(extUrl.indexOf('http://')===0||extUrl.indexOf('https://')===0){" +
+            "var euNoSlash=extUrl.charAt(extUrl.length-1)==='/'?extUrl.substring(0,extUrl.length-1):extUrl;" +
+            "var bodyLow=body.toLowerCase();" +
+            "if(bodyLow.indexOf(extUrl.toLowerCase())<0&&(!euNoSlash||bodyLow.indexOf(euNoSlash.toLowerCase())<0)){" +
+            "body=body?(body+String.fromCharCode(10)+extUrl):extUrl;" +
+            "}}" +
+            "}catch(ex){}" +
+            "break;}" +
+            "}}}}" +
             "if(!body||body.length<2||body.length>2000)continue;" +
             "if(!author)continue;" +
             "var key=author+'||'+body;" +

@@ -6,6 +6,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.reater.app.domain.TextAttachmentStore
 import com.reater.app.domain.AudioMetaStore
+import java.net.URI
+import java.net.URLDecoder
 
 /**
  * Threads SJS 內嵌 JSON 解析器（主力解析器）。
@@ -651,55 +653,135 @@ object ThreadsSjsParser {
         return ""
     }
 
+    private val META_REDIRECT_HOSTS = setOf(
+        "l.threads.com",
+        "l.threads.net",
+        "l.instagram.com",
+        "l.facebook.com"
+    )
+
+    private fun isHttpUrl(url: String): Boolean =
+        url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
+
+    /** 解包 Meta 外部跳轉包裝連結（l.threads.com/?u=...），並還原 HTML &amp; 實體。 */
+    fun unwrapRedirectUrl(rawUrl: String?): String {
+        val cleaned = rawUrl.orEmpty().trim()
+            .takeUnless { it.equals("null", ignoreCase = true) }
+            ?.replace("&amp;", "&")
+            ?: return ""
+        if (cleaned.isBlank()) return ""
+        return try {
+            val uri = URI(cleaned)
+            val host = uri.host?.lowercase().orEmpty()
+            if (host !in META_REDIRECT_HOSTS) return cleaned
+            val rawQuery = uri.rawQuery.orEmpty()
+            if (rawQuery.isBlank()) return cleaned
+            val uEncoded = rawQuery.split("&")
+                .firstOrNull { it.startsWith("u=") }
+                ?.substring(2)
+                ?: return cleaned
+            var decoded = URLDecoder.decode(uEncoded, "UTF-8").trim()
+            if (decoded.startsWith("http%3A", ignoreCase = true) ||
+                decoded.startsWith("https%3A", ignoreCase = true)
+            ) {
+                decoded = URLDecoder.decode(decoded, "UTF-8").trim()
+            }
+            if (isHttpUrl(decoded)) decoded else cleaned
+        } catch (_: Exception) {
+            cleaned
+        }
+    }
+
+    internal fun containsUrl(text: String, url: String): Boolean {
+        if (url.isBlank() || text.isBlank()) return false
+        if (text.contains(url, ignoreCase = true)) return true
+        val noSlash = url.trimEnd('/')
+        return noSlash.isNotBlank() && text.contains(noSlash, ignoreCase = true)
+    }
+
+    private fun extractHttpUrl(obj: JSONObject?): String? {
+        if (obj == null) return null
+        return listOf("url", "uri", "href")
+            .asSequence()
+            .map { unwrapRedirectUrl(obj.optString(it)) }
+            .firstOrNull { isHttpUrl(it) }
+    }
+
     /**
      * caption.text 優先；無則拼 text_fragments plaintext。
      *
-     * 純分享連結的留言有時沒有 plaintext，Threads 會把連結放在
-     * link_fragment、linkified_* 或 link_preview_attachment.url；這些欄位
-     * 仍是留言內容，不能因為文字為空而丟掉整則留言。
+     * 純分享連結或渲染成連結卡片的貼文／留言有時 caption 不含完整網址，Threads 會把連結放在
+     * text_fragments（link_fragment、linkified_*）或 link_preview_attachment / link_preview_response；
+     * 這裡會還原截斷網址、解包 l.threads.com/?u= 並補齊缺失的連結。
      */
     fun postText(post: JSONObject): String {
         val rawCap = post.optJSONObject("caption")?.optString("text").orEmpty()
-        val caption = if (rawCap == "null") "" else rawCap
-        if (caption.isNotBlank()) return caption.trim()
+        var caption = if (rawCap == "null") "" else rawCap.trim()
 
         val textInfo = post.optJSONObject("text_post_app_info")
         val fragments = textInfo?.optJSONObject("text_fragments")?.optJSONArray("fragments")
         val sb = StringBuilder()
+        val collectedUrls = mutableListOf<String>()
+
         if (fragments != null) {
             for (i in 0 until fragments.length()) {
                 val fragment = fragments.optJSONObject(i) ?: continue
+                val linkFrag = fragment.optJSONObject("link_fragment")
+                val linkFragUrl = extractHttpUrl(linkFrag)
+                val webUrl = unwrapRedirectUrl(fragment.optString("linkified_web_url")).takeIf(::isHttpUrl)
+                val inAppUrl = unwrapRedirectUrl(fragment.optString("linkified_in_app_url")).takeIf(::isHttpUrl)
+                val fragUrl = linkFragUrl ?: webUrl ?: inAppUrl
+                if (fragUrl != null) collectedUrls.add(fragUrl)
+
+                val displayText = linkFrag?.optString("display_text")
+                    ?.takeUnless { it.equals("null", ignoreCase = true) }
+                    ?.trim()
+                    .orEmpty()
+                if (caption.isNotBlank() && fragUrl != null && displayText.isNotBlank() &&
+                    (displayText.contains("…") || displayText.contains("...") || !isHttpUrl(displayText)) &&
+                    caption.contains(displayText) && !containsUrl(caption, fragUrl)
+                ) {
+                    caption = caption.replace(displayText, fragUrl)
+                }
+
                 val part = fragment.optString("plaintext").takeUnless { it == "null" }.orEmpty()
                 if (part.isNotBlank()) {
-                    sb.append(part)
+                    val trimmedPart = part.trim()
+                    val resolvedPart = when {
+                        fragUrl != null && (trimmedPart.contains("…") || trimmedPart.contains("...") ||
+                            !isHttpUrl(trimmedPart) || (displayText.isNotBlank() && trimmedPart == displayText)) ->
+                            part.replace(trimmedPart, fragUrl)
+                        isHttpUrl(trimmedPart) ->
+                            part.replace(trimmedPart, unwrapRedirectUrl(trimmedPart))
+                        else -> part
+                    }
+                    sb.append(resolvedPart)
                     continue
                 }
-                appendLinkText(sb, fragment.optJSONObject("link_fragment"))
-                appendUrlText(sb, fragment.optString("linkified_web_url"))
-                appendUrlText(sb, fragment.optString("linkified_in_app_url"))
+                appendUrlText(sb, fragUrl ?: extractLinkObjectUrl(linkFrag))
             }
         }
 
-        if (sb.isBlank()) {
-            appendUrlText(
-                sb,
-                textInfo?.optJSONObject("link_preview_attachment")?.optString("url")
-            )
+        for (previewKey in listOf("link_preview_attachment", "link_preview_response")) {
+            extractHttpUrl(textInfo?.optJSONObject(previewKey))?.let { collectedUrls.add(it) }
         }
-        return sb.toString().trim()
+
+        var base = if (caption.isNotBlank()) caption else sb.toString().trim()
+        for (u in collectedUrls) {
+            if (!containsUrl(base, u)) {
+                base = if (base.isBlank()) u else "$base\n$u"
+            }
+        }
+        return base.trim()
     }
 
-    private fun appendLinkText(out: StringBuilder, link: JSONObject?) {
-        if (link == null) return
-        val text = listOf("text", "display_text", "title")
+    private fun extractLinkObjectUrl(link: JSONObject?): String? {
+        if (link == null) return null
+        extractHttpUrl(link)?.let { return it }
+        return listOf("text", "display_text", "title")
             .asSequence()
-            .map { link.optString(it) }
-            .firstOrNull { it.isNotBlank() && it != "null" }
-        val url = listOf("url", "uri", "href")
-            .asSequence()
-            .map { link.optString(it) }
-            .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
-        appendUrlText(out, text ?: url)
+            .map { link.optString(it).trim() }
+            .firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
     }
 
     private fun appendUrlText(out: StringBuilder, value: String?) {
