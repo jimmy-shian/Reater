@@ -88,6 +88,7 @@ class ThreadPostRepository @Inject constructor(
             )
         }.getOrNull()
     }
+
     fun searchPosts(query: String): Flow<List<ItemDetail>> {
         val clean = query.trim()
         if (clean.codePointCount(0, clean.length) < 3) return itemDao.searchItemDetails(clean)
@@ -145,9 +146,11 @@ class ThreadPostRepository @Inject constructor(
         commentsText: String = "",
         authorHandle: String = "",
         topicTag: String = "",
+        excludeItemId: Long? = null,
         onCustomTagMatched: ((String) -> Unit)? = null
     ): Long? {
-        val combinedSearchText = (authorHandle + " " + topicTag + " " + bodyText + " " + commentsText).lowercase()
+        val cleanedBodyAndComments = OnDeviceClassifier.stripNoise("$bodyText $commentsText")
+        val combinedSearchText = "${authorHandle.lowercase()} ${topicTag.lowercase()} $cleanedBodyAndComments".trim()
 
         // 規則三（最高級自訂比對）：特定關鍵字比對
         val customRulesJson = settingsRepository.smartRuleCustomKeywordsJson.first()
@@ -159,7 +162,7 @@ class ThreadPostRepository @Inject constructor(
         for (rule in customRules) {
             if (!rule.isEnabled) continue
             val kws = rule.keyword.split(Regex("[,，、;；\\s]+")).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-            if (kws.any { combinedSearchText.contains(it) }) {
+            if (kws.any { OnDeviceClassifier.containsKeyword(combinedSearchText, it) }) {
                 if (rule.targetTagName.isNotBlank()) {
                     onCustomTagMatched?.invoke(rule.targetTagName.trim())
                 }
@@ -172,25 +175,31 @@ class ThreadPostRepository @Inject constructor(
             return matchedCategoryId
         }
 
-        // 規則二：根據作者名稱去分類（開關）
-        val authorRuleEnabled = settingsRepository.smartRuleAuthorEnabled.first()
-        if (authorRuleEnabled && authorHandle.isNotBlank() && !authorHandle.equals("threads_user", ignoreCase = true)) {
-            val authorCat = itemDao.getMostFrequentCategoryByAuthor(authorHandle.trim())?.categoryId
-            if (authorCat != null) return authorCat
-        }
-
-        // 規則一：自動根據內文關鍵字去分類（開關）
+        // 規則一：自動根據內文關鍵字去分類（開關；優先於作者紀錄，避免內容主題被過往作者分類覆蓋）
         val contentRuleEnabled = settingsRepository.smartRuleContentKeywordsEnabled.first()
         if (contentRuleEnabled) {
             val titlePrefix = if (topicTag.isNotBlank()) "#$topicTag " else ""
             val classResult = classifier.classify(
                 titleScope = titlePrefix + authorHandle + " " + bodyText.take(80),
-                bodyScope = bodyText + " " + commentsText
+                bodyScope = "$bodyText $commentsText",
+                excludeItemId = excludeItemId
             )
             // 只在有足夠信心時才回傳分類結果，避免無關鍵字命中時落入預設分類
             if (classResult.categoryId != null && classResult.score >= 2) {
                 return classResult.categoryId
             }
+        }
+
+        // 規則二：根據作者名稱去分類（開關；當內文未命中關鍵字時作為補充依據）
+        val authorRuleEnabled = settingsRepository.smartRuleAuthorEnabled.first()
+        if (authorRuleEnabled && authorHandle.isNotBlank() && !authorHandle.equals("threads_user", ignoreCase = true)) {
+            val trimmedAuthor = authorHandle.trim()
+            val authorCat = if (excludeItemId != null) {
+                itemDao.getMostFrequentCategoryByAuthorExcluding(trimmedAuthor, excludeItemId)?.categoryId
+            } else {
+                itemDao.getMostFrequentCategoryByAuthor(trimmedAuthor)?.categoryId
+            }
+            if (authorCat != null) return authorCat
         }
 
         return null
@@ -214,6 +223,7 @@ class ThreadPostRepository @Inject constructor(
                 commentsText = item.comments.joinToString(" ") { it.text },
                 authorHandle = item.item.authorHandle,
                 topicTag = item.item.topicTag,
+                excludeItemId = item.item.id,
                 onCustomTagMatched = { customTags.add(it) }
             )
             if (newCatId != null && newCatId != item.userEdit?.categoryId) {

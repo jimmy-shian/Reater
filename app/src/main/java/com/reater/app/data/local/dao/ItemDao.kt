@@ -238,6 +238,23 @@ interface ItemDao {
     suspend fun getMostFrequentCategoryByAuthor(authorHandle: String): CategoryCount?
 
     /**
+     * 同作者最常用的分類（排除指定貼文自身，供重新套用智慧分類時避免貼文命中自己）。
+     */
+    @Query("""
+        SELECT user_edits.categoryId AS categoryId, COUNT(*) AS cnt
+        FROM items
+        INNER JOIN user_edits ON items.id = user_edits.itemId
+        WHERE items.isDeleted = 0
+          AND items.id != :excludeItemId
+          AND items.authorHandle = :authorHandle
+          AND user_edits.categoryId IS NOT NULL
+        GROUP BY user_edits.categoryId
+        ORDER BY cnt DESC, MAX(user_edits.editedAt) DESC
+        LIMIT 1
+    """)
+    suspend fun getMostFrequentCategoryByAuthorExcluding(authorHandle: String, excludeItemId: Long): CategoryCount?
+
+    /**
      * 同主題最常用的分類（用於儲存時預選，優先於同作者）：
      * 次數最多者勝；次數相同取最近使用。
      */
@@ -258,7 +275,8 @@ interface ItemDao {
      * 讀取過往已分類貼文的精簡摘要，供智慧分類模型比對內容關鍵字與主題。
      */
     @Query("""
-        SELECT user_edits.categoryId AS categoryId,
+        SELECT items.id AS id,
+               user_edits.categoryId AS categoryId,
                items.topicTag AS topicTag,
                items.bodyText AS bodyText,
                items.commentsText AS commentsText
@@ -275,7 +293,8 @@ data class CategorizedItemSummary(
     val categoryId: Long,
     val topicTag: String,
     val bodyText: String,
-    val commentsText: String = ""
+    val commentsText: String = "",
+    val id: Long = 0L
 )
 
 data class CategoryCount(

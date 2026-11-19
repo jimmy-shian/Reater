@@ -489,10 +489,12 @@ class SmartCollectionEngine @Inject constructor(
             val targetCategoryName = config?.categoryName?.ifBlank { fallbackCategoryName } ?: fallbackCategoryName
             val targetCategoryId = config?.categoryId ?: categories.firstOrNull { it.name.equals(targetCategoryName, ignoreCase = true) }?.id
 
-            // 建立此分類的所有關鍵字（包含分類名稱本身、資料庫關鍵字、預設關鍵字字典）
+            // 建立此分類的所有關鍵字（包含分類名稱本身、核心詞彙、資料庫關鍵字、領域關鍵字字典）
             val kwSet = mutableSetOf<String>()
             if (targetCategoryName.isNotBlank()) {
                 kwSet.add(targetCategoryName.trim())
+                kwSet.addAll(OnDeviceClassifier.extractCategoryCoreTerms(targetCategoryName))
+                kwSet.addAll(OnDeviceClassifier.getDomainKeywordsForCategory(targetCategoryName))
             }
             if (targetCategoryId != null) {
                 val dbKws = keywords.filter { it.categoryId == targetCategoryId }.map { it.term.trim() }
@@ -529,10 +531,14 @@ class SmartCollectionEngine @Inject constructor(
                 }
             }
 
-            if (textPool.isEmpty()) return false
+            val cleanTextPool = textPool.map { OnDeviceClassifier.stripNoise(it) }.filter { it.isNotEmpty() }
+            if (cleanTextPool.isEmpty()) return false
 
-            return kwSet.any { kw ->
-                kw.isNotBlank() && textPool.any { it.contains(kw, ignoreCase = true) }
+            return kwSet.any { rawKw ->
+                val kwLower = rawKw.trim().lowercase()
+                kwLower.isNotEmpty() && cleanTextPool.any { cleanText ->
+                    OnDeviceClassifier.containsKeyword(cleanText, kwLower)
+                }
             }
         }
 
