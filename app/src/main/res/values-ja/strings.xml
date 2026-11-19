@@ -969,4 +969,5 @@
     <string name="save_type_image">画像</string>
     <string name="save_downloading_what">%1$sをダウンロード中…</string>
     <string name="smart_collection_preview_no_body">（本文なし）</string>
+    <string name="studio_announcement_default_tag">お知らせ</string>
 </resources>

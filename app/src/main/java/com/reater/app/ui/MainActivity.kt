@@ -272,8 +272,25 @@ private fun MainThemedScreen(
             }
         }
         var showSplashAd by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+        var activeAnnouncement by androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf<com.reater.app.data.remote.StudioAnnouncement?>(null)
+        }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            activeAnnouncement = com.reater.app.data.remote.StudioAnnouncementClient.fetchActiveAnnouncement(context)
+        }
         androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
             MainScreen(viewModel = viewModel)
+            if (!showSplashAd) {
+                activeAnnouncement?.let { notice ->
+                    StudioAnnouncementOverlay(
+                        announcement = notice,
+                        onDismiss = {
+                            com.reater.app.data.remote.StudioAnnouncementClient.markDismissed(context, notice)
+                            activeAnnouncement = null
+                        }
+                    )
+                }
+            }
             if (showSplashAd) {
                 SplashAdOverlay(onDismiss = { showSplashAd = false })
             }
